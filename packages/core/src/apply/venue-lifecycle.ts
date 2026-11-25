@@ -2,15 +2,15 @@
 //
 // Deleting a venue ARCHIVES it. Nothing is erased: history is append-only (rule 2) and the app
 // role has no DELETE on `venues`. The row, its menus, areas, tables, tags, snapshots and settings
-// stay, and so do its public code and its tables' QR tokens, so a restore brings the same
+// stay, and so do its public code and its tables' QR codes, so a restore brings the same
 // addresses back. What a deletion does:
 //   - sets `venues.archived_at`;
 //   - releases the venue's till link in the same transaction (the till venue's `venue_id` goes back to
 //     null, so the till venue is free for another venue of ours) and remembers it
 //     (`settings.till_before_delete`), so a restore can link it again (adjustments V1);
-//   - reports the QR tokens of the venue's tables (all of them, hidden ones too). The caller hands
-//     them to the worker's table-files job as the files to withdraw (the tokens themselves are NOT
-//     retired: the tables keep them for a restore).
+//   - reports the code files of the venue's tables (all of them, hidden ones too: `codeFileNames`).
+//     The caller hands them to the worker's table-files job as the files to withdraw (the codes
+//     themselves are NOT retired: the tables keep them for a restore).
 // Everything else follows from the flag: `lockLiveVenue` makes every other writer refuse an
 // archived venue, the admin reads leave it out, and the worker's jobs withdraw its guest files and
 // stop syncing and publishing it.
@@ -35,6 +35,7 @@ import {
   tillVenueLinks,
 } from '../connectors/till-venues'
 import { isId } from '../ids'
+import { codeFileNames } from './code-files'
 import { ProvisionError } from './provision'
 import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
@@ -60,23 +61,24 @@ function checkedIds(tenantId: string, venueId: string): void {
 }
 
 /**
- * The QR tokens of every table of the venue that is not deleted, hidden ones included (a withdrawn
- * file that is not there is no harm), sorted here in code point order (never by the database:
- * its collation differs between CI and a local machine, CLAUDE.md). What a delete or an unpublish
- * hands to the worker's table-files job as the files to withdraw; the tokens stay on the tables.
+ * The code files of every table of the venue that is not deleted, hidden ones included (a
+ * withdrawn file that is not there is no harm): the code's hash, and the plain code while it is
+ * stored (`codeFileNames`). Sorted here in code point order (never by the database: its collation
+ * differs between CI and a local machine, CLAUDE.md). What a delete or an unpublish hands to the
+ * worker's table-files job as the files to withdraw; the codes stay on the tables.
  */
 async function tableTokensOf(tx: WriteTx, venueId: string): Promise<string[]> {
   const rows = await tx
-    .select({ token: venueTables.qrToken })
+    .select({ qrToken: venueTables.qrToken, qrCodeHash: venueTables.qrCodeHash })
     .from(venueTables)
     .where(
       and(
         eq(venueTables.venueId, venueId),
         isNull(venueTables.archivedAt),
-        isNotNull(venueTables.qrToken),
+        isNotNull(venueTables.qrCodeHash),
       ),
     )
-  return rows.flatMap((row) => (row.token === null ? [] : [row.token])).sort()
+  return rows.flatMap(codeFileNames).sort()
 }
 
 /** What `renameVenue` did. */
@@ -130,8 +132,9 @@ export interface ArchivedVenue {
   /** True when a till link was released. */
   readonly releasedTill: boolean
   /**
-   * The QR tokens of the venue's tables as they stood at the moment of the deletion, sorted. Their
-   * files `t/<token>.json` have to be withdrawn; the tokens stay in the database.
+   * The code files of the venue's tables as they stood at the moment of the deletion, sorted
+   * (`t/<code hash>.json`, and `t/<code>.json` for a code still in plain): they have to be
+   * withdrawn; the codes stay in the database.
    */
   readonly tableTokens: readonly string[]
 }
@@ -261,9 +264,9 @@ export interface UnpublishedVenue {
   /** When the venue was unpublished (now, or when it was before). */
   readonly unpublishedAt: Date
   /**
-   * The QR tokens of the venue's tables, sorted: the caller hands them to the worker's table-files
-   * job as the files to withdraw (the tokens stay on the tables; the next publish writes the
-   * files back).
+   * The code files of the venue's tables, sorted: the caller hands them to the worker's
+   * table-files job as the files to withdraw (the codes stay on the tables; the next publish
+   * writes the files back).
    */
   readonly tableTokens: readonly string[]
 }

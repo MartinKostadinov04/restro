@@ -36,6 +36,8 @@ interface AppSidebarProps {
   activeOrganizationId: string
   /** Owners and admins may add venues; the "New venue" item is only drawn for them. */
   canCreateVenue: boolean
+  /** False on a shared device (RR-85): the organisation's Settings need the person's own sign-in. */
+  offerSettings: boolean
   user: { name: string; email: string }
 }
 
@@ -44,6 +46,7 @@ export function AppSidebar({
   organizations,
   activeOrganizationId,
   canCreateVenue,
+  offerSettings,
   user,
 }: AppSidebarProps) {
   const t = useTranslations('nav')
@@ -76,23 +79,25 @@ export function AppSidebar({
           scroll bar would not fit beside the icons, so it is not drawn). */}
       <SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto group-data-[collapsible=icon]:[scrollbar-width:none]">
         <VenueNav venues={venues} canCreateVenue={canCreateVenue} />
-        <SidebarGroup>
-          <SidebarGroupLabel>{t('organization')}</SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={inSettings} tooltip={t('settings')}>
-                <Link
-                  href={SETTINGS_PATH}
-                  aria-current={inSettings ? 'page' : undefined}
-                  data-testid="nav-settings"
-                >
-                  <SettingsIcon aria-hidden />
-                  <span>{t('settings')}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
+        {offerSettings ? (
+          <SidebarGroup>
+            <SidebarGroupLabel>{t('organization')}</SidebarGroupLabel>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={inSettings} tooltip={t('settings')}>
+                  <Link
+                    href={SETTINGS_PATH}
+                    aria-current={inSettings ? 'page' : undefined}
+                    data-testid="nav-settings"
+                  >
+                    <SettingsIcon aria-hidden />
+                    <span>{t('settings')}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+        ) : null}
       </SidebarContent>
       <SidebarFooter>
         <OrganizationSwitcher

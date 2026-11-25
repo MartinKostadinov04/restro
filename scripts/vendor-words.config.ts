@@ -30,25 +30,69 @@ export type ConnectorKind = {
   words: string[]
   /** Source folders of the package. Folders that do not exist (yet) are fine. */
   dirs: string[]
+  /** A payment provider rather than a POS (D127): its words stay out of the POS's shared files. */
+  payment?: true
 }
 
-/** Registered connector kinds. A new kind adds its words to the wall around everything else. */
+/** Registered connector kinds, POS and payment provider alike. A new kind adds its words to the
+ * wall around everything else. A kind's web folder (`apps/web/src/connectors/<kind>`) is one of
+ * its dirs, so it may use its own words and no other kind's (#104). */
 export const CONNECTORS: ConnectorKind[] = [
   // The barsy package sits at packages/barsy today and moves under packages/connectors later.
   {
     kind: 'barsy',
     words: ['barsy', 'lukanet'],
-    dirs: ['packages/barsy/src', 'packages/connectors/barsy/src'],
+    dirs: ['packages/barsy/src', 'packages/connectors/barsy/src', 'apps/web/src/connectors/barsy'],
   },
   // Mistral Software (Zamboo) is only a research item (T69); no package exists.
   { kind: 'mistral', words: ['mistral', 'zamboo'], dirs: ['packages/connectors/mistral/src'] },
+  // The simulated POS (D124; ticket #66) is POS-neutral by design: it owns no words, so its
+  // package is a wall for every vendor's. Its switches cite questions by number, never the POS.
+  // Its web folder stays in the shared zone below: it calls a core helper named for barsy.
+  { kind: 'sim', words: [], dirs: ['packages/connectors/sim-pos/src'] },
+  // The first payment provider (D126, D127): its name only in its own package and web folder.
+  {
+    kind: 'stripe',
+    words: ['stripe'],
+    dirs: ['packages/payments/stripe/src', 'apps/web/src/connectors/stripe'],
+    payment: true,
+  },
+  // The simulated payment provider (#103) owns no words, like the simulated POS.
+  {
+    kind: 'sim-pay',
+    words: [],
+    dirs: ['packages/payments/sim-pay/src', 'apps/web/src/connectors/sim-pay'],
+    payment: true,
+  },
 ]
 
 /** Every word that names a connector or its vendor. */
 export const WORDS: string[] = CONNECTORS.flatMap((connector) => connector.words)
 
+/** A connector's own folders: its own words are fine, another kind's words fail (cross-kind).
+ * First in ZONES, so a kind's web folder is its zone and not the web zone's allowed folder. */
+const CONNECTOR_ZONES: Zone[] = CONNECTORS.map(
+  (connector): Zone => ({
+    name: `connector:${connector.kind}`,
+    mode: 'wall',
+    include: connector.dirs,
+    ownWords: connector.words,
+  }),
+)
+
 /** Zones, most specific first: a file belongs to the first zone that includes it. */
 export const ZONES: Zone[] = [
+  ...CONNECTOR_ZONES,
+  // The POS connectors' shared web files (the till's settings, sync reads, D75's name fallback)
+  // predate the per-kind folders: any POS's words, never a payment provider's (#104).
+  {
+    name: 'web-connectors',
+    mode: 'wall',
+    include: ['apps/web/src/connectors'],
+    ownWords: CONNECTORS.filter((connector) => !connector.payment).flatMap(
+      (connector) => connector.words,
+    ),
+  },
   // What guests and the public CDN see. Not one vendor word, ever.
   {
     name: 'published',
@@ -84,15 +128,6 @@ export const ZONES: Zone[] = [
     include: ['apps/worker/src'],
     allow: ['apps/worker/src/connectors.ts'],
   },
-  // A connector's own package: its own words are fine, another kind's words fail (cross-kind).
-  ...CONNECTORS.map(
-    (connector): Zone => ({
-      name: `connector:${connector.kind}`,
-      mode: 'wall',
-      include: connector.dirs,
-      ownWords: connector.words,
-    }),
-  ),
 ]
 
 /** Not application code: files in a folder with one of these names, anywhere, are not scanned. */
@@ -117,6 +152,6 @@ export const BASELINE_FILE = 'scripts/vendor-words.baseline.json'
  * through the money module only. A legitimate use is never allow-listed here by an agent. */
 export const BANNED = {
   /** Folders (non-test code) where the patterns are checked. */
-  include: ['packages/barsy/src', 'packages/connectors/*/src'],
+  include: ['packages/barsy/src', 'packages/connectors/*/src', 'packages/payments/*/src'],
   patterns: ['parseFloat(', '.toFixed(', '* 100'] as const,
 }

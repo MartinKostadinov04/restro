@@ -74,6 +74,11 @@ const sectionsOf = (container: HTMLElement) => [
   ...container.querySelectorAll<HTMLElement>('section.rm-section'),
 ]
 
+/** The guest page's key for the venue of these tests (the face is told it as `layoutMemory`). */
+const VENUE = 'k3x9p2m7qa1z'
+const REMEMBERED = `rm-layout:${VENUE}`
+const atVenue = { layoutMemory: VENUE } as const
+
 const openFilterSheet = () => {
   fireEvent.click(screen.getByRole('button', { name: 'Filter the menu' }))
   return screen.getByRole('dialog', { name: 'Filter the menu' })
@@ -81,7 +86,7 @@ const openFilterSheet = () => {
 
 describe('the layout', () => {
   it('starts in two columns and the switch changes it', () => {
-    const { container } = draw()
+    const { container } = draw(atVenue)
     const root = container.querySelector('.rm')
     expect(root?.getAttribute('data-layout')).toBe('two')
     expect(screen.getByRole('radiogroup', { name: 'Menu layout' })).toBeTruthy()
@@ -94,7 +99,7 @@ describe('the layout', () => {
     expect(screen.getByRole('radio', { name: 'List' }).getAttribute('aria-checked')).toBe('true')
     fireEvent.click(screen.getByRole('radio', { name: '1 column' }))
     expect(root?.getAttribute('data-layout')).toBe('one')
-    expect(window.sessionStorage.getItem('rm-layout')).toBe('one')
+    expect(window.sessionStorage.getItem(REMEMBERED)).toBe('one')
   })
 
   it('moves the choice with the arrow keys, and only the chosen button is in the tab order', () => {
@@ -109,7 +114,7 @@ describe('the layout', () => {
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('two')
   })
 
-  it('starts in the layout of the menu (view.layout, a composer setting)', () => {
+  it('starts in the layout of the menu (view.layout, from the design)', () => {
     for (const layout of ['list', 'one', 'two'] as const) {
       const { container, unmount } = draw({
         view: { ...view, layout: { default: layout, guestSwitch: true } },
@@ -129,16 +134,17 @@ describe('the layout', () => {
   })
 
   it("lets the guest's remembered choice win while the switch is shown", () => {
-    window.sessionStorage.setItem('rm-layout', 'one')
+    window.sessionStorage.setItem(REMEMBERED, 'one')
     const { container } = draw({
+      ...atVenue,
       view: { ...view, layout: { default: 'list', guestSwitch: true } },
     })
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('one')
   })
 
   it('ignores a remembered value that is not a layout', () => {
-    window.sessionStorage.setItem('rm-layout', 'banana')
-    const { container } = draw()
+    window.sessionStorage.setItem(REMEMBERED, 'banana')
+    const { container } = draw(atVenue)
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('two')
   })
 
@@ -149,19 +155,51 @@ describe('the layout', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('denied')
     })
-    const { container } = draw()
+    const { container } = draw(atVenue)
     fireEvent.click(screen.getByRole('radio', { name: 'List' }))
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('list')
   })
 
   it('draws no switch when the menu does not let guests switch, and then the remembered choice does not apply', () => {
-    window.sessionStorage.setItem('rm-layout', 'one')
+    window.sessionStorage.setItem(REMEMBERED, 'one')
     const { container } = draw({
+      ...atVenue,
       view: { ...view, layout: { default: 'list', guestSwitch: false } },
     })
     expect(screen.queryByRole('radiogroup')).toBeNull()
     expect(screen.queryByRole('radio')).toBeNull()
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('list')
+  })
+
+  it('keeps each venue’s choice to itself: another venue’s, and the old shared key, do not apply', () => {
+    window.sessionStorage.setItem('rm-layout:zzzzzzzzzzzz', 'one')
+    window.sessionStorage.setItem('rm-layout', 'one')
+    const { container } = draw({
+      ...atVenue,
+      view: { ...view, layout: { default: 'list', guestSwitch: true } },
+    })
+    expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('list')
+  })
+
+  it('without a memory (the Design previews) neither reads nor writes the guest’s choice (C6)', () => {
+    window.sessionStorage.setItem(REMEMBERED, 'one')
+    window.sessionStorage.setItem('rm-layout', 'one')
+    const getItem = vi.spyOn(Storage.prototype, 'getItem')
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    const preview = (layout: 'list' | 'one' | 'two') => (
+      <EditorialMarketFace view={{ ...view, layout: { default: layout, guestSwitch: true } }} />
+    )
+    const { container, rerender } = render(preview('list'))
+    const root = () => container.querySelector('.rm')?.getAttribute('data-layout')
+    expect(root()).toBe('list')
+    // The switch still works in the preview, for as long as the frame is drawn …
+    fireEvent.click(screen.getByRole('radio', { name: '2 columns' }))
+    expect(root()).toBe('two')
+    // … and gives way when the owner changes the design's own layout.
+    rerender(preview('one'))
+    expect(root()).toBe('one')
+    expect(getItem).not.toHaveBeenCalled()
+    expect(setItem).not.toHaveBeenCalled()
   })
 
   it('shows the switch under the title of the section after the photo-led strip', () => {
@@ -280,6 +318,60 @@ describe('the dish page', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(window.location.hash).toBe('')
+  })
+
+  it('tells the host every dish page that opens and closes: a tap, back, a shared link (C1)', async () => {
+    const told: [string | null, boolean][] = []
+    const onOpenDishChange = (itemId: string | null, opened: boolean) => told.push([itemId, opened])
+    const { unmount } = draw({ onOpenDishChange })
+    fireEvent.click(opener())
+    expect(told.at(-1)).toEqual([hummus.id, true])
+    await act(async () => {
+      window.history.back()
+    })
+    await waitFor(() => expect(told.at(-1)).toEqual([null, false]))
+    // Opened again from the menu: a second open, told again.
+    fireEvent.click(opener())
+    expect(told.filter(([id, opened]) => id === hummus.id && opened)).toHaveLength(2)
+    // Gone (the page fell back to a notice, or drew a new menu): no dish page is open.
+    unmount()
+    expect(told.at(-1)).toEqual([null, false])
+    // A link that arrives on a dish page.
+    told.length = 0
+    window.history.replaceState(null, '', `/#item-${hummus.id}`)
+    draw({ onOpenDishChange })
+    await waitFor(() => expect(told).toContainEqual([hummus.id, true]))
+  })
+
+  it('does not count a dish that shows again from under a sheet as an open (D142)', async () => {
+    const told: [string | null, boolean][] = []
+    draw({ onOpenDishChange: (itemId, opened) => told.push([itemId, opened]) })
+    fireEvent.click(opener())
+    const go = async (move: () => void) => {
+      await act(async () => {
+        move()
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      })
+    }
+    // A sheet opens over the dish page, and another dish opens from the sheet …
+    window.history.pushState({ rmSheet: 'bag' }, '', '#bag')
+    const other = 'nd_from_the_bag'
+    await go(() => window.history.pushState({ rmItem: other }, '', `#item-${other}`))
+    expect(told.at(-1)).toEqual([other, true])
+    // … back to the sheet, and the sheet closes: the first dish shows again, which is no new look.
+    await go(() => window.history.replaceState({ rmSheet: 'bag' }, '', '#bag'))
+    expect(told.at(-1)).toEqual([null, false])
+    await go(() => window.history.replaceState({ rmItem: hummus.id }, '', `#item-${hummus.id}`))
+    expect(told.at(-1)).toEqual([hummus.id, false])
+    // Back on the menu itself, then forward to the dish: that is a look again.
+    await go(() => window.history.replaceState(null, '', '/'))
+    await go(() => window.history.replaceState({ rmItem: hummus.id }, '', `#item-${hummus.id}`))
+    expect(told.at(-1)).toEqual([hummus.id, true])
+    expect(told.filter(([, opened]) => opened)).toEqual([
+      [hummus.id, true],
+      [other, true],
+      [hummus.id, true],
+    ])
   })
 
   it('draws no dialog for a link that names no dish or is malformed', () => {
@@ -417,9 +509,9 @@ describe('the filters', () => {
     const { container } = draw()
     const sheet = openFilterSheet()
     fireEvent.click(within(sheet).getByRole('button', { name: 'Spicy' }))
-    expect(visibleNames(container)).toEqual(['Olives', 'Steak'])
+    expect(visibleNames(container)).toEqual(['Olives'])
     fireEvent.click(within(sheet).getByRole('button', { name: 'Signature' }))
-    expect(visibleNames(container)).toEqual(['Hummus', 'Olives', 'Halloumi', 'Burger', 'Steak'])
+    expect(visibleNames(container)).toEqual(['Hummus', 'Olives', 'Halloumi', 'Burger'])
     // Dietary labels and tags together: tags are alternatives within, labels are required.
     fireEvent.click(within(sheet).getByRole('button', { name: 'Vegan' }))
     expect(visibleNames(container)).toEqual(['Hummus', 'Olives'])
@@ -464,7 +556,7 @@ describe('the filters', () => {
     // And the sheet's own "Clear filters".
     const again = openFilterSheet()
     fireEvent.click(within(again).getByRole('button', { name: 'Spicy' }))
-    expect(visibleNames(container)).toEqual(['Olives', 'Steak'])
+    expect(visibleNames(container)).toEqual(['Olives'])
     fireEvent.click(within(again).getByRole('button', { name: 'Clear filters' }))
     expect(visibleNames(container)).toHaveLength(itemsOf(view).length)
     expect(within(again).getByRole('button', { name: 'Spicy' }).getAttribute('aria-pressed')).toBe(
@@ -707,11 +799,10 @@ describe('the sections and items', () => {
     expect(window.location.hash).toBe('')
   })
 
-  it('marks a sold-out dish with its state and keeps it in the markup', () => {
+  it('leaves a sold-out dish off the menu (D131)', () => {
     const { container } = draw()
-    const steak = container.querySelector('[data-item][data-state="sold_out"]')
-    expect(steak?.querySelector('[data-slot="item.state"]')?.textContent).toBe('Sold out')
-    expect(steak?.querySelector('[data-slot="item.name"]')?.textContent).toBe('Steak')
+    expect(container.querySelector('[data-item][data-state="sold_out"]')).toBeNull()
+    expect(container.textContent).not.toContain('Steak')
   })
 
   it('draws the footer with the legend, and not without allergens', () => {
@@ -799,11 +890,12 @@ describe('the audit of the markup (SH-07)', () => {
         ),
       ].map((image) => image.getAttribute('sizes'))
     const strip = container.querySelector('.rm-section.is-feature .rm-photo img')
-    expect(strip?.getAttribute('sizes')).toBe(photoSizes('two', true))
+    // Basic's photos fill their box (the Photos page's bleed).
+    expect(strip?.getAttribute('sizes')).toBe(photoSizes('two', true, true))
     const names = { two: '2 columns', one: '1 column', list: 'List' } as const
     for (const layout of ['two', 'one', 'list'] as const) {
       fireEvent.click(screen.getByRole('radio', { name: names[layout] }))
-      for (const sizes of sizesOf()) expect(sizes).toBe(photoSizes(layout, false))
+      for (const sizes of sizesOf()) expect(sizes).toBe(photoSizes(layout, false, true))
     }
   })
 })

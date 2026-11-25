@@ -20,6 +20,7 @@
 import {
   type CurrentPointer,
   CurrentPointerSchema,
+  hashTableCode,
   isOrganizationSlug,
   isPublicId,
   isVenueSlug,
@@ -102,7 +103,7 @@ export const files = {
     return `${url}?v=${bust.version}${bust.attempt > 1 ? `&r=${bust.attempt}` : ''}`
   },
   snapshot: (base: string, pointer: PointerRef) => join(base, `snap/${pointer.snapshot_id}.json`),
-  table: (base: string, token: string) => join(base, `t/${token}.json`),
+  table: (base: string, codeHash: string) => join(base, `t/${codeHash}.json`),
 }
 
 /** Fetches a file and checks it with `schema`. A 404 is `whenMissing`; anything else wrong is `failed`. */
@@ -278,38 +279,66 @@ export interface TableFile extends ConfirmedTable {
 }
 
 /**
- * The table behind a code, or null when the code is unknown, malformed, belongs to another venue
- * (its `venue_public_id` is not this venue's code) or cannot be read. A table banner is a nicety:
- * any problem just leaves it out (and the venue's live menu is shown).
+ * What the published files say about a table's code. Only `unknown` is an answer that the code
+ * names no table here; `unreadable` is no answer at all (rule 6's spirit: a read that failed
+ * concludes nothing), so whoever kept the code keeps it.
+ */
+export type TableLookup =
+  | { readonly kind: 'found'; readonly table: TableFile }
+  /** Malformed, no such file (404), or the file names another venue. */
+  | { readonly kind: 'unknown' }
+  /** The network, the server or the file itself failed: the code may still be good. */
+  | { readonly kind: 'unreadable' }
+
+const UNKNOWN_TABLE: TableLookup = { kind: 'unknown' }
+const UNREADABLE_TABLE: TableLookup = { kind: 'unreadable' }
+
+/**
+ * The table behind a code: found, unknown (malformed, no file, or another venue's: its
+ * `venue_public_id` is not this venue's code), or unreadable. A table banner is a nicety: any
+ * problem just leaves it out (and the venue's live menu is shown).
  */
 export async function loadTableFile(
   deps: LoadDeps,
   token: string,
   publicId: string,
-): Promise<TableFile | null> {
-  if (!TABLE_TOKEN_PATTERN.test(token)) return null
+): Promise<TableLookup> {
+  if (!TABLE_TOKEN_PATTERN.test(token)) return UNKNOWN_TABLE
   try {
+    // The file is named after the code's hash (#70, Web Crypto): the code never goes over the wire.
+    const codeHash = await hashTableCode(token)
     const file = await getFile(
       deps,
-      files.table(deps.base, token),
+      files.table(deps.base, codeHash),
       TableTokenFileSchema,
       'unknown_venue',
     )
-    if (file.venue_public_id !== publicId) return null
-    return { token, label: file.table_label, menuId: file.menu_id ?? null }
-  } catch {
-    return null
+    if (file.venue_public_id !== publicId) return UNKNOWN_TABLE
+    return {
+      kind: 'found',
+      table: { token, label: file.table_label, menuId: file.menu_id ?? null },
+    }
+  } catch (error) {
+    return error instanceof GuestLoadError && error.reason === 'unknown_venue'
+      ? UNKNOWN_TABLE
+      : UNREADABLE_TABLE
   }
 }
 
-/** The label of a table from its code, or null (see `loadTableFile`). */
+/** The label of a table from its code, or null when it is unknown or unreadable (see `loadTableFile`). */
 export async function loadTableLabel(
   deps: LoadDeps,
   token: string,
   publicId: string,
 ): Promise<string | null> {
-  return (await loadTableFile(deps, token, publicId))?.label ?? null
+  const lookup = await loadTableFile(deps, token, publicId)
+  return lookup.kind === 'found' ? lookup.table.label : null
 }
+
+/** The table code a load checked, and what the published files said about it. */
+export type TableCheck =
+  | ({ readonly kind: 'found' } & ConfirmedTable)
+  | { readonly kind: 'unknown' | 'unreadable'; readonly token: string }
 
 /** What a loaded menu consists of. */
 export interface LoadedMenu {
@@ -320,15 +349,28 @@ export interface LoadedMenu {
   readonly live: LiveOverlay | null
   /** The venue's public code (what a table's file is matched against). */
   readonly publicId: string
-  /** The table of the code in the address, once its file answered for this venue; else null. */
-  readonly table: ConfirmedTable | null
+  /**
+   * What this load found for the table code it checked (the address's, or without one the code
+   * this tab kept), or null when it checked none. Only `found` is a table; `unreadable` says
+   * nothing either way about the code it tried.
+   */
+  readonly table: TableCheck | null
   /** The address the page should show (D84), or null when the files do not know the organisation. */
   readonly canonical: GuestAddress | null
 }
 
 /**
- * The rest of the chain from a venue's index: the table's file when a code is in the address
- * (it may name the menu to show), then the pointer, the snapshot and the overlay of that menu.
+ * The code this tab kept for a venue (`rememberedTable`), asked once the venue's public code is
+ * known; the load checks it when the address carries no code.
+ */
+export type RememberedTable = (publicId: string) => string | null
+
+const NOTHING_REMEMBERED: RememberedTable = () => null
+
+/**
+ * The rest of the chain from a venue's index: the table's file when a code is in the address, or
+ * else the one this tab kept for the venue (it may name the menu to show), then the pointer, the
+ * snapshot and the overlay of that menu.
  * The overlay is a refinement: if only it fails, the menu is shown without sold-out marks and
  * the next poll tries again.
  */
@@ -337,8 +379,17 @@ async function loadMenuFrom(
   resolved: { readonly index: VenueIndex; readonly publicId: string },
   token: string | null,
   canonical: GuestAddress | null,
+  remembered: RememberedTable,
 ): Promise<LoadedMenu> {
-  const table = token === null ? null : await loadTableFile(deps, token, resolved.publicId)
+  const claim = token ?? remembered(resolved.publicId)
+  const lookup = claim === null ? null : await loadTableFile(deps, claim, resolved.publicId)
+  const table = lookup?.kind === 'found' ? lookup.table : null
+  const check: TableCheck | null =
+    claim === null || lookup === null
+      ? null
+      : lookup.kind === 'found'
+        ? { kind: 'found', token: lookup.table.token, label: lookup.table.label }
+        : { kind: lookup.kind, token: claim }
   const index: VenueIndex =
     table?.menuId == null ? resolved.index : { ...resolved.index, menu_id: table.menuId }
   const pointer = await loadPointer(deps, index)
@@ -352,7 +403,7 @@ async function loadMenuFrom(
     snapshot,
     live,
     publicId: resolved.publicId,
-    table: table === null ? null : { token: table.token, label: table.label },
+    table: check,
     canonical,
   }
 }
@@ -362,13 +413,14 @@ export async function loadMenu(
   deps: LoadDeps,
   publicId: string,
   token: string | null = null,
+  remembered: RememberedTable = NOTHING_REMEMBERED,
 ): Promise<LoadedMenu> {
   const index = await loadVenueIndex(deps, publicId)
   const canonical =
     index.organization === undefined
       ? null
       : { organization: index.organization, venue: index.slug }
-  return loadMenuFrom(deps, { index, publicId }, token, canonical)
+  return loadMenuFrom(deps, { index, publicId }, token, canonical, remembered)
 }
 
 /** Follows the whole chain from `/m/<organisation>/<venue>` (D84). */
@@ -376,7 +428,8 @@ export async function loadMenuAt(
   deps: LoadDeps,
   address: GuestAddress,
   token: string | null = null,
+  remembered: RememberedTable = NOTHING_REMEMBERED,
 ): Promise<LoadedMenu> {
   const resolved = await resolveGuestAddress(deps, address)
-  return loadMenuFrom(deps, resolved, token, resolved.canonical)
+  return loadMenuFrom(deps, resolved, token, resolved.canonical, remembered)
 }

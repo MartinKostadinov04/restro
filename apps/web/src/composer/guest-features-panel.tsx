@@ -1,16 +1,20 @@
 'use client'
 
 // The "Guest features" card (brief SH-05b, D71): the guest services the venue switches on and off.
-// It is card 2 of the Design subtab (D92; brief S7 restyled it to sit with the other cards, with
-// its own Save: it saves apart from "Save look"). Menu: the filters, the template's own feature
-// switches, and the allergen line, which is never a switch (R6). Service at the table: calling a
+// It is its own card in the Studio, under Structure (D129), with its own Save. Menu: the filters and the allergen line, which is
+// never a switch (R6). Service at the table: calling a
 // waiter with its request kinds, the bill, ordering and paying from the phone. A switch says what
 // the venue wants; a guest sees a service only when the platform supports it, the channel is
 // interactive and a table is confirmed (the shell's R15). Saving goes through the server actions in
 // `@/server/composer/guest-features-actions`; a change reaches guests with the next publish.
-import { CALL_WAITER_KINDS, type CallWaiterKind, type GuestFeatures } from '@restro/core'
+import {
+  CALL_WAITER_KINDS,
+  type CallWaiterKind,
+  DEFAULT_CALL_WAITER_KINDS,
+  type GuestFeatures,
+} from '@restro/core'
 import { LockIcon } from 'lucide-react'
-import { useLocale, useTranslations } from 'next-intl'
+import { useTranslations } from 'next-intl'
 import { type ReactNode, useId, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
@@ -26,43 +30,41 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import {
-  saveFeatureOptionsAction,
-  saveGuestFeaturesAction,
-} from '@/server/composer/guest-features-actions'
-
-/** One option the template declares with group `feature` (the face's manifest, SH-03). */
-export interface FeatureOptionDeclaration {
-  readonly key: string
-  readonly type: 'boolean' | 'enum'
-  /** The values an enum option takes; a switch is a boolean and has none. */
-  readonly values?: readonly string[]
-  readonly default: string | boolean
-  readonly label: { readonly bg: string; readonly en: string }
-}
-
-/** The template's feature options: what it declares, and the venue's value for each. */
-export interface TemplateFeatureOptions {
-  readonly declared: readonly FeatureOptionDeclaration[]
-  /** The venue's values, or the defaults, for the declared keys. */
-  readonly values: Readonly<Record<string, string | boolean>>
-}
+import { saveGuestFeaturesAction } from '@/server/composer/guest-features-actions'
+import { PrivacyLine } from '@/settings/privacy-line'
 
 export interface GuestFeaturesCardProps {
   readonly venueId: string
   readonly features: GuestFeatures
-  readonly options: TemplateFeatureOptions
   /** Owners and admins only; for anyone else every switch is read-only. */
   readonly canEdit: boolean
+  /**
+   * The venue's privacy notice link (RR-O44): ordering turns on only once it is on file
+   * (`onFile`); `href` is the form on Settings › Ordering where it is set.
+   */
+  readonly privacy: PrivacyNotice
+  /**
+   * What is connected for this venue, from the database: the notes saying a feature needs the POS
+   * or card payments show only while that part is not (walk P3).
+   */
+  readonly connections: GuestConnections
 }
 
-/** What is saved (the baseline) and what is drawn (the draft). */
-interface Settings {
-  readonly features: GuestFeatures
-  readonly values: Readonly<Record<string, string | boolean>>
+/** Which of the venue's connections the guest features lean on are in place. */
+export interface GuestConnections {
+  /** A POS instance serves the venue's tables, so a sent order or a bill request has somewhere to go. */
+  readonly pos: boolean
+  /** The venue's payment account is connected (not connecting, lost or disconnected). */
+  readonly card: boolean
 }
 
-/** The guest features as a card of their own on the Design subtab (D92). */
+/** Whether the venue has a privacy notice link, and where it is set. */
+export interface PrivacyNotice {
+  readonly onFile: boolean
+  readonly href: string
+}
+
+/** The guest functions as a card of their own in the Studio, under Structure (D129). */
 export function GuestFeaturesCard(props: GuestFeaturesCardProps) {
   const t = useTranslations('composer.guestFeatures')
   return (
@@ -78,31 +80,25 @@ export function GuestFeaturesCard(props: GuestFeaturesCardProps) {
   )
 }
 
-function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCardProps) {
+function FeaturesForm({
+  venueId,
+  features,
+  canEdit,
+  privacy,
+  connections,
+}: GuestFeaturesCardProps) {
   const t = useTranslations('composer.guestFeatures')
-  const lang = useLocale() === 'en' ? 'en' : 'bg'
   const ids = useId()
-  const [saved, setSaved] = useState<Settings>({ features, values: options.values })
-  const [draft, setDraft] = useState<Settings>({ features, values: options.values })
+  const [saved, setSaved] = useState<GuestFeatures>(features)
+  const [draft, setDraft] = useState<GuestFeatures>(features)
   const [pending, startTransition] = useTransition()
 
-  const switches = options.declared.filter((option) => option.type === 'boolean')
-  const featuresChanged = !sameFeatures(draft.features, saved.features)
-  const optionsChanged = options.declared.some(
-    (option) => draft.values[option.key] !== saved.values[option.key],
-  )
-  const dirty = featuresChanged || optionsChanged
+  const dirty = !sameFeatures(draft, saved)
   const locked = !canEdit || pending
-  const callWaiter = draft.features.call_waiter
-  // Call a waiter with no request kind would show guests nothing (R15): it cannot be saved.
-  const noKinds = callWaiter.enabled && callWaiter.kinds.length === 0
+  const callWaiter = draft.call_waiter
 
   function setFeature(change: (current: GuestFeatures) => GuestFeatures) {
-    setDraft((current) => ({ ...current, features: change(current.features) }))
-  }
-
-  function setOption(key: string, value: boolean) {
-    setDraft((current) => ({ ...current, values: { ...current.values, [key]: value } }))
+    setDraft(change)
   }
 
   function setCallWaiter(enabled: boolean) {
@@ -110,10 +106,10 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
       ...current,
       call_waiter: {
         enabled,
-        // A service with no request kind asks nothing, so switching it on checks "waiter".
+        // Switching it on ticks every kind but the card terminal (#180); "Call the waiter" stays on.
         kinds:
           enabled && current.call_waiter.kinds.length === 0
-            ? ['waiter']
+            ? [...DEFAULT_CALL_WAITER_KINDS]
             : current.call_waiter.kinds,
       },
     }))
@@ -122,6 +118,7 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
   function setKind(kind: CallWaiterKind, on: boolean) {
     setFeature((current) => {
       const kinds = new Set<CallWaiterKind>(current.call_waiter.kinds)
+      if (kind === 'waiter') return current
       if (on) kinds.add(kind)
       else kinds.delete(kind)
       return {
@@ -136,27 +133,12 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
 
   function save() {
     startTransition(async () => {
-      if (featuresChanged) {
-        const result = await saveGuestFeaturesAction({ venueId, features: draft.features })
-        if (!result.ok) {
-          toast.error(t(`errors.${result.error}`))
-          return
-        }
-        setSaved((current) => ({ ...current, features: draft.features }))
+      const result = await saveGuestFeaturesAction({ venueId, features: draft })
+      if (!result.ok) {
+        toast.error(t(`errors.${result.error}`))
+        return
       }
-      if (optionsChanged) {
-        const values = Object.fromEntries(
-          options.declared.map(
-            (option) => [option.key, draft.values[option.key] ?? option.default] as const,
-          ),
-        )
-        const result = await saveFeatureOptionsAction({ venueId, options: values })
-        if (!result.ok) {
-          toast.error(t(`errors.${result.error}`))
-          return
-        }
-        setSaved((current) => ({ ...current, values: draft.values }))
-      }
+      setSaved(draft)
       toast.success(t('saved'))
     })
   }
@@ -166,7 +148,7 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
       className="grid gap-6"
       onSubmit={(event) => {
         event.preventDefault()
-        if (dirty && canEdit && !noKinds) save()
+        if (dirty && canEdit) save()
       }}
       data-testid="guest-features-form"
     >
@@ -181,22 +163,11 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
             <SwitchRow
               id={`${ids}-filters`}
               label={t('filters')}
-              checked={draft.features.filters}
+              checked={draft.filters}
               disabled={locked}
               testId="feature-filters"
               onChange={(on) => setFeature((current) => ({ ...current, filters: on }))}
             />
-            {switches.map((option) => (
-              <SwitchRow
-                key={option.key}
-                id={`${ids}-option-${option.key}`}
-                label={option.label[lang]}
-                checked={draft.values[option.key] === true}
-                disabled={locked}
-                testId={`feature-option-${option.key}`}
-                onChange={(on) => setOption(option.key, on)}
-              />
-            ))}
             <p
               className="flex items-center gap-2 text-sm text-muted-foreground"
               data-testid="allergens-always"
@@ -225,8 +196,8 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
                     <div className="flex items-center gap-2 phone:min-h-11">
                       <Checkbox
                         id={`${ids}-kind-${kind}`}
-                        checked={callWaiter.kinds.includes(kind)}
-                        disabled={locked || !callWaiter.enabled}
+                        checked={kind === 'waiter' || callWaiter.kinds.includes(kind)}
+                        disabled={locked || !callWaiter.enabled || kind === 'waiter'}
                         onCheckedChange={(checked) => setKind(kind, checked === true)}
                         data-testid={`call-kind-${kind}`}
                       />
@@ -234,59 +205,55 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
                         {t(`kinds.${kind}`)}
                       </Label>
                     </div>
-                    {kind === 'other' ? (
-                      <p className="ps-6 text-xs text-muted-foreground">{t('otherNote')}</p>
-                    ) : null}
                   </div>
                 ))}
               </fieldset>
-              {noKinds ? (
-                <p role="alert" className="text-xs text-destructive" data-testid="call-kinds-none">
-                  {t('kindsNone')}
-                </p>
-              ) : null}
-              <Note>{t('stage4')}</Note>
             </SwitchRow>
             <SwitchRow
               id={`${ids}-bill`}
               label={t('bill')}
-              checked={draft.features.bill}
+              checked={draft.bill}
               disabled={locked}
               testId="feature-bill"
               onChange={(on) => setFeature((current) => ({ ...current, bill: on }))}
             >
-              <Note>{t('stage4')}</Note>
+              {connections.pos ? null : <Note>{t('needsPos')}</Note>}
             </SwitchRow>
             <SwitchRow
               id={`${ids}-ordering`}
               label={t('ordering')}
-              checked={draft.features.ordering}
-              disabled={locked}
+              checked={draft.ordering}
+              // Ordering turns on only once the venue has a privacy notice link (RR-O44); ordering
+              // already on stays on, and can be turned off.
+              disabled={locked || (!privacy.onFile && !saved.ordering)}
               testId="feature-ordering"
               onChange={(on) => setFeature((current) => ({ ...current, ordering: on }))}
             >
-              <Note>{t('stage4')}</Note>
+              {connections.pos ? null : <Note>{t('needsPos')}</Note>}
+              {privacy.onFile ? null : (
+                <PrivacyLine
+                  state={saved.ordering ? 'missing' : 'need'}
+                  href={privacy.href}
+                  testId="feature-ordering-privacy"
+                />
+              )}
             </SwitchRow>
             <SwitchRow
               id={`${ids}-pay`}
               label={t('pay')}
-              checked={draft.features.pay}
+              checked={draft.pay}
               disabled={locked}
               testId="feature-pay"
               onChange={(on) => setFeature((current) => ({ ...current, pay: on }))}
             >
-              <Note>{t('stage5')}</Note>
+              {connections.card ? null : <Note>{t('needsCard')}</Note>}
             </SwitchRow>
           </section>
         </div>
       </CardContent>
 
       <CardFooter className="justify-end">
-        <Button
-          type="submit"
-          disabled={locked || !dirty || noKinds}
-          data-testid="guest-features-save"
-        >
+        <Button type="submit" disabled={locked || !dirty} data-testid="guest-features-save">
           {t('save')}
         </Button>
       </CardFooter>
@@ -312,7 +279,7 @@ function SwitchRow({
   children?: ReactNode
 }) {
   return (
-    <div className="grid gap-1.5">
+    <div className="grid min-w-0 gap-1.5">
       <div className="flex items-center justify-between gap-3">
         <Label htmlFor={id} className="font-medium">
           {label}

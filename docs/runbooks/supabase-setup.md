@@ -41,6 +41,7 @@ Free projects have an IPv6-only direct host (`db.<ref>.supabase.co`); GitHub run
 | `DATABASE_URL` | `restro_app` (web app, worker) | `postgresql://restro_app.<ref>:<app password>@<pooler host>:5432/postgres?sslmode=verify-full&sslrootcert=<cert path>` |
 | `DATABASE_APP_PASSWORD` | the password `db:roles` sets for `restro_app` | same value as in `DATABASE_URL` |
 | `DATABASE_PURGE_PASSWORD` | the password `db:roles` sets for `restro_purge` (the purge job's role, D83) | a second generated password |
+| `DATABASE_BACKUP_PASSWORD` | optional: the password `db:roles` sets for `restro_backup` (the backup job's role, D143); without it the role is not created | a third generated password |
 | `DATABASE_URL_PURGE` | `restro_purge` (worker only, the purge job) | like `DATABASE_URL` with `restro_purge.<ref>` and the purge password |
 
 Through the shared pooler every user name carries the project ref (`<role>.<ref>`); custom roles work the same way as `postgres`.
@@ -142,7 +143,7 @@ select id, hash, created_at from drizzle.__drizzle_migrations order by id;
 select rolsuper, rolbypassrls from pg_roles where rolname = 'postgres';
 ```
 
-If (7) shows `rolbypassrls = false`, then `postgres` too sees no tenant rows (FORCE RLS applies to the owner): a manual data fix as `postgres` must run `select set_config('app.tenant_id', '<tn_…>', true)` inside its transaction first.
+Staging's answer (Martin 11-07): `rolsuper = false`, `rolbypassrls = true`, so `postgres` bypasses row-level security, the guest lookup `guest_table_by_code_hash` finds tables, and CI's `migrations-hosted-owner` job uses an owner shaped the same way (RR-43). If (7) ever shows `rolbypassrls = false`, then `postgres` too sees no tenant rows (FORCE RLS applies to the owner): a manual data fix as `postgres` must run `select set_config('app.tenant_id', '<tn_…>', true)` inside its transaction first.
 
 ## 8. Rotating the app password
 

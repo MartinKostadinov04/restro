@@ -35,7 +35,12 @@ export function StatePanel({
   readonly children?: ReactNode
 }) {
   return (
-    <div className="ro-state" role={tone === 'bad' ? 'alert' : 'status'} data-tone={tone}>
+    <div
+      className="ro-state"
+      role={tone === 'bad' ? 'alert' : 'status'}
+      data-tone={tone}
+      data-design-part="status"
+    >
       {tone === 'wait' ? <span className="ro-spinner" aria-hidden="true" /> : null}
       {tone === 'pulse' ? <span className="ro-pulse" aria-hidden="true" /> : null}
       {tone === 'ok' ? (

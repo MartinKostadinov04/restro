@@ -1,0 +1,814 @@
+import * as fc from 'fast-check'
+import { describe, expect, it } from 'vitest'
+
+import {
+  choosePay,
+  endText,
+  freeLines,
+  NO_TIP,
+  offersPay,
+  offersReceiptEmail,
+  PAY_ENDS,
+  paidReceiptText,
+  payAcross,
+  payableBill,
+  payBlock,
+  payFormLocale,
+  payingOffHere,
+  paymentIsFinal,
+  payScreen,
+  paySignedMoney,
+  payStartCommand,
+  pickTable,
+  pickWhole,
+  receiptEmailOf,
+  reconcilePicks,
+  refusalText,
+  sameAmountAgo,
+  TIP_PERCENTS,
+  tablePicked,
+  togglePick,
+} from './paying'
+import {
+  EMPTY_SERVICE_STATE,
+  type GroupBillView,
+  type GroupTableView,
+  GuestCommandSchema,
+  PAYMENT_STATES,
+  type PayingView,
+  type PaymentView,
+  type TableBillView,
+} from './services'
+import { stringsFor } from './strings'
+
+const bn = (n: number) => `bn_${String(n).padStart(22, '0')}`
+const uuid = '00000000-0000-4000-8000-000000000001'
+
+function bill(
+  lines: readonly { id: number; amountMinor: number; beingPaid?: boolean; quantity?: string }[],
+  options: { complete?: boolean; partBeingPaid?: boolean } = {},
+): TableBillView {
+  return {
+    readAgoSeconds: 3,
+    complete: options.complete ?? true,
+    currency: 'EUR',
+    totalMinor: lines.reduce((sum, line) => sum + line.amountMinor, 0),
+    paidMinor: 0,
+    owedMinor: lines.reduce((sum, line) => sum + line.amountMinor, 0),
+    parts: [
+      {
+        id: 'bill-1',
+        beingPaid: options.partBeingPaid ?? false,
+        totalMinor: 0,
+        paidMinor: 0,
+        lines: lines.map((line) => ({
+          id: bn(line.id),
+          name: { en_US: `Item ${line.id}` },
+          quantity: line.quantity ?? '1',
+          amountMinor: line.amountMinor,
+          beingPaid: line.beingPaid ?? false,
+        })),
+      },
+    ],
+    paidLines: [],
+  }
+}
+
+const PAYING: PayingView = {
+  state: 'on',
+  minCardMinor: 50,
+  processor: 'Stripe',
+  venueName: 'Club X',
+  legal: null,
+  electronicReceipt: false,
+  recent: null,
+}
+
+function payment(changes: Partial<PaymentView>): PaymentView {
+  return {
+    id: 'py_1',
+    mode: 'bill',
+    number: 'K7Q4M',
+    state: 'awaiting_guest',
+    reason: null,
+    currency: 'EUR',
+    amountMinor: 2750,
+    tipMinor: 250,
+    lines: [],
+    paidAt: null,
+    receiptEmailed: null,
+    receiptEmail: null,
+    timeZone: 'Europe/Sofia',
+    form: { confirmSeconds: 120 },
+    ...changes,
+  }
+}
+
+describe('choosing what to pay (#45, D127)', () => {
+  const b = bill([
+    { id: 1, amountMinor: 1250 },
+    { id: 2, amountMinor: 1000 },
+    { id: 3, amountMinor: 900, beingPaid: true },
+  ])
+
+  it('starts with nothing ticked and nothing preselected, and lines in a payment are not free', () => {
+    expect(freeLines(b).map((line) => line.id)).toEqual([bn(1), bn(2)])
+    const totals = choosePay(new Map(), NO_TIP, true)
+    expect(totals).toMatchObject({ itemsMinor: 0, tipMinor: 0, totalMinor: 0 })
+    expect(payBlock(PAYING, b, new Map(), NO_TIP, true)).toBe('nothing_picked')
+  })
+
+  it('ticks and unticks a line, never a line being paid', () => {
+    const one = togglePick(new Map(), b, bn(1))
+    expect([...one.keys()]).toEqual([bn(1)])
+    expect(togglePick(one, b, bn(1)).size).toBe(0)
+    expect(togglePick(new Map(), b, bn(3)).size).toBe(0)
+  })
+
+  it('"The whole bill" ticks every free line, and again clears them', () => {
+    const all = pickWhole(new Map(), b)
+    expect([...all.keys()]).toEqual([bn(1), bn(2)])
+    expect(pickWhole(all, b).size).toBe(0)
+  })
+
+  it('rounds the 5, 10 and 15 % presets half-up on the ticked lines', () => {
+    const picks = pickWhole(new Map(), bill([{ id: 1, amountMinor: 2450 }]))
+    const totals = choosePay(picks, NO_TIP, true)
+    expect(totals.presets).toEqual([
+      { percent: 5, tipMinor: 123 },
+      { percent: 10, tipMinor: 245 },
+      { percent: 15, tipMinor: 368 },
+    ])
+    expect(choosePay(picks, { kind: 'percent', percent: 15 }, true)).toMatchObject({
+      tipMinor: 368,
+      totalMinor: 2818,
+    })
+    expect(choosePay(picks, { kind: 'other', minor: 100 }, true)).toMatchObject({
+      totalMinor: 2550,
+    })
+  })
+
+  it('adds a tip that is a whole number of minor units (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 5_000_000 }),
+        fc.constantFrom(...TIP_PERCENTS),
+        (amount, percent) => {
+          const picks = pickWhole(new Map(), bill([{ id: 1, amountMinor: amount }]))
+          const totals = choosePay(picks, { kind: 'percent', percent }, true)
+          expect(Number.isSafeInteger(totals.tipMinor)).toBe(true)
+          expect(totals.totalMinor).toBe(amount + totals.tipMinor)
+          // half-up: twice the tip is within one unit of the exact tenth of the percent
+          expect(Math.abs(totals.tipMinor * 100 - amount * percent)).toBeLessThanOrEqual(50)
+        },
+      ),
+    )
+  })
+
+  it('greys Pay with its reason: paused, not up to date, nothing ticked, below the smallest, tip too big', () => {
+    const picks = pickWhole(new Map(), b)
+    expect(payBlock({ ...PAYING, state: 'paused' }, b, picks, NO_TIP, true)).toBe('cards_paused')
+    expect(
+      payBlock(
+        PAYING,
+        bill([{ id: 1, amountMinor: 500 }], { complete: false }),
+        picks,
+        NO_TIP,
+        true,
+      ),
+    ).toBe('not_up_to_date')
+    const tiny = bill([{ id: 1, amountMinor: 30 }])
+    expect(payBlock(PAYING, tiny, pickWhole(new Map(), tiny), NO_TIP, true)).toBe('below_minimum')
+    // The smallest payment is measured on what is held: the lines plus the tip.
+    expect(
+      payBlock(PAYING, tiny, pickWhole(new Map(), tiny), { kind: 'other', minor: 20 }, true),
+    ).toBe(null)
+    expect(payBlock(PAYING, b, picks, { kind: 'other', minor: 999_999 }, true)).toBe('tip_too_big')
+    expect(payBlock(PAYING, b, picks, NO_TIP, true)).toBe(null)
+  })
+
+  it('greys Pay while the phone is offline (D121: blocked, never queued), before any other reason', () => {
+    const picks = pickWhole(new Map(), b)
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', true)).toBe('offline')
+    // Offline comes first, and online it is not a block at all.
+    expect(payBlock({ ...PAYING, state: 'paused' }, b, picks, NO_TIP, true, '', true)).toBe(
+      'offline',
+    )
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', false)).toBe(null)
+  })
+
+  it('greys Pay while ordering is paused (D120), after offline and before every other reason', () => {
+    const picks = pickWhole(new Map(), b)
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', false, true)).toBe('ordering_paused')
+    // Whatever else holds: paying paused too, a bill not up to date, nothing ticked.
+    expect(payBlock({ ...PAYING, state: 'paused' }, b, picks, NO_TIP, true, '', false, true)).toBe(
+      'ordering_paused',
+    )
+    expect(payBlock(PAYING, b, new Map(), NO_TIP, true, '', false, true)).toBe('ordering_paused')
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', true, true)).toBe('offline')
+    // Not paused, nothing changes.
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', false, false)).toBe(null)
+  })
+
+  it('words the client’s own refusals: offline is the weak-connection line, a lost answer is D120’s', () => {
+    for (const lang of ['en_US', 'bg_BG'] as const) {
+      const words = stringsFor(lang).services
+      expect(refusalText(words, 'offline', { command: 'order.send' })).toBe(words.offline)
+      expect(refusalText(words, 'answer_lost', { command: 'order.send' })).toBe(words.sendLost)
+      // Never an invitation to try again: the order may already be in the POS (D120).
+      expect(words.sendLost).not.toMatch(/try again|опитай/i)
+    }
+  })
+
+  it('words a lost call with its own line, and the call refusals with real words', () => {
+    for (const lang of ['en_US', 'bg_BG'] as const) {
+      const words = stringsFor(lang).services
+      expect(refusalText(words, 'answer_lost', { command: 'service.request' })).toBe(words.callLost)
+      expect(words.callLost).not.toBe(words.sendLost)
+      expect(words.callLost).not.toMatch(/try again|опитай|order|поръчка/i)
+      for (const code of ['calls_off', 'kind_not_offered']) {
+        const said = refusalText(words, code, { command: 'service.request' })
+        expect(said).toBe(words.refusals[code as 'calls_off' | 'kind_not_offered'])
+        expect(said).not.toBe(words.refusedOther)
+      }
+    }
+  })
+
+  it('words a call on a table not open for phones about the table, not about orders (lane 3 S19)', () => {
+    for (const lang of ['en_US', 'bg_BG'] as const) {
+      const words = stringsFor(lang).services
+      const call = refusalText(words, 'table_not_open', { command: 'service.request' })
+      expect(call).toBe(words.callTableNotOpen)
+      expect(call).not.toMatch(/order|поръч/i)
+      expect(refusalText(words, 'table_not_open', { command: 'order.send' })).toBe(
+        words.refusals.table_not_open,
+      )
+    }
+  })
+
+  it("keeps the ticks across a friend's new round and clears only a line that changed or went", () => {
+    const picks = pickWhole(new Map(), b)
+    const friendAdded = bill([
+      { id: 1, amountMinor: 1250 },
+      { id: 2, amountMinor: 1000 },
+      { id: 4, amountMinor: 700 },
+    ])
+    expect([...reconcilePicks(picks, friendAdded).keys()]).toEqual([bn(1), bn(2)])
+    const changed = bill([
+      { id: 1, amountMinor: 1250 },
+      { id: 2, amountMinor: 1100 },
+    ])
+    expect([...reconcilePicks(picks, changed).keys()]).toEqual([bn(1)])
+    const gone = bill([{ id: 2, amountMinor: 1000 }])
+    expect([...reconcilePicks(picks, gone).keys()]).toEqual([bn(2)])
+    const nowPaid = bill([
+      { id: 1, amountMinor: 1250, beingPaid: true },
+      { id: 2, amountMinor: 1000 },
+    ])
+    expect([...reconcilePicks(picks, nowPaid).keys()]).toEqual([bn(2)])
+  })
+
+  it('builds a pay.start the host accepts: each line as the phone saw it, one kind of tip', () => {
+    const picks = pickWhole(new Map(), b)
+    const preset = payStartCommand(uuid, picks, { kind: 'percent', percent: 10 }, true)
+    expect(GuestCommandSchema.safeParse(preset).success).toBe(true)
+    expect(preset).toMatchObject({ tipPercent: 10, tipMinor: null })
+    expect(preset.seen).toEqual([
+      { lineId: bn(1), quantity: '1', amountMinor: 1250 },
+      { lineId: bn(2), quantity: '1', amountMinor: 1000 },
+    ])
+    const amount: Parameters<typeof payStartCommand>[2] = { kind: 'other', minor: 150 }
+    const other = payStartCommand(uuid, picks, amount, true)
+    expect(GuestCommandSchema.safeParse(other).success).toBe(true)
+    expect(other).toMatchObject({ tipPercent: null, tipMinor: 150 })
+    const none = payStartCommand(uuid, picks, NO_TIP, true)
+    expect(none).toMatchObject({ tipPercent: null, tipMinor: null })
+  })
+
+  it('offers Pay only with a bill, paying on or paused and no payment of this phone', () => {
+    const base = { ...EMPTY_SERVICE_STATE, tableBill: b, paying: PAYING }
+    expect(offersPay(base)).toBe(true)
+    expect(offersPay({ ...base, paying: { ...PAYING, state: 'paused' } })).toBe(true)
+    expect(offersPay({ ...base, paying: { ...PAYING, state: 'off' } })).toBe(false)
+    expect(offersPay({ ...base, tableBill: null })).toBe(false)
+    expect(offersPay({ ...base, payment: payment({}) })).toBe(false)
+    expect(offersPay(EMPTY_SERVICE_STATE)).toBe(false)
+  })
+})
+
+describe("paying a linked group's bill (#542, D160 §2)", () => {
+  const table = (
+    label: string,
+    lines: Parameters<typeof bill>[0],
+    options: { own?: boolean; complete?: boolean } = {},
+  ): GroupTableView => {
+    const own = bill(lines)
+    return {
+      label,
+      own: options.own ?? false,
+      complete: options.complete ?? true,
+      totalMinor: own.totalMinor,
+      paidMinor: 0,
+      owedMinor: own.owedMinor,
+      parts: own.parts.map((part) => ({ ...part, id: `bill-${label}` })),
+      paidLines: [],
+    }
+  }
+  const group = (paysAcross: boolean, tables: GroupTableView[]): GroupBillView => ({
+    complete: tables.every((member) => member.complete),
+    totalMinor: tables.reduce((sum, member) => sum + member.totalMinor, 0),
+    paidMinor: 0,
+    owedMinor: tables.reduce((sum, member) => sum + member.owedMinor, 0),
+    paysAcross,
+    tables,
+  })
+  const own = bill([{ id: 1, amountMinor: 500 }])
+  const members = [
+    table('111', [{ id: 11, amountMinor: 300 }]),
+    table('112', [{ id: 1, amountMinor: 500 }], { own: true }),
+    table('113', [
+      { id: 31, amountMinor: 200 },
+      { id: 32, amountMinor: 250, beingPaid: true },
+      { id: 33, amountMinor: 100 },
+    ]),
+    table('114', [{ id: 41, amountMinor: 700 }]),
+  ]
+
+  it("pays every member table's lines where the POS moves lines to a payment table", () => {
+    const state = { tableBill: own, tableGroup: group(true, members) }
+    expect(payAcross(state)).toBe(state.tableGroup)
+    const payable = payableBill(state)
+    expect(payable?.owedMinor).toBe(2050)
+    // "The whole bill" ticks every free line of every member table.
+    const whole = pickWhole(new Map(), payable as TableBillView)
+    expect([...whole.keys()].sort()).toEqual([bn(1), bn(11), bn(31), bn(33), bn(41)].sort())
+  })
+
+  it('"Whole table" ticks only that table’s free lines, and clears them again', () => {
+    const state = { tableBill: own, tableGroup: group(true, members) }
+    const payable = payableBill(state) as TableBillView
+    const three = members[2] as GroupTableView
+    // A line of table 111 ticked first stays ticked.
+    const start = togglePick(new Map(), payable, bn(11))
+    const ticked = pickTable(start, payable, three)
+    expect([...ticked.keys()].sort()).toEqual([bn(11), bn(31), bn(33)].sort())
+    expect(tablePicked(ticked, payable, three)).toBe(true)
+    expect(tablePicked(ticked, payable, members[3] as GroupTableView)).toBe(false)
+    const cleared = pickTable(ticked, payable, three)
+    expect([...cleared.keys()]).toEqual([bn(11)])
+  })
+
+  it('leaves out the lines of a member table that did not read well', () => {
+    const unread = members.map((member) =>
+      member.label === '114' ? { ...member, complete: false } : member,
+    )
+    const payable = payableBill({ tableBill: own, tableGroup: group(true, unread) })
+    expect(freeLines(payable as TableBillView).map((line) => line.id)).not.toContain(bn(41))
+    expect(pickTable(new Map(), payable as TableBillView, unread[3] as GroupTableView).size).toBe(0)
+    // Pay reads only what can be ticked, and the bill is not complete while a table is unread.
+    const four = unread[3] as GroupTableView
+    expect(payable?.owedMinor).toBe(2050 - four.owedMinor)
+    expect(payable?.complete).toBe(false)
+    expect(payableBill({ tableBill: own, tableGroup: group(true, members) })?.complete).toBe(true)
+  })
+
+  it('pays only this table where the POS takes one table at a time, or with no group', () => {
+    const split = { tableBill: own, tableGroup: group(false, members) }
+    expect(payAcross(split)).toBeNull()
+    expect(payableBill(split)).toBe(own)
+    expect(payableBill({ tableBill: own, tableGroup: null })).toBe(own)
+    // A group shown before this table's own bill reads has nothing to pay yet.
+    expect(payableBill({ tableBill: null, tableGroup: group(true, members) })).toBeNull()
+  })
+})
+
+describe('payingOffHere: paying is off at the venue, so no Pay button (#346, D127)', () => {
+  const base = { ...EMPTY_SERVICE_STATE, paying: PAYING }
+  it('is true only when the host says off and this phone has no payment', () => {
+    expect(payingOffHere({ ...base, paying: { ...PAYING, state: 'off' } })).toBe(true)
+    expect(payingOffHere(base)).toBe(false)
+    expect(payingOffHere({ ...base, paying: { ...PAYING, state: 'paused' } })).toBe(false)
+  })
+  it('is false while the host has not said, and while this phone has a payment to show', () => {
+    expect(payingOffHere(EMPTY_SERVICE_STATE)).toBe(false)
+    const off = { ...base, paying: { ...PAYING, state: 'off' as const } }
+    expect(payingOffHere({ ...off, payment: payment({}) })).toBe(false)
+  })
+})
+
+describe('a bill with the POS’s own negative lines (#293, DA-8; rule 8)', () => {
+  // A waiter puts a discount on the table's bill, so a line comes to Restro negative. Nothing here
+  // may throw (the face's only error boundary wraps the whole menu), and no card may be offered an
+  // amount of zero or less, which no provider takes.
+  const amounts = fc.array(fc.integer({ min: -50_000, max: 50_000 }), {
+    minLength: 1,
+    maxLength: 8,
+  })
+
+  it('shows every signed amount, and reads back to the minor units it came from', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: -9_999_999, max: 9_999_999 }), (minor) => {
+        const shown = paySignedMoney(minor, 'EUR', 'en_US')
+        const digits = Number(shown.replace(/[^\d]/g, ''))
+        expect(digits).toBe(Math.abs(minor))
+        // A locale may write the minus as U+2212 rather than a hyphen.
+        expect(/[-\u2212]/.test(shown)).toBe(minor < 0)
+      }),
+      { numRuns: 400 },
+    )
+  })
+
+  it('never offers a payable set at or below zero, and words the greyed Pay', () => {
+    fc.assert(
+      fc.property(amounts, fc.boolean(), (values, tipped) => {
+        const b = bill(values.map((amountMinor, index) => ({ id: index + 1, amountMinor })))
+        const picks = pickWhole(new Map(), b)
+        const tip = tipped ? ({ kind: 'percent', percent: 10 } as const) : NO_TIP
+        // Every amount of the choice can be shown: a signed format never throws.
+        const totals = choosePay(picks, tip, tipped)
+        expect(() => paySignedMoney(totals.itemsMinor, 'EUR', 'bg_BG')).not.toThrow()
+        expect(() => paySignedMoney(totals.totalMinor, 'EUR', 'bg_BG')).not.toThrow()
+        const block = payBlock(PAYING, b, picks, tip, tipped)
+        if (totals.itemsMinor <= 0) {
+          expect(block).toBe('nothing_owed')
+        } else {
+          expect(block).not.toBe('nothing_owed')
+          // What the server would be asked for is always above zero.
+          expect(totals.totalMinor).toBeGreaterThan(0)
+        }
+      }),
+      { numRuns: 300 },
+    )
+  })
+
+  it('tells the guest to ask the waiter where a discount takes the lines to zero or less', () => {
+    const words = stringsFor('en_US').services.paying
+    const b = bill([
+      { id: 1, amountMinor: 1000 },
+      { id: 2, amountMinor: -1000 },
+    ])
+    expect(payBlock(PAYING, b, pickWhole(new Map(), b), NO_TIP, false)).toBe('nothing_owed')
+    expect(words.nothingOwed).toBe('There is nothing to pay on these lines. Ask your waiter.')
+    // One line only: the discount alone is also nothing to pay.
+    const only = bill([{ id: 1, amountMinor: -400 }])
+    expect(payBlock(PAYING, only, pickWhole(new Map(), only), NO_TIP, false)).toBe('nothing_owed')
+  })
+})
+
+describe("the payment's screens (#110, D127)", () => {
+  it('draws one waiting state for everything between the hold and the capture', () => {
+    for (const state of [
+      'held',
+      'queued',
+      'isolated',
+      'entered',
+      'checked',
+      'closed',
+      'cancelling',
+    ] as const) {
+      expect(payScreen(payment({ state })), state).toEqual({ kind: 'waiting' })
+    }
+  })
+
+  it('says paid only for captured', () => {
+    for (const state of PAYMENT_STATES) {
+      expect(payScreen(payment({ state })).kind === 'paid', state).toBe(state === 'captured')
+    }
+  })
+
+  it('shows the card form only while it awaits the guest and the form is ready', () => {
+    expect(payScreen(payment({ state: 'requested', form: null }))).toEqual({ kind: 'preparing' })
+    expect(payScreen(payment({ state: 'priced', form: null }))).toEqual({ kind: 'preparing' })
+    expect(payScreen(payment({ state: 'awaiting_guest', form: null }))).toEqual({
+      kind: 'preparing',
+    })
+    expect(payScreen(payment({ state: 'awaiting_guest' }))).toEqual({ kind: 'card' })
+  })
+
+  it('shows the venue-is-checking screen for unconfirmed, stranded and capture_failed', () => {
+    for (const state of ['unconfirmed', 'stranded', 'capture_failed'] as const) {
+      expect(payScreen(payment({ state })), state).toEqual({ kind: 'checking' })
+    }
+  })
+
+  it('words each release reason, offering Pay again where the guide does', () => {
+    const ended = (reason: string | null) => payScreen(payment({ state: 'released', reason }))
+    expect(ended('busy')).toEqual({ kind: 'ended', end: 'busy', again: true })
+    expect(ended('check_failed')).toEqual({ kind: 'ended', end: 'check_failed', again: true })
+    expect(ended('bill_changed')).toEqual({ kind: 'ended', end: 'check_failed', again: true })
+    expect(ended('expired')).toEqual({ kind: 'ended', end: 'expired', again: true })
+    expect(ended('paying_paused')).toEqual({ kind: 'ended', end: 'paying_paused', again: false })
+    expect(ended('isolate_refused')).toEqual({
+      kind: 'ended',
+      end: 'isolate_refused',
+      again: false,
+    })
+    // Not on the till: the round's lines are back in the bag (D116), so it can go again.
+    expect(ended('not_on_till')).toEqual({ kind: 'ended', end: 'no_receipt', again: true })
+    expect(ended('cancelled')).toEqual({ kind: 'ended', end: 'cancelled', again: false })
+    // A reason the guide has no words for is worded calmly, never as a step of the till.
+    expect(ended('item_unavailable')).toEqual({
+      kind: 'ended',
+      end: 'item_unavailable',
+      again: false,
+    })
+    expect(ended('enter_refused')).toEqual({ kind: 'ended', end: 'enter_refused', again: false })
+    expect(ended('paying_not_offered')).toEqual({ kind: 'ended', end: 'paying_off', again: false })
+    expect(ended('something_else')).toEqual({ kind: 'ended', end: 'other', again: false })
+    expect(ended(null)).toEqual({ kind: 'ended', end: 'other', again: false })
+  })
+
+  it('stops polling a payment at its end, and not before', () => {
+    const finals = PAYMENT_STATES.filter((state) => paymentIsFinal(payment({ state })))
+    // Unconfirmed is read on: a manager's answer moves it to captured or released (D127 3.5).
+    expect(finals).toEqual(['captured', 'released', 'stranded', 'capture_failed'])
+  })
+})
+
+describe('"Same amount as 4 minutes ago. Pay again?"', () => {
+  it('names the minutes for the same amount within 15 minutes, else nothing', () => {
+    expect(sameAmountAgo({ amountMinor: 2750, agoSeconds: 240 }, 2750)).toBe(4)
+    expect(sameAmountAgo({ amountMinor: 2750, agoSeconds: 10 }, 2750)).toBe(1)
+    expect(sameAmountAgo({ amountMinor: 2750, agoSeconds: 15 * 60 }, 2750)).toBeNull()
+    expect(sameAmountAgo({ amountMinor: 2750, agoSeconds: 60 }, 2751)).toBeNull()
+    expect(sameAmountAgo(null, 2750)).toBeNull()
+  })
+})
+
+describe("the guest words of the bill and paying (the guide's table, 10-28)", () => {
+  it('has Bulgarian and English for each end, the amounts and the counted words', () => {
+    for (const locale of ['bg_BG', 'en_US'] as const) {
+      const words = stringsFor(locale).services.paying
+      expect(Object.keys(words.ended).sort()).toEqual(
+        PAY_ENDS.filter((end) => end !== 'below_minimum').sort(),
+      )
+      for (const end of PAY_ENDS) expect(endText(words, end, '0,50 EUR').trim(), end).not.toBe('')
+      expect(words.payX('27,50 EUR')).toContain('27,50 EUR')
+      expect(words.updated(7)).toContain('7')
+      expect(words.sameQuestion(4)).toContain('4')
+      expect(words.legalProcessor('Stripe', 'Club X')).toMatch(/Stripe.*Club X/)
+      expect(words.belowMinimum('0,50 EUR')).toContain('0,50 EUR')
+    }
+  })
+
+  it('words the pay refusals as the guide has them', () => {
+    const en = stringsFor('en_US').services.refusals
+    expect(en.paying_not_offered).toBe('Ask your waiter to pay.')
+    expect(en.being_paid).toBe('Someone is already paying for this line.')
+    expect(en.bill_changed).toBe('Your bill changed since you opened it.')
+    expect(en.ask_waiter_to_split).toBe('Ask your waiter to split this bill.')
+    expect(en.too_late).toBe('Too late to cancel: the payment is being processed.')
+    const bg = stringsFor('bg_BG').services.refusals
+    expect(bg.paying_paused).toBe('Плащането с карта е спряно в момента. Попитайте сервитьора.')
+    expect(bg.unknown_payment).toBe('Не намираме това плащане. Попитайте сервитьора.')
+  })
+
+  it('says no receipt word in any paying word, in either language (Н-18 чл. 7а, D127 1.4)', () => {
+    // "бон" and "фискал…" are the venue's fiscal device's words; a Cyrillic word has no , so
+    // the start of a word is "not after a letter".
+    const walk = (value: unknown): string[] =>
+      typeof value === 'string'
+        ? [value]
+        : typeof value === 'function'
+          ? [String((value as (...a: unknown[]) => unknown)('12', 'Club X', 3))]
+          : typeof value === 'object' && value !== null
+            ? Object.values(value).flatMap(walk)
+            : []
+    for (const locale of ['bg_BG', 'en_US'] as const) {
+      const texts = walk(stringsFor(locale).services.paying)
+      expect(texts.length).toBeGreaterThan(40)
+      for (const text of texts) expect(text.toLowerCase()).not.toMatch(RECEIPT_LIKE)
+    }
+    // The check itself finds the words it is for.
+    for (const bad of ['Фискален бон', 'касов бон', 'фискална бележка', 'fiscal receipt']) {
+      expect(bad.toLowerCase()).toMatch(RECEIPT_LIKE)
+    }
+    expect('касовата бележка, обонятелен'.toLowerCase()).not.toMatch(RECEIPT_LIKE)
+  })
+
+  it('words a refusal in one place: the venue’s own smallest payment, the pay "too many tries"', () => {
+    const words = stringsFor('en_US').services
+    expect(refusalText(words, 'below_minimum', { minCard: '1.00 EUR' })).toBe(
+      'Card payments start at 1.00 EUR. Add an item or ask your waiter.',
+    )
+    expect(refusalText(words, 'below_minimum')).toBe(words.refusedOther)
+    expect(refusalText(words, 'rate_limited', { command: 'pay.start' })).toBe(
+      'Too many tries. Wait a moment and try again.',
+    )
+    expect(refusalText(words, 'rate_limited', { command: 'order.add' })).toBe(
+      words.refusals.rate_limited,
+    )
+    expect(refusalText(words, 'tip_not_offered')).toBe(words.refusals.tip_not_offered)
+    expect(refusalText(words, 'nothing_known')).toBe(words.refusedOther)
+    expect(refusalText(words, null)).toBe(words.refusedOther)
+    const bg = stringsFor('bg_BG').services
+    expect(refusalText(bg, 'below_minimum', { minCard: '1,00 EUR' })).toContain('1,00 EUR')
+    expect(refusalText(bg, 'rate_limited', { command: 'pay.start' })).toBe(
+      'Твърде много опити. Изчакайте малко и опитайте отново.',
+    )
+  })
+
+  it('treats a tip as none where no tip is offered, however it was chosen before', () => {
+    const picks = pickWhole(new Map(), bill([{ id: 1, amountMinor: 2000 }]))
+    const chosen = { kind: 'percent', percent: 10 } as const
+    expect(choosePay(picks, chosen, true)).toMatchObject({ tipMinor: 200, totalMinor: 2200 })
+    expect(choosePay(picks, chosen, false)).toMatchObject({ tipMinor: 0, totalMinor: 2000 })
+    expect(choosePay(picks, { kind: 'other', minor: 150 }, false).tipMinor).toBe(0)
+    expect(payStartCommand(uuid, picks, chosen, false)).toMatchObject({
+      tipPercent: null,
+      tipMinor: null,
+    })
+    expect(payStartCommand(uuid, picks, { kind: 'other', minor: 150 }, false)).toMatchObject({
+      tipPercent: null,
+      tipMinor: null,
+    })
+    // A tip too big for the lines does not block Pay where no tip is offered.
+    expect(
+      payBlock(
+        PAYING,
+        bill([{ id: 1, amountMinor: 2000 }]),
+        picks,
+        { kind: 'other', minor: 99_999 },
+        false,
+      ),
+    ).toBe(null)
+  })
+
+  it('names the card form’s language without its region', () => {
+    expect(payFormLocale('bg_BG')).toBe('bg')
+    expect(payFormLocale('en_US')).toBe('en')
+  })
+})
+
+describe('the words Martin approved on 10-29 (#114)', () => {
+  const en = stringsFor('en_US').services
+  const bg = stringsFor('bg_BG').services
+
+  it('has each of them, in both languages, as he gave them', () => {
+    expect(en.paying.ended.cancelled).toBe('Payment cancelled. Nothing was charged.')
+    expect(bg.paying.ended.cancelled).toBe('Плащането е отменено. Картата ви не е таксувана.')
+    expect(en.paying.ended.enter_refused).toBe(
+      'We couldn’t send this order. Nothing was charged. Please call a waiter.',
+    )
+    expect(bg.paying.ended.enter_refused).toBe(
+      'Не успяхме да изпратим поръчката. Картата ви не е таксувана. Моля, повикайте сервитьор.',
+    )
+    expect(en.paying.ended.item_unavailable).toBe(
+      'Something ran out, so nothing was sent and nothing was charged. Pay for the rest when you’re ready.',
+    )
+    expect(bg.paying.ended.item_unavailable).toBe(
+      'Нещо се изчерпа, затова нищо не е изпратено и картата ви не е таксувана. Платете останалото, когато сте готови.',
+    )
+    expect(en.paying.endedBelowMinimum('0.50 EUR')).toBe(
+      'Card payments start at 0.50 EUR. Nothing was charged. Add an item or ask your waiter.',
+    )
+    expect(bg.paying.endedBelowMinimum('0,50 EUR')).toBe(
+      'Плащането с карта е от 0,50 EUR нагоре. Картата ви не е таксувана. Добавете артикул или попитайте сервитьора.',
+    )
+    expect(en.paying.ended.paying_off).toBe('Ask your waiter to pay.')
+    expect(bg.paying.ended.paying_off).toBe('За да платите, попитайте сервитьора.')
+    expect(en.paying.tipTooBig).toBe('The tip can’t be more than the amount you’re paying.')
+    expect(bg.paying.tipTooBig).toBe('Бакшишът не може да е повече от сумата за плащане.')
+    expect(en.refusals.tip_not_offered).toBe('A tip can’t be added right now. Pay without a tip.')
+    expect(bg.refusals.tip_not_offered).toBe(
+      'В момента не може да се добави бакшиш. Платете без бакшиш.',
+    )
+    expect(en.paying.cardFormFailed).toBe(
+      'The card form didn’t load. Try again or ask your waiter.',
+    )
+    expect(bg.paying.cardFormFailed).toBe(
+      'Формата за карта не се зареди. Опитайте отново или попитайте сервитьора.',
+    )
+    expect(en.sentUnpaid).toBe('Ordered, not paid: pay your waiter')
+    expect(bg.sentUnpaid).toBe('Поръчано, без плащане: платете на сервитьора')
+    expect(en.paying.ended.pay_first_unpaid).toBe(
+      'Nothing was charged. Your order went through, and your waiter will take the payment.',
+    )
+    expect(bg.paying.ended.pay_first_unpaid).toBe(
+      'Картата ви не е таксувана. Поръчката е приета, сервитьорът ще вземе плащането.',
+    )
+  })
+
+  it('says no receipt word in them (Н-18 чл. 7а)', () => {
+    for (const words of [en, bg]) {
+      const all = [
+        words.sentUnpaid,
+        words.refusals.tip_not_offered,
+        words.paying.tipTooBig,
+        words.paying.cardFormFailed,
+        words.paying.endedBelowMinimum('0,50 EUR'),
+        ...Object.values(words.paying.ended),
+      ]
+      for (const text of all) expect(text.toLowerCase(), text).not.toMatch(RECEIPT_LIKE)
+    }
+  })
+
+  it('shows a pay-first round ended "No receipt" as ordered and unpaid, and nothing else that way', () => {
+    const released = (reason: string, mode: 'bill' | 'pay_first') =>
+      payScreen(payment({ state: 'released', reason, mode, form: null }))
+    expect(released('no_receipt', 'pay_first')).toEqual({
+      kind: 'ended',
+      end: 'pay_first_unpaid',
+      again: false,
+    })
+    // On the bill, "No receipt" is the payment that was not completed; a round the till never took
+    // (Not on the till) was not ordered, so "your order went through" would be untrue.
+    expect(released('no_receipt', 'bill')).toMatchObject({ end: 'no_receipt' })
+    expect(released('not_on_till', 'pay_first')).toMatchObject({ end: 'no_receipt' })
+    expect(released('below_minimum', 'pay_first')).toEqual({
+      kind: 'ended',
+      end: 'below_minimum',
+      again: false,
+    })
+  })
+
+  it('words a release below the minimum with the venue’s amount, else the general line', () => {
+    expect(endText(en.paying, 'below_minimum', '1.00 EUR')).toBe(
+      'Card payments start at 1.00 EUR. Nothing was charged. Add an item or ask your waiter.',
+    )
+    expect(endText(en.paying, 'below_minimum', null)).toBe(en.paying.ended.other)
+    expect(endText(en.paying, 'busy', null)).toBe(en.paying.ended.busy)
+  })
+})
+
+const RECEIPT_LIKE = /фискал|fiscal|(?<!\p{L})бон/u
+
+describe('the receipt email (#186, D127)', () => {
+  const picks = pickWhole(new Map(), bill([{ id: 1, amountMinor: 1250 }]))
+  const on: PayingView = { ...PAYING, electronicReceipt: true }
+  const b = bill([{ id: 1, amountMinor: 1250 }])
+
+  it('reads what was typed: nothing, one valid address (trimmed), or a bad one', () => {
+    expect(receiptEmailOf('', true)).toEqual({ kind: 'none' })
+    expect(receiptEmailOf('   ', true)).toEqual({ kind: 'none' })
+    expect(receiptEmailOf(' ana@example.com ', true)).toEqual({
+      kind: 'valid',
+      email: 'ana@example.com',
+    })
+    for (const bad of ['ana', 'ana@', 'ana@example.com, bo@example.com', 'a b@example.com']) {
+      expect(receiptEmailOf(bad, true)).toEqual({ kind: 'invalid' })
+    }
+    // Where no field is offered, whatever is in it is no address.
+    expect(receiptEmailOf('ana@example.com', false)).toEqual({ kind: 'none' })
+    expect(receiptEmailOf('not an address', false)).toEqual({ kind: 'none' })
+  })
+
+  it('offers the field only where the host says the receipt can be issued', () => {
+    expect(offersReceiptEmail(on)).toBe(true)
+    expect(offersReceiptEmail(PAYING)).toBe(false)
+    expect(offersReceiptEmail(null)).toBe(false)
+    expect(offersReceiptEmail(undefined)).toBe(false)
+  })
+
+  it('puts a valid address on the pay.start, and only where it is offered', () => {
+    const send = (typed: string | null, offered: boolean) =>
+      payStartCommand(uuid, picks, NO_TIP, false, typed, offered)
+    expect(send('ana@example.com', true).receiptEmail).toBe('ana@example.com')
+    expect(send(' ana@example.com ', true).receiptEmail).toBe('ana@example.com')
+    expect('receiptEmail' in send('', true)).toBe(false)
+    expect('receiptEmail' in send(null, true)).toBe(false)
+    expect('receiptEmail' in send('ana@example.com', false)).toBe(false)
+    expect('receiptEmail' in send('nonsense', true)).toBe(false)
+    // The wire schema takes exactly what the shell builds.
+    expect(GuestCommandSchema.safeParse(send('ana@example.com', true)).success).toBe(true)
+    expect(
+      GuestCommandSchema.safeParse({ ...send(null, true), receiptEmail: 'nonsense' }).success,
+    ).toBe(false)
+  })
+
+  it('greys Pay for a bad address typed, never silently dropping it, and not for none', () => {
+    expect(payBlock(on, b, picks, NO_TIP, false, 'ana@example.com')).toBeNull()
+    expect(payBlock(on, b, picks, NO_TIP, false, '')).toBeNull()
+    expect(payBlock(on, b, picks, NO_TIP, false, 'ana@')).toBe('bad_email')
+    // No field here: what is in it does not matter.
+    expect(payBlock(PAYING, b, picks, NO_TIP, false, 'ana@')).toBeNull()
+  })
+
+  it('words the Paid line by what went out: sent, requested, or the waiter’s paper', () => {
+    for (const locale of ['en_US', 'bg_BG'] as const) {
+      const words = stringsFor(locale).services.paying
+      const paid = (receiptEmailed: 'sent' | 'requested' | null, receiptEmail: string | null) =>
+        paidReceiptText(payment({ state: 'captured', receiptEmailed, receiptEmail }), words)
+      expect(paid('sent', 'ana@example.com')).toBe(words.paidReceiptEmailed('ana@example.com'))
+      expect(paid('requested', 'ana@example.com')).toBe(
+        words.paidReceiptRequested('ana@example.com'),
+      )
+      expect(paid(null, 'ana@example.com')).toBe(words.paidReceipt)
+      expect(paid('sent', null)).toBe(words.paidReceipt)
+      expect(paid('sent', 'ana@example.com')).toContain('ana@example.com')
+    }
+    const en = stringsFor('en_US').services.paying
+    expect(en.receiptEmail).toBe('Receipt by email (optional)')
+    expect(en.emailInvalid).toBe('Check the email address')
+    expect(en.paidReceiptEmailed('x@y.z')).toBe(
+      'Show this number to your waiter. Your receipt was sent to x@y.z.',
+    )
+    expect(en.paidReceiptRequested('x@y.z')).toBe(
+      'Show this number to your waiter. Your receipt was requested to x@y.z.',
+    )
+    const bg = stringsFor('bg_BG').services.paying
+    expect(bg.receiptEmail).toBe('Касова бележка по имейл (по желание)')
+    expect(bg.emailInvalid).toBe('Проверете имейл адреса')
+    expect(bg.paidReceiptRequested('x@y.z')).toContain('Поискахте касова бележка на x@y.z.')
+  })
+})

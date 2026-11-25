@@ -9,10 +9,12 @@ import {
   boolean,
   check,
   customType,
+  date,
   foreignKey,
   index,
   integer,
   jsonb,
+  numeric,
   pgSchema,
   primaryKey,
   text,
@@ -78,9 +80,10 @@ export const venues = restro.table(
     defaultLocale: text('default_locale').notNull().default('bg_BG'),
     enabledLocales: text('enabled_locales').array().notNull().default(sql`'{bg_BG,en_US}'::text[]`),
     /**
-     * Venue settings that are not columns of their own (S3-03). `theme` is the look of the guest
-     * menu: `{brand: '#rrggbb', logo_asset_id: 'as_…' | null}`. core/apply validates and writes
-     * it (`setVenueTheme`); the publisher turns it into the snapshot's theme.
+     * Venue settings that are not columns of their own (S3-03). `design` is the venue's design
+     * record (D129, core's `DesignRecordSchema`): the look of the guest menu, written only by
+     * core's `apply()` (`setDesign`); the publisher turns it into the snapshot's theme and
+     * `design` block. It replaced `theme` and `presentation` (migration 0051).
      */
     settings: jsonb('settings')
       .$type<Record<string, unknown>>()
@@ -277,7 +280,10 @@ export const purgeLog = restro.table(
   },
   (t) => [
     index('purge_log_tenant_id_at_idx').on(t.tenantId, t.at),
-    check('purge_log_kind', sql`${t.kind} in ('venue', 'menu', 'instance', 'versions', 'tables')`),
+    check(
+      'purge_log_kind',
+      sql`${t.kind} in ('venue', 'menu', 'instance', 'versions', 'tables', 'service')`,
+    ),
     check('purge_log_subject_id', sql`${t.subjectId} ~ '^[a-z]{2}_[0-9A-Za-z]+$'`),
     check('purge_log_counts_object', sql`jsonb_typeof(${t.counts}) = 'object'`),
   ],
@@ -475,6 +481,13 @@ export interface IntegrationConfig {
    * Absent means true. S3-04 turns this into a setting of the Integration tab.
    */
   publish_after_sync?: boolean
+  /**
+   * What the instance's service connector declares its POS lets Restro do (D122 §3), snake_case
+   * (`notes_reach_ticket`, `first_items_open_bill`…): written by every complete floor reading
+   * (core's `applyFloor`, #78) and read through core's `readServiceCapabilities`, where missing
+   * means not declared. Any connector with a floor reading gets it.
+   */
+  service_capabilities?: Record<string, boolean>
 }
 
 /**
@@ -516,7 +529,7 @@ export const integrations = restro.table(
   (t) => [
     unique('integrations_tenant_id_id_unique').on(t.tenantId, t.id),
     check('integrations_id_format', sql`${t.id} ~ '^in_[0-9A-Za-z]+$'`),
-    check('integrations_kind', sql`${t.kind} in ('barsy')`),
+    check('integrations_kind', sql`${t.kind} in ('barsy', 'sim')`),
     check(
       'integrations_name_length',
       sql`char_length(${t.name}) between 1 and 80 and ${t.name} = btrim(${t.name})`,
@@ -665,14 +678,6 @@ export const menus = restro.table(
     /** Order among the venue's menus (Settings › Menus): a fractional key compared by byte order. */
     sortKey: byteOrderText('sort_key').notNull().default('a0'),
     /**
-     * Menu settings that are not columns of their own (D92): the layout default (`layout`) and
-     * whether guests may switch it (`layout_switch`). core/apply validates and writes it.
-     */
-    settings: jsonb('settings')
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    /**
      * When the owner moved the menu to the venue's bin (D91); null = in use. A binned menu is
      * never the live one, is left out of every list and is purged after 30 days (D83).
      */
@@ -704,7 +709,6 @@ export const menus = restro.table(
       sql`${t.name} is null or (char_length(${t.name}) between 1 and 120 and ${t.name} = btrim(${t.name}))`,
     ),
     check('menus_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
-    check('menus_settings_object', sql`jsonb_typeof(${t.settings}) = 'object'`),
   ],
 )
 
@@ -916,6 +920,9 @@ export const EVENT_OPS = [
   'linkSource',
   'unlinkSource',
   'setLinkState',
+  'setDesign',
+  'setStyle',
+  'setStyleStatus',
 ] as const
 
 /**
@@ -934,6 +941,11 @@ export const EVENT_OPS = [
  * `{source, external_type}` for a link, `{source, external_type, state}` for a link-state
  * change (`source` is `till:<integration>`), the status text for a status change. `node_id` is
  * the node that changed (the item, for a placement).
+ *
+ * `setDesign` (D129, migration 0051) is about a venue, not a node: `node_id` is null (and only
+ * there, `events_node_only_for_document_ops`), `field_key` is `design`, the layer `manual`, the
+ * scope the venue's (`venue:<vn_ id>`, which is how the purge finds it), and the old and new
+ * values are the design record before (null for the first) and after.
  */
 export const events = restro.table(
   'events',
@@ -942,7 +954,11 @@ export const events = restro.table(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
-    nodeId: text('node_id').notNull(),
+    /**
+     * The node that changed; null for the rows that are not about the document: `setDesign` (a
+     * venue's design) and `setStyle` / `setStyleStatus` (one of the organisation's saved Styles).
+     */
+    nodeId: text('node_id'),
     /** What kind of change this row records; rows from before the column count as `setField`. */
     op: text('op').notNull().default('setField'),
     fieldKey: text('field_key').notNull(),
@@ -965,7 +981,20 @@ export const events = restro.table(
     index('events_node_id_seq_idx').on(t.nodeId, t.seq),
     check(
       'events_op',
-      sql`${t.op} in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource', 'setLinkState')`,
+      sql`${t.op} in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource', 'setLinkState', 'setDesign', 'setStyle', 'setStyleStatus')`,
+    ),
+    check(
+      'events_node_only_for_document_ops',
+      sql`(${t.op} in ('setDesign', 'setStyle', 'setStyleStatus')) = (${t.nodeId} is null)`,
+    ),
+    // A saved Style is the organisation's, so its row carries the master scope and the manual layer.
+    check(
+      'events_style_scope',
+      sql`${t.op} not in ('setStyle', 'setStyleStatus') or (${t.scope} = 'master' and ${t.fieldKey} in ('style', 'style_status') and ${t.layer} = 'manual')`,
+    ),
+    check(
+      'events_design_scope',
+      sql`${t.op} <> 'setDesign' or (${t.scope} ~ ${VENUE_SCOPE_PATTERN} and ${t.fieldKey} = 'design' and ${t.layer} = 'manual')`,
     ),
     check('events_field_key', sql`${t.fieldKey} ~ '^[a-z][a-z0-9_]{0,63}$'`),
     check(
@@ -1105,6 +1134,47 @@ export const areas = restro.table(
 )
 
 /**
+ * A bar of a venue (`br_`; D122 §2, D124 §1): the counter that serves some of its tables, where
+ * their sent orders print and whose ordering staff can pause. Read from the POS's floor and never
+ * edited in Restro; a venue whose POS has no bars, or can't say, has none. Menu-side: only
+ * `apply()` writes it (the write-target guard pins this).
+ */
+export const bars = restro.table(
+  'bars',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    /** The POS's name for the bar. Trimmed, 1–60 characters. */
+    name: text('name').notNull(),
+    /** The key the POS reports for this bar, so a reading finds it again. Backend only (rule 3). */
+    sourceKey: text('source_key').notNull(),
+    /** Set when a complete floor reading no longer shows the bar; never deleted by the app. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Kept current by the `bars_touch_updated_at` trigger. */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('bars_tenant_id_id_unique').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'bars_venue_fk',
+      columns: [t.tenantId, t.venueId],
+      foreignColumns: [venues.tenantId, venues.id],
+    }),
+    uniqueIndex('bars_venue_id_source_key_unique').on(t.venueId, t.sourceKey),
+    check('bars_id_format', sql`${t.id} ~ '^br_[0-9A-Za-z]+$'`),
+    check(
+      'bars_name_length',
+      sql`char_length(${t.name}) between 1 and 60 and ${t.name} = btrim(${t.name})`,
+    ),
+    check('bars_source_key_length', sql`length(${t.sourceKey}) between 1 and 128`),
+  ],
+)
+
+/**
  * A table (or a seat, a bar spot) of an area. `number` is what staff know it by (the till's
  * number, or the owner's); `name` is our name over it, shown to guests when set (D95). The QR
  * token on its sticker is unique across all tenants, and a purged token is tombstoned, never
@@ -1129,6 +1199,32 @@ export const venueTables = restro.table(
     hidden: boolean('hidden').notNull().default(false),
     /** The QR token on its sticker (the guest files' token pattern), or null when it has no code. */
     qrToken: text('qr_token'),
+    /**
+     * SHA-256 of the code, lower-case hex: what a guest's code is looked up by (D122 §9,
+     * `restro.guest_table_by_code_hash`). Set exactly when the table has a code. No slow hash:
+     * the code has at least 128 random bits.
+     */
+    qrCodeHash: text('qr_code_hash'),
+    /**
+     * The code sealed with the worker's public key (D55), so stickers can be printed again; only
+     * the worker opens it. Null until the code is sealed (#70: the plain `qr_token` then goes).
+     */
+    qrCodeSealed: text('qr_code_sealed'),
+    /**
+     * The bar that serves it, read from the POS's floor (D122 §7); null where the POS has no bars
+     * or can't say (D124 §1). Written by `apply()`.
+     */
+    barId: text('bar_id'),
+    /**
+     * A payment table of its bar (D122 §8): never opened for phones, never given a code. Read
+     * from the POS or marked by a manager, through `apply()`.
+     */
+    isPaymentTable: boolean('is_payment_table').notNull().default(false),
+    /**
+     * Rises each time the table's code is re-issued, so a location pass of an older code dies at
+     * once (D122 §9). Service-side: only `applyService` writes it, never `apply()`.
+     */
+    codeGeneration: integer('code_generation').notNull().default(1),
     /** Set when the owner deleted the table (hand-made venues, D95); purged later (D83). */
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1138,6 +1234,7 @@ export const venueTables = restro.table(
   (t) => [
     unique('tables_tenant_id_id_unique').on(t.tenantId, t.id),
     unique('tables_qr_token_unique').on(t.qrToken),
+    unique('tables_qr_code_hash_unique').on(t.qrCodeHash),
     foreignKey({
       name: 'tables_venue_fk',
       columns: [t.tenantId, t.venueId],
@@ -1148,7 +1245,13 @@ export const venueTables = restro.table(
       columns: [t.tenantId, t.areaId],
       foreignColumns: [areas.tenantId, areas.id],
     }),
+    foreignKey({
+      name: 'tables_bar_fk',
+      columns: [t.tenantId, t.barId],
+      foreignColumns: [bars.tenantId, bars.id],
+    }),
     index('tables_area_id_idx').on(t.areaId, t.sortKey),
+    index('tables_bar_id_idx').on(t.barId).where(sql`${t.barId} is not null`),
     check('tables_id_format', sql`${t.id} ~ '^tb_[0-9A-Za-z]+$'`),
     check(
       'tables_name_length',
@@ -1159,10 +1262,26 @@ export const venueTables = restro.table(
       sql`${t.number} is null or (char_length(${t.number}) between 1 and 40 and ${t.number} = btrim(${t.number}))`,
     ),
     check('tables_has_label', sql`${t.name} is not null or ${t.number} is not null`),
+    check('tables_code_generation_positive', sql`${t.codeGeneration} >= 1`),
+    // A payment table never carries a code a guest could scan (D122 §8).
+    check('tables_payment_table_no_code', sql`not ${t.isPaymentTable} or ${t.qrCodeHash} is null`),
     check('tables_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
     check(
       'tables_qr_token_format',
       sql`${t.qrToken} is null or ${t.qrToken} ~ '^[A-Za-z0-9_-]{8,128}$'`,
+    ),
+    check(
+      'tables_qr_code_hash_format',
+      sql`${t.qrCodeHash} is null or ${t.qrCodeHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      'tables_qr_code_sealed_format',
+      sql`${t.qrCodeSealed} is null or (${t.qrCodeSealed} ~ '^rs1\\.' and length(${t.qrCodeSealed}) <= 1024)`,
+    ),
+    // A code is the hash plus its plain or sealed form; no form without the hash, no hash alone.
+    check(
+      'tables_qr_code_complete',
+      sql`(${t.qrCodeHash} is null) = (${t.qrToken} is null and ${t.qrCodeSealed} is null)`,
     ),
   ],
 )
@@ -1551,5 +1670,2388 @@ export const tags = restro.table(
     ),
     check('tags_color_format', sql`${t.color} ~ '^[a-z][a-z0-9_]{0,31}$'`),
     check('tags_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
+  ],
+)
+
+/**
+ * An organisation's saved Styles (D129, My styles; migration 0053): a named set of design choices
+ * the owner keeps and applies at any venue of the organisation. The row is the organisation's, not
+ * a venue's, and row-level security keeps it to the organisation like every other tenant table.
+ *
+ * `style_values` holds core's `StyleValues`: a value for every choice option but the body font. The
+ * colours, the Advanced roles and the logo are never here — they are the venue's brand (D128) — so
+ * applying a saved Style, or copying another venue's design, can never carry a venue's brand away.
+ * `style` is the premade Style the values came from, kept for the record; nothing links back.
+ *
+ * Every row carries its provenance, NOT NULL (rule 2): the manual layer and source (a Style is
+ * never a till's), the member who wrote it, the job and the change set. Only `apply()`'s `setStyle`
+ * and `setStyleStatus` write it. Deleting is a soft removal (`removed_at`), which the owner's Undo
+ * clears: nothing here is ever deleted by app code, only by the purge (D83). A name is unique among
+ * the organisation's Styles that are not removed; `apply()` compares names without case under the
+ * tenant's document lock, and the partial index below is the backstop.
+ */
+export const designStyles = restro.table(
+  'design_styles',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    /** The owner's name for the Style. Trimmed, 1–60 characters. */
+    name: text('name').notNull(),
+    /** The premade Style the values came from (core's `PremadeStyleId`). */
+    style: text('style').notNull(),
+    /** Core's `StyleValues`: every choice option but the body font. */
+    styleValues: jsonb('style_values').$type<Record<string, unknown>>().notNull(),
+    /** Set while the Style is removed and the toast's Undo can bring it back. */
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    layer: text('layer').notNull(),
+    source: text('source').notNull(),
+    actor: text('actor').notNull(),
+    jobId: text('job_id').notNull(),
+    changeSetId: text('change_set_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Kept current by the `design_styles_touch_updated_at` trigger. */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('design_styles_tenant_id_id_unique').on(t.tenantId, t.id),
+    index('design_styles_tenant_id_name_idx').on(t.tenantId, t.name),
+    uniqueIndex('design_styles_live_name_unique')
+      .on(t.tenantId, t.name)
+      .where(sql`${t.removedAt} is null`),
+    check('design_styles_id_format', sql`${t.id} ~ '^ds_[0-9A-Za-z]+$'`),
+    check(
+      'design_styles_name_length',
+      sql`char_length(${t.name}) between 1 and 60 and ${t.name} = btrim(${t.name})`,
+    ),
+    check('design_styles_style_format', sql`${t.style} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`),
+    check('design_styles_values_object', sql`jsonb_typeof(${t.styleValues}) = 'object'`),
+    check('design_styles_layer', sql`${t.layer} = 'manual'`),
+    check('design_styles_source', sql`${t.source} = 'manual'`),
+    check('design_styles_actor', sql`${t.actor} ~ ${ACTOR_PATTERN}`),
+    check('design_styles_job_id', sql`length(${t.jobId}) between 1 and 128`),
+    check('design_styles_change_set_id', sql`${t.changeSetId} ~ '^cs_[0-9A-Za-z]+$'`),
+  ],
+)
+
+// --- Service data (ordering, D122 §9; design `docs/deliverables/2026-10-21-service-data-design.md`)
+// Everything a night of ordering writes: sittings, the table's order, sent orders and their notes,
+// locks, readings of the POS bill, the Log, waiter calls, alerts, pauses, service days, and the
+// staff side (members, venue roles, assignments, shared devices, push subscriptions). Only
+// `@restro/core/service` (`applyService`) writes these tables; the write-target guard pins it.
+// Every row carries its provenance (rule 2 as D122 §9 and the design §2.2 put it): `source`,
+// `actor` and `job_id`, NOT NULL. Never stored here: card digits, a guest's phone, device, IP or
+// position, the table code, secrets or raw POS requests. Columns marked *backend* hold POS
+// references that never reach a guest (rule 3).
+
+/** Where a service write came from (design §2.2). */
+const SERVICE_SOURCE_VALUES = sql.raw(`('guest', 'staff', 'worker', 'provider', 'restro', 'pos')`)
+/**
+ * Who did it: `system`, `guest`, `user:<id>`, `staff:sm_…`, `integration:in_…` or
+ * `operator:<id>` (Restro's admin team). Never personal data.
+ */
+const SERVICE_ACTOR_PATTERN = sql.raw(
+  `'^(system|guest|(user|staff|integration|operator):[A-Za-z0-9][A-Za-z0-9_.:-]{0,127})$'`,
+)
+/** Where a staff answer came from (D122 §7). */
+const VIA_VALUES = sql.raw(`('guest_page', 'tonight', 'telegram', 'worker', 'provider')`)
+
+/** The provenance columns of a service row: its last write's source, actor and job (rule 2). */
+function serviceProvenance() {
+  return {
+    source: text('source').notNull(),
+    actor: text('actor').notNull(),
+    /** The worker's job run, or the id the server made for the web request. */
+    jobId: text('job_id').notNull(),
+  }
+}
+
+/** The checks every service table repeats on its provenance columns. */
+function provenanceChecks(
+  table: string,
+  t: { source: AnyPgColumn; actor: AnyPgColumn; jobId: AnyPgColumn },
+) {
+  return [
+    check(`${table}_source`, sql`${t.source} in ${SERVICE_SOURCE_VALUES}`),
+    check(`${table}_actor`, sql`${t.actor} ~ ${SERVICE_ACTOR_PATTERN}`),
+    check(`${table}_job_id`, sql`${t.jobId} ~ ${NAME_PATTERN}`),
+  ]
+}
+
+/** The composite foreign key from a service row to its venue. */
+function venueFk(name: string, t: { tenantId: AnyPgColumn; venueId: AnyPgColumn }) {
+  return foreignKey({
+    name: `${name}_venue_fk`,
+    columns: [t.tenantId, t.venueId],
+    foreignColumns: [venues.tenantId, venues.id],
+  })
+}
+
+/** The composite foreign key from a service row to its table. */
+function tableFk(name: string, t: { tenantId: AnyPgColumn; tableId: AnyPgColumn }) {
+  return foreignKey({
+    name: `${name}_table_fk`,
+    columns: [t.tenantId, t.tableId],
+    foreignColumns: [venueTables.tenantId, venueTables.id],
+  })
+}
+
+/**
+ * A sitting (`st_`): one group of guests at a table, from opening the table for phones to its end
+ * (D122 §4). A table is open for phones exactly while it has a sitting with no end.
+ */
+export const sittings = restro.table(
+  'sittings',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    tableId: text('table_id').notNull(),
+    /** The venue's service day (it ends at 07:00 by default). */
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Opened alone, or with "Open all". */
+    openedHow: text('opened_how').notNull(),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    endReason: text('end_reason'),
+    /** Whether the POS bill has held lines, so a table opened before its first item isn't ended. */
+    hadBillLines: boolean('had_bill_lines').notNull().default(false),
+    /** Set at the end of the service day: 18 months on (D111); the purge only compares it. */
+    retainUntil: timestamp('retain_until', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('sittings_tenant_id_id_unique').on(t.tenantId, t.id),
+    venueFk('sittings', t),
+    tableFk('sittings', t),
+    // One open sitting per table.
+    uniqueIndex('sittings_open_table_unique')
+      .on(t.tenantId, t.tableId)
+      .where(sql`${t.endedAt} is null`),
+    index('sittings_venue_id_service_date_idx').on(t.venueId, t.serviceDate),
+    index('sittings_retain_until_idx').on(t.retainUntil),
+    // A table's ended sittings, newest first: the moved-party read of a closed table (P22, #427)
+    // wants the last one that ended inside a window. `table_id` alone is selective (a table
+    // belongs to one tenant), so the key needs no `tenant_id`: Row Level Security's own
+    // `tenant_id` test is applied as a filter on the few rows the index returns.
+    index('sittings_table_id_ended_at_idx').on(t.tableId, t.endedAt),
+    check('sittings_id_format', sql`${t.id} ~ '^st_[0-9A-Za-z]+$'`),
+    check('sittings_opened_how', sql`${t.openedHow} in ('one', 'all')`),
+    check('sittings_end_pair', sql`(${t.endedAt} is null) = (${t.endReason} is null)`),
+    check(
+      'sittings_end_reason',
+      sql`${t.endReason} is null or ${t.endReason} in ('bill_closed', 'staff_closed', 'new_guests', 'closing_hour', 'code_reissued', 'party_moved')`,
+    ),
+    ...provenanceChecks('sittings', t),
+  ],
+)
+
+/**
+ * The table's shared order (`to_`; D117): one row per sitting, inserted on the first add and
+ * updated in place (fillfactor 70, no index on changing columns, so updates stay HOT). `lines`
+ * carries no price. Emptied when the sitting ends, so unsent notes go at once.
+ */
+export const tableOrders = restro.table(
+  'table_orders',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    tableId: text('table_id').notNull(),
+    sittingId: text('sitting_id').notNull(),
+    /** Only rises; every phone compares it. */
+    version: bigint('version', { mode: 'number' }).notNull().default(0),
+    /** The order's lines (`ol_` ids), checked with Zod in core. */
+    lines: jsonb('lines').$type<unknown[]>().notNull().default([]),
+    /** The earlier order set aside, offered back with "Restore". */
+    earlier: jsonb('earlier').$type<unknown[]>(),
+    earlierAt: timestamp('earlier_at', { withTimezone: true }),
+    /** The ring of the last 64 action ids and their results (idempotency, D121 2.4). */
+    recentActions: jsonb('recent_actions').$type<unknown[]>().notNull().default([]),
+    idleExpiresAt: timestamp('idle_expires_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('table_orders_tenant_id_id_unique').on(t.tenantId, t.id),
+    unique('table_orders_tenant_id_sitting_id_unique').on(t.tenantId, t.sittingId),
+    venueFk('table_orders', t),
+    tableFk('table_orders', t),
+    foreignKey({
+      name: 'table_orders_sitting_fk',
+      columns: [t.tenantId, t.sittingId],
+      foreignColumns: [sittings.tenantId, sittings.id],
+    }),
+    check('table_orders_id_format', sql`${t.id} ~ '^to_[0-9A-Za-z]+$'`),
+    check('table_orders_version', sql`${t.version} >= 0`),
+    check('table_orders_lines_array', sql`jsonb_typeof(${t.lines}) = 'array'`),
+    check(
+      'table_orders_earlier_array',
+      sql`${t.earlier} is null or jsonb_typeof(${t.earlier}) = 'array'`,
+    ),
+    check(
+      'table_orders_recent_actions',
+      sql`jsonb_typeof(${t.recentActions}) = 'array' and jsonb_array_length(${t.recentActions}) <= 64`,
+    ),
+    ...provenanceChecks('table_orders', t),
+  ],
+)
+
+/** The states of a sent order (D116, D122 §4). */
+export const SENT_ORDER_STATES = [
+  'waiting',
+  'sending',
+  'checking',
+  'awaiting_approval',
+  'added',
+  'not_sent',
+  'unconfirmed',
+] as const
+
+/**
+ * A sent order (`so_`): what one Send asked the POS to add (D115–D117). Its id is the
+ * server-generated key Restro sends where the POS deduplicates (rule 9). Money in minor units.
+ */
+export const sentOrders = restro.table(
+  'sent_orders',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    tableId: text('table_id').notNull(),
+    sittingId: text('sitting_id').notNull(),
+    /** The bar the table belonged to at Send, or null (D124 §1). */
+    barId: text('bar_id'),
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    /** On the bill or pay first. */
+    kind: text('kind').notNull(),
+    /** The short code a waiter reads, such as K7Q. */
+    reference: text('reference').notNull(),
+    state: text('state').notNull(),
+    /** A code from core's fixed list, or null. */
+    reason: text('reason'),
+    /** The lines as sent: `ol_` id, item, options, quantity, unit price, name. No note. */
+    lines: jsonb('lines').$type<unknown[]>().notNull(),
+    totalMinor: bigint('total_minor', { mode: 'number' }).notNull(),
+    /** For the alert's "Bill before this order". */
+    billBeforeMinor: bigint('bill_before_minor', { mode: 'number' }),
+    /** *Backend*: the POS bill it joined. */
+    posBillRef: text('pos_bill_ref'),
+    /** *Backend*: the POS lines the read-back matched. */
+    matchedLines: jsonb('matched_lines').$type<unknown[]>(),
+    /**
+     * *Backend*: what the match needs of the reading before the write, kept while the sent order
+     * may still be Sending, Checking or Unconfirmed, so a later reading can find a late landing
+     * (#135). Cleared once the sent order settles otherwise, once it lands late and at the end
+     * of the service day.
+     */
+    landingBasis: jsonb('landing_basis'),
+    /** The phone's action id (idempotency); cleared at the end of the service day. */
+    actionId: text('action_id'),
+    /** The sent order a deliberate repeat confirmed after the duplicate warning. */
+    duplicateOf: text('duplicate_of'),
+    /** The consent text's version the guest saw (D119). */
+    consentVersion: text('consent_version'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    settledAt: timestamp('settled_at', { withTimezone: true }),
+    retainUntil: timestamp('retain_until', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('sent_orders_tenant_id_id_unique').on(t.tenantId, t.id),
+    unique('sent_orders_tenant_id_action_id_unique').on(t.tenantId, t.actionId),
+    uniqueIndex('sent_orders_venue_reference_unique').on(t.venueId, t.serviceDate, t.reference),
+    venueFk('sent_orders', t),
+    tableFk('sent_orders', t),
+    foreignKey({
+      name: 'sent_orders_sitting_fk',
+      columns: [t.tenantId, t.sittingId],
+      foreignColumns: [sittings.tenantId, sittings.id],
+    }),
+    foreignKey({
+      name: 'sent_orders_bar_fk',
+      columns: [t.tenantId, t.barId],
+      foreignColumns: [bars.tenantId, bars.id],
+    }),
+    foreignKey({
+      name: 'sent_orders_duplicate_of_fk',
+      columns: [t.tenantId, t.duplicateOf],
+      foreignColumns: [t.tenantId, t.id],
+    }),
+    // The 15-minute duplicate warning.
+    index('sent_orders_table_id_created_at_idx').on(t.tableId, t.createdAt.desc()),
+    // Tonight's open sent orders.
+    index('sent_orders_open_idx')
+      .on(t.venueId, t.serviceDate)
+      .where(sql`${t.state} in ('unconfirmed', 'waiting', 'sending', 'checking')`),
+    index('sent_orders_retain_until_idx').on(t.retainUntil),
+    check('sent_orders_id_format', sql`${t.id} ~ '^so_[0-9A-Za-z]+$'`),
+    check('sent_orders_kind', sql`${t.kind} in ('on_bill', 'pay_first')`),
+    check('sent_orders_reference_format', sql`${t.reference} ~ '^[A-Z0-9]{3,6}$'`),
+    check(
+      'sent_orders_state',
+      sql`${t.state} in ('waiting', 'sending', 'checking', 'awaiting_approval', 'added', 'not_sent', 'unconfirmed')`,
+    ),
+    check('sent_orders_reason', sql`${t.reason} is null or ${t.reason} ~ ${NAME_PATTERN}`),
+    check(
+      'sent_orders_lines_array',
+      sql`jsonb_typeof(${t.lines}) = 'array' and jsonb_array_length(${t.lines}) > 0`,
+    ),
+    check('sent_orders_total_minor', sql`${t.totalMinor} >= 0`),
+    check('sent_orders_action_id', sql`${t.actionId} is null or ${t.actionId} ~ ${NAME_PATTERN}`),
+    ...provenanceChecks('sent_orders', t),
+  ],
+)
+
+/**
+ * The notes of a sent order's lines, one row per noted line, kept apart so the 31-day erasure is a
+ * row delete by the purge role (design §4). Append-only. Alerts, Telegram and the Log never read it.
+ */
+export const sentOrderNotes = restro.table(
+  'sent_order_notes',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    sentOrderId: text('sent_order_id').notNull(),
+    /** The line's `ol_` id. */
+    lineId: text('line_id').notNull(),
+    note: text('note').notNull(),
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'sent_order_notes_pk', columns: [t.tenantId, t.sentOrderId, t.lineId] }),
+    venueFk('sent_order_notes', t),
+    foreignKey({
+      name: 'sent_order_notes_sent_order_fk',
+      columns: [t.tenantId, t.sentOrderId],
+      foreignColumns: [sentOrders.tenantId, sentOrders.id],
+    }),
+    index('sent_order_notes_service_date_idx').on(t.serviceDate),
+    check('sent_order_notes_line_id_format', sql`${t.lineId} ~ '^ol_[0-9A-Za-z]+$'`),
+    check(
+      'sent_order_notes_note_length',
+      sql`char_length(${t.note}) between 1 and 500 and ${t.note} = btrim(${t.note})`,
+    ),
+    ...provenanceChecks('sent_order_notes', t),
+  ],
+)
+
+/**
+ * A lease on something only one writer may hold at a time (design §2.3), one row per thing, reused
+ * all night and never deleted. A take is the one conditional statement of the service path;
+ * deadlines are compared with the database's `now()`.
+ */
+export const locks = restro.table(
+  'locks',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    /** Order slot per table, payment table (held with no deadline, D127). */
+    scope: text('scope').notNull(),
+    /** Our id of what is held. */
+    key: text('key').notNull(),
+    /** The `so_` or `py_` id holding it, or null. */
+    holder: text('holder'),
+    /** Rises on every take. */
+    fence: bigint('fence', { mode: 'number' }).notNull().default(0),
+    takenAt: timestamp('taken_at', { withTimezone: true }),
+    deadline: timestamp('deadline', { withTimezone: true }),
+    releasedAt: timestamp('released_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'locks_pk', columns: [t.tenantId, t.scope, t.key] }),
+    venueFk('locks', t),
+    check('locks_scope', sql`${t.scope} in ('order_slot', 'payment_table')`),
+    check('locks_key_format', sql`${t.key} ~ '^[a-z]{2}_[0-9A-Za-z]+$'`),
+    check(
+      'locks_holder_format',
+      sql`${t.holder} is null or ${t.holder} ~ '^(so|py)_[0-9A-Za-z]+$'`,
+    ),
+    // A held lease runs out at its deadline, except a payment table: a payment owns it until the
+    // payment is final and a read shows the table empty, and no lock runs out meanwhile (D127,
+    // #104). Its holder has no deadline at all, so nothing can take it over.
+    check(
+      'locks_holder_deadline',
+      sql`${t.holder} is null or (${t.deadline} is not null) = (${t.scope} <> 'payment_table')`,
+    ),
+    check('locks_fence', sql`${t.fence} >= 0`),
+    ...provenanceChecks('locks', t),
+  ],
+)
+
+/**
+ * The latest reading of a table's POS bills (D122 §4, §6): one row per table (payment tables too),
+ * overwritten by each reading and emptied when the sitting ends; kept for minutes, never as a
+ * record. `bills` holds one entry per POS bill in the connector's reading shape (the POS's total,
+ * what is paid, the opening time, whether it is a payment's isolated bill, its lines with signed
+ * amounts and decimal-string quantities), checked with Zod in core; its POS references are
+ * *backend*. No waiter or POS-user identity.
+ */
+export const billReadings = restro.table(
+  'bill_readings',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    tableId: text('table_id').notNull(),
+    /** Rises with every reading of the table. */
+    readSeq: bigint('read_seq', { mode: 'number' }).notNull().default(0),
+    readAt: timestamp('read_at', { withTimezone: true }).notNull(),
+    /** False when any part failed: such a reading concludes nothing (rule 6). */
+    complete: boolean('complete').notNull(),
+    bills: jsonb('bills').$type<unknown[]>().notNull().default([]),
+    ...serviceProvenance(),
+  },
+  (t) => [
+    primaryKey({ name: 'bill_readings_pk', columns: [t.tenantId, t.tableId] }),
+    venueFk('bill_readings', t),
+    tableFk('bill_readings', t),
+    check('bill_readings_read_seq', sql`${t.readSeq} >= 0`),
+    check('bill_readings_bills_array', sql`jsonb_typeof(${t.bills}) = 'array'`),
+    ...provenanceChecks('bill_readings', t),
+  ],
+)
+
+/**
+ * The Log (D120): every state change of a sent order, sitting, pause, alert, waiter call, setting,
+ * role and permission. Append-only; `night` entries are kept 31 days, `record` entries (guard and
+ * permission changes) 18 months (D122 §7). The Log screen reads payment steps beside it (part 2).
+ */
+export const logEntries = restro.table(
+  'log_entries',
+  {
+    seq: bigint('seq', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    /** A kind from core's list, e.g. `sent_order.state`, `guard.tripped`. */
+    kind: text('kind').notNull(),
+    sentOrderId: text('sent_order_id'),
+    /** A payment (`py_`), from part 2 on. */
+    paymentId: text('payment_id'),
+    tableId: text('table_id'),
+    sittingId: text('sitting_id'),
+    /**
+     * The reservation a reservation entry is about (`rv_`; D141): every one of them names it, so a
+     * night can be read either way round — by night, or by reservation.
+     */
+    reservationId: text('reservation_id'),
+    /**
+     * The guest record an entry is about (`gu_`; D140). The id only: what the record held is never
+     * in the Log, before or after an erasure.
+     */
+    guestId: text('guest_id'),
+    fromState: text('from_state'),
+    toState: text('to_state'),
+    reason: text('reason'),
+    via: text('via'),
+    /** Checked with Zod in core; never a note, never guest data. */
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    retention: text('retention').notNull(),
+    ...serviceProvenance(),
+  },
+  (t) => [
+    venueFk('log_entries', t),
+    index('log_entries_venue_id_at_idx').on(t.venueId, t.at.desc()),
+    index('log_entries_sent_order_id_idx')
+      .on(t.sentOrderId, t.seq)
+      .where(sql`${t.sentOrderId} is not null`),
+    index('log_entries_venue_table_at_idx').on(t.venueId, t.tableId, t.at.desc()),
+    index('log_entries_retention_service_date_idx').on(t.retention, t.serviceDate),
+    // One reservation's own entries, newest first (D141): the night read by reservation.
+    index('log_entries_reservation_id_idx')
+      .on(t.reservationId, t.seq)
+      .where(sql`${t.reservationId} is not null`),
+    check('log_entries_kind', sql`${t.kind} ~ ${NAME_PATTERN}`),
+    check(
+      'log_entries_ids',
+      sql`(${t.sentOrderId} is null or ${t.sentOrderId} ~ '^so_[0-9A-Za-z]+$') and (${t.paymentId} is null or ${t.paymentId} ~ '^py_[0-9A-Za-z]+$') and (${t.tableId} is null or ${t.tableId} ~ '^tb_[0-9A-Za-z]+$') and (${t.sittingId} is null or ${t.sittingId} ~ '^st_[0-9A-Za-z]+$') and (${t.reservationId} is null or ${t.reservationId} ~ '^rv_[0-9A-Za-z]+$') and (${t.guestId} is null or ${t.guestId} ~ '^gu_[0-9A-Za-z]+$')`,
+    ),
+    check('log_entries_via', sql`${t.via} is null or ${t.via} in ${VIA_VALUES}`),
+    check('log_entries_details_object', sql`jsonb_typeof(${t.details}) = 'object'`),
+    check('log_entries_retention', sql`${t.retention} in ('night', 'record')`),
+    ...provenanceChecks('log_entries', t),
+  ],
+)
+
+/** The request kinds a call can hold (core's `CALL_WAITER_KINDS`, #180). */
+const WAITER_CALL_KINDS = sql.raw(
+  `array['waiter', 'bill', 'ice', 'water', 'glasses', 'clean_table', 'terminal']::text[]`,
+)
+
+/** A guest's "Call a waiter" (`wc_`): no text from the guest, no identity. */
+export const waiterCalls = restro.table(
+  'waiter_calls',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    tableId: text('table_id').notNull(),
+    sittingId: text('sitting_id').notNull(),
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    calledAt: timestamp('called_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * What the guests asked for (#180), in the venue's list order: one call per table collects the
+     * requests of everyone at it. `waiter` alone is the plain call.
+     */
+    kinds: text('kinds').array().notNull().default(sql`'{waiter}'::text[]`),
+    /** The newest request added to the call: the unanswered time counts from here. */
+    lastCalledAt: timestamp('last_called_at', { withTimezone: true }).notNull().defaultNow(),
+    state: text('state').notNull().default('open'),
+    doneAt: timestamp('done_at', { withTimezone: true }),
+    /** The actor who marked it Handled. */
+    doneBy: text('done_by'),
+    via: text('via'),
+    ...serviceProvenance(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('waiter_calls_tenant_id_id_unique').on(t.tenantId, t.id),
+    venueFk('waiter_calls', t),
+    tableFk('waiter_calls', t),
+    foreignKey({
+      name: 'waiter_calls_sitting_fk',
+      columns: [t.tenantId, t.sittingId],
+      foreignColumns: [sittings.tenantId, sittings.id],
+    }),
+    // A second tap returns the open call.
+    uniqueIndex('waiter_calls_open_table_unique')
+      .on(t.tenantId, t.tableId)
+      .where(sql`${t.state} = 'open'`),
+    index('waiter_calls_venue_id_service_date_idx').on(t.venueId, t.serviceDate),
+    check('waiter_calls_id_format', sql`${t.id} ~ '^wc_[0-9A-Za-z]+$'`),
+    check('waiter_calls_state', sql`${t.state} in ('open', 'done', 'lapsed')`),
+    check(
+      'waiter_calls_kinds',
+      sql`cardinality(${t.kinds}) >= 1 and ${t.kinds} <@ ${WAITER_CALL_KINDS}`,
+    ),
+    check('waiter_calls_done_pair', sql`(${t.state} = 'done') = (${t.doneAt} is not null)`),
+    check(
+      'waiter_calls_done_by',
+      sql`${t.doneBy} is null or ${t.doneBy} ~ ${SERVICE_ACTOR_PATTERN}`,
+    ),
+    check('waiter_calls_via', sql`${t.via} is null or ${t.via} in ${VIA_VALUES}`),
+    ...provenanceChecks('waiter_calls', t),
+  ],
+)
+
+/**
+ * An alert (`al_`; D120): something a person must see, with its repeat rules. `audience` is the
+ * venue's staff or Restro's admin team.
+ */
+export const alerts = restro.table(
+  'alerts',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    kind: text('kind').notNull(),
+    audience: text('audience').notNull().default('venue'),
+    /** What it is about: our id of a table, sent order, bar, instance or the venue. */
+    subjectId: text('subject_id').notNull(),
+    /** The permission needed to answer it (core's permission list). */
+    permission: text('permission'),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    raisedAt: timestamp('raised_at', { withTimezone: true }).notNull().defaultNow(),
+    nextRepeatAt: timestamp('next_repeat_at', { withTimezone: true }),
+    doneAt: timestamp('done_at', { withTimezone: true }),
+    doneBy: text('done_by'),
+    via: text('via'),
+    /** *Backend*: the Telegram message to edit to "Done by …". */
+    telegramMessageRef: text('telegram_message_ref'),
+    ...serviceProvenance(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('alerts_tenant_id_id_unique').on(t.tenantId, t.id),
+    venueFk('alerts', t),
+    index('alerts_open_idx').on(t.venueId, t.raisedAt).where(sql`${t.doneAt} is null`),
+    index('alerts_venue_id_service_date_idx').on(t.venueId, t.serviceDate),
+    check('alerts_id_format', sql`${t.id} ~ '^al_[0-9A-Za-z]+$'`),
+    check('alerts_kind', sql`${t.kind} ~ ${NAME_PATTERN}`),
+    check('alerts_audience', sql`${t.audience} in ('venue', 'restro')`),
+    check('alerts_subject_id', sql`${t.subjectId} ~ '^[a-z]{2}_[0-9A-Za-z]+$'`),
+    check('alerts_permission', sql`${t.permission} is null or ${t.permission} ~ ${NAME_PATTERN}`),
+    check('alerts_details_object', sql`jsonb_typeof(${t.details}) = 'object'`),
+    check('alerts_done_by', sql`${t.doneBy} is null or ${t.doneBy} ~ ${SERVICE_ACTOR_PATTERN}`),
+    check('alerts_via', sql`${t.via} is null or ${t.via} in ${VIA_VALUES}`),
+    ...provenanceChecks('alerts', t),
+  ],
+)
+
+/**
+ * A pause of ordering (`pa_`; D120, D122 §6): of a POS connection (an instance), the venue, a bar
+ * or a table. The breaker's state lives on the active row, so a worker restart neither lifts nor
+ * doubles it.
+ */
+export const pauses = restro.table(
+  'pauses',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    scope: text('scope').notNull(),
+    /** Our id of what is paused: `in_`, `vn_`, `br_` or `tb_`. */
+    targetId: text('target_id').notNull(),
+    /** Why, from core's list (unconfirmed order, guard trip, refusal scope, staff…). */
+    cause: text('cause').notNull(),
+    /** A pause Restro started has no button and lifts by itself (D120). */
+    restroStarted: boolean('restro_started').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    liftedAt: timestamp('lifted_at', { withTimezone: true }),
+    liftedBy: text('lifted_by'),
+    liftReason: text('lift_reason'),
+    /** The breaker's good probes in a row, and when it probes next. */
+    probeCount: integer('probe_count').notNull().default(0),
+    nextProbeAt: timestamp('next_probe_at', { withTimezone: true }),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    ...serviceProvenance(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('pauses_tenant_id_id_unique').on(t.tenantId, t.id),
+    venueFk('pauses', t),
+    uniqueIndex('pauses_active_unique')
+      .on(t.tenantId, t.scope, t.targetId, t.cause)
+      .where(sql`${t.liftedAt} is null`),
+    index('pauses_venue_id_service_date_idx').on(t.venueId, t.serviceDate),
+    check('pauses_id_format', sql`${t.id} ~ '^pa_[0-9A-Za-z]+$'`),
+    check('pauses_scope', sql`${t.scope} in ('connection', 'venue', 'bar', 'table')`),
+    check(
+      'pauses_target_matches_scope',
+      sql`(${t.scope} = 'connection' and ${t.targetId} ~ '^in_[0-9A-Za-z]+$') or (${t.scope} = 'venue' and ${t.targetId} ~ '^vn_[0-9A-Za-z]+$') or (${t.scope} = 'bar' and ${t.targetId} ~ '^br_[0-9A-Za-z]+$') or (${t.scope} = 'table' and ${t.targetId} ~ '^tb_[0-9A-Za-z]+$')`,
+    ),
+    check('pauses_cause', sql`${t.cause} ~ ${NAME_PATTERN}`),
+    check('pauses_lift_reason', sql`${t.liftReason} is null or ${t.liftReason} ~ ${NAME_PATTERN}`),
+    check(
+      'pauses_lifted_by',
+      sql`${t.liftedBy} is null or ${t.liftedBy} ~ ${SERVICE_ACTOR_PATTERN}`,
+    ),
+    check('pauses_probe_count', sql`${t.probeCount} >= 0`),
+    check('pauses_details_object', sql`jsonb_typeof(${t.details}) = 'object'`),
+    ...provenanceChecks('pauses', t),
+  ],
+)
+
+/**
+ * One closed service day of a venue: its totals and the count of mismatches, written at its end
+ * (D111's "then only as totals"); kept until the venue is purged.
+ */
+export const serviceDays = restro.table(
+  'service_days',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    closedAt: timestamp('closed_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Counts and minor-unit sums, checked with Zod in core. */
+    totals: jsonb('totals').$type<Record<string, number>>().notNull().default({}),
+    mismatches: integer('mismatches').notNull().default(0),
+    /**
+     * When Telegram accepted the day's end-of-night message (#179), set once by
+     * `service_day.report_sent`. Null: not sent yet, so the hourly tick tries again while the day
+     * is recent. Days closed before this column existed carry their `closed_at`.
+     */
+    reportSentAt: timestamp('report_sent_at', { withTimezone: true }),
+    ...serviceProvenance(),
+  },
+  (t) => [
+    primaryKey({ name: 'service_days_pk', columns: [t.tenantId, t.venueId, t.serviceDate] }),
+    venueFk('service_days', t),
+    check('service_days_totals_object', sql`jsonb_typeof(${t.totals}) = 'object'`),
+    check('service_days_mismatches', sql`${t.mismatches} >= 0`),
+    ...provenanceChecks('service_days', t),
+  ],
+)
+
+/**
+ * A person of the organisation who works at its venues (`sm_`; D122 §7): no account needed. The
+ * PIN is generated by Restro, stored as `HMAC(pepper, tenant ‖ pin)` for lookup and sealed beside
+ * it (D55) so the owner and Restro's admin team can see it; both are cleared on archiving.
+ */
+export const staffMembers = restro.table(
+  'staff_members',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    /** The name the Log and Tonight show. Trimmed, 1–60 characters. */
+    displayName: text('display_name').notNull(),
+    /** The person's own sign-in, when they have one. */
+    userId: text('user_id').references(() => authUser.id, { onDelete: 'restrict' }),
+    /** HMAC-SHA256 of the PIN, lower-case hex; unique in the organisation. */
+    pinHmac: text('pin_hmac'),
+    /** The PIN sealed with the worker's public key; only the worker opens it (D55). */
+    pinSealed: text('pin_sealed'),
+    pinSetAt: timestamp('pin_set_at', { withTimezone: true }),
+    /** The Telegram user linked to this person, for "Done" in the venue's group. */
+    telegramUserId: text('telegram_user_id'),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /** Set on archiving: kept 18 months while `record` entries name the person. */
+    retainUntil: timestamp('retain_until', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('staff_members_tenant_id_id_unique').on(t.tenantId, t.id),
+    uniqueIndex('staff_members_pin_hmac_unique')
+      .on(t.tenantId, t.pinHmac)
+      .where(sql`${t.pinHmac} is not null`),
+    check('staff_members_id_format', sql`${t.id} ~ '^sm_[0-9A-Za-z]+$'`),
+    check(
+      'staff_members_display_name_length',
+      sql`char_length(${t.displayName}) between 1 and 60 and ${t.displayName} = btrim(${t.displayName})`,
+    ),
+    check(
+      'staff_members_pin_hmac_format',
+      sql`${t.pinHmac} is null or ${t.pinHmac} ~ ${SHA256_PATTERN}`,
+    ),
+    check(
+      'staff_members_pin_pair',
+      sql`(${t.pinHmac} is null) = (${t.pinSealed} is null) and (${t.pinHmac} is null) = (${t.pinSetAt} is null)`,
+    ),
+    check('staff_members_archived_no_pin', sql`${t.archivedAt} is null or ${t.pinHmac} is null`),
+    check(
+      'staff_members_telegram_user_id',
+      sql`${t.telegramUserId} is null or ${t.telegramUserId} ~ '^[0-9]{1,20}$'`,
+    ),
+    ...provenanceChecks('staff_members', t),
+  ],
+)
+
+/**
+ * A role at one venue (`rl_`; #55 §5): a name and permissions from core's fixed list. The default
+ * roles (`default_kind` set) are the preselection Restro ships, which a venue may tick and untick
+ * in place (Martin 11-09, #366); only the owner's is fixed. `known_permissions` says which: null
+ * while the venue has never edited the role, so it follows core's table and a permission Restro
+ * adds reaches it; once the venue edits it, the keys the code knew at that moment, and the row's
+ * own `permissions` is what the role holds. Core's `roleGrants` is the one reader of the pair.
+ */
+export const venueRoles = restro.table(
+  'venue_roles',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    name: text('name').notNull(),
+    /** Permission keys, checked against core's list. */
+    permissions: jsonb('permissions').$type<string[]>().notNull().default([]),
+    /**
+     * On a default role the venue has edited: the permission keys the code knew then, so a key
+     * added later is seen as new and arrives unticked. Null on every other role.
+     */
+    knownPermissions: jsonb('known_permissions').$type<string[]>(),
+    defaultKind: text('default_kind'),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('venue_roles_tenant_id_id_unique').on(t.tenantId, t.id),
+    venueFk('venue_roles', t),
+    uniqueIndex('venue_roles_default_unique')
+      .on(t.venueId, t.defaultKind)
+      .where(sql`${t.defaultKind} is not null`),
+    check('venue_roles_id_format', sql`${t.id} ~ '^rl_[0-9A-Za-z]+$'`),
+    check(
+      'venue_roles_name_length',
+      sql`char_length(${t.name}) between 1 and 40 and ${t.name} = btrim(${t.name})`,
+    ),
+    check('venue_roles_permissions_array', sql`jsonb_typeof(${t.permissions}) = 'array'`),
+    check(
+      'venue_roles_known_permissions_array',
+      sql`${t.knownPermissions} is null or jsonb_typeof(${t.knownPermissions}) = 'array'`,
+    ),
+    // Only a default role below the owner's is edited, so only such a row carries the marker.
+    check(
+      'venue_roles_known_permissions_default_only',
+      sql`${t.knownPermissions} is null or ${t.defaultKind} in ('staff', 'manager')`,
+    ),
+    check(
+      'venue_roles_default_kind',
+      sql`${t.defaultKind} is null or ${t.defaultKind} in ('staff', 'manager', 'owner')`,
+    ),
+    ...provenanceChecks('venue_roles', t),
+  ],
+)
+
+/** One role per staff member per venue. Ending it is an update (`ended_at`), never a delete. */
+export const staffAssignments = restro.table(
+  'staff_assignments',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    staffMemberId: text('staff_member_id').notNull(),
+    venueId: text('venue_id').notNull(),
+    roleId: text('role_id').notNull(),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'staff_assignments_pk',
+      columns: [t.tenantId, t.staffMemberId, t.venueId],
+    }),
+    venueFk('staff_assignments', t),
+    foreignKey({
+      name: 'staff_assignments_staff_member_fk',
+      columns: [t.tenantId, t.staffMemberId],
+      foreignColumns: [staffMembers.tenantId, staffMembers.id],
+    }),
+    foreignKey({
+      name: 'staff_assignments_role_fk',
+      columns: [t.tenantId, t.roleId],
+      foreignColumns: [venueRoles.tenantId, venueRoles.id],
+    }),
+    index('staff_assignments_venue_id_idx').on(t.venueId),
+    ...provenanceChecks('staff_assignments', t),
+  ],
+)
+
+/**
+ * A signed-in browser an owner marked as a shared device of one venue (`dv_`; D122 §7): there
+ * every staff write asks a PIN, and the PIN's person's role decides.
+ */
+export const sharedDevices = restro.table(
+  'shared_devices',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    name: text('name').notNull(),
+    /** The Better Auth session it belongs to (sessions are deleted on sign-out, so no key). */
+    sessionId: text('session_id').notNull(),
+    /**
+     * The person whose own short session is on the device, and when they last acted (D141, #324):
+     * typing the PIN starts that session instead of authorising one action, every write of theirs
+     * pushes `personAt` forward, and the device forgets them once it has been idle
+     * (`SHARED_DEVICE_IDLE_MINUTES`), so a run of record work is typed once and nobody is cut off
+     * mid-task. The two columns move together: a device with nobody on it holds two nulls.
+     */
+    personStaffMemberId: text('person_staff_member_id'),
+    personAt: timestamp('person_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('shared_devices_tenant_id_id_unique').on(t.tenantId, t.id),
+    venueFk('shared_devices', t),
+    uniqueIndex('shared_devices_session_unique')
+      .on(t.tenantId, t.sessionId)
+      .where(sql`${t.revokedAt} is null`),
+    foreignKey({
+      name: 'shared_devices_person_fk',
+      columns: [t.tenantId, t.personStaffMemberId],
+      foreignColumns: [staffMembers.tenantId, staffMembers.id],
+    }),
+    check('shared_devices_id_format', sql`${t.id} ~ '^dv_[0-9A-Za-z]+$'`),
+    check(
+      'shared_devices_name_length',
+      sql`char_length(${t.name}) between 1 and 40 and ${t.name} = btrim(${t.name})`,
+    ),
+    check(
+      'shared_devices_person_pair',
+      sql`(${t.personStaffMemberId} is null) = (${t.personAt} is null)`,
+    ),
+    ...provenanceChecks('shared_devices', t),
+  ],
+)
+
+/**
+ * A staff account's installed device that takes Web Push alerts (D120, D122 §7). Staff devices
+ * only: a guest's push identifier is never stored. Ended by an update (`revoked_at`).
+ */
+export const pushSubscriptions = restro.table(
+  'push_subscriptions',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'restrict' }),
+    /** SHA-256 of the endpoint, the row's key. */
+    endpointHash: text('endpoint_hash').notNull(),
+    /** The push service's endpoint URL. */
+    endpoint: text('endpoint').notNull(),
+    /** The browser's public key and auth secret for the payload encryption (RFC 8291). */
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'push_subscriptions_pk', columns: [t.tenantId, t.endpointHash] }),
+    index('push_subscriptions_user_id_idx').on(t.tenantId, t.userId),
+    check('push_subscriptions_endpoint_hash', sql`${t.endpointHash} ~ ${SHA256_PATTERN}`),
+    check(
+      'push_subscriptions_endpoint',
+      sql`${t.endpoint} ~ '^https://' and length(${t.endpoint}) <= 1024`,
+    ),
+    check(
+      'push_subscriptions_keys',
+      sql`${t.p256dh} ~ '^[A-Za-z0-9_-]{40,200}$' and ${t.auth} ~ '^[A-Za-z0-9_-]{16,64}$'`,
+    ),
+    ...provenanceChecks('push_subscriptions', t),
+  ],
+)
+
+/**
+ * Restro's admin team (D122 §7; design §8): the accounts that may act across venues as operators
+ * (add roles, change rights, see PINs, lift any pause). Not tenant data. The app reads it; granting
+ * or revoking is an operator task outside the app, never a write from app code.
+ */
+export const operators = restro.table(
+  'operators',
+  {
+    userId: text('user_id')
+      .primaryKey()
+      .references(() => authUser.id, { onDelete: 'restrict' }),
+    grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Who granted it, free text kept short (an operator's name or a ticket). */
+    grantedBy: text('granted_by').notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [check('operators_granted_by_length', sql`char_length(${t.grantedBy}) between 1 and 120`)],
+)
+
+// --- Service data for paying (part 2, D127 §Records; design
+// `docs/deliverables/2026-10-25-guest-payment-design.md` §7; ticket #104). Written only by
+// `applyService`, like the ordering tables above, with the same provenance columns. A payment's
+// amounts are integer minor units (rule 8). Never stored: card digits, a guest's phone, device or
+// IP, or the payment handle itself (only its hash). Columns marked *backend* hold POS or provider
+// references that never reach a guest (rule 3).
+
+/** The states of a payment (D127 §The route; design §5): the route's steps and its final states. */
+export const PAYMENT_STATES = [
+  'requested',
+  'priced',
+  'awaiting_guest',
+  'held',
+  'queued',
+  'isolated',
+  'entered',
+  'checked',
+  'closed',
+  'cancelling',
+  'captured',
+  'released',
+  'unconfirmed',
+  'stranded',
+  'capture_failed',
+] as const
+
+/**
+ * The states in which a payment may still hold the guest's email for the venue's electronic receipt
+ * (D127, #186): up to and including `checked`, the state the close is attempted from. In any other
+ * state the email is erased (trigger `payments_erase_receipt_email`, migration 0041).
+ */
+export const PAYMENT_EMAIL_STATES = [
+  'requested',
+  'priced',
+  'awaiting_guest',
+  'held',
+  'queued',
+  'isolated',
+  'entered',
+  'checked',
+] as const
+
+/** The final states: a payment in one is settled (design §5.1). */
+export const PAYMENT_FINAL_STATES = [
+  'captured',
+  'released',
+  'unconfirmed',
+  'stranded',
+  'capture_failed',
+] as const
+
+/** The outcomes of a payment step (design §5.1). */
+export const PAYMENT_STEP_OUTCOMES = ['attempting', 'done', 'refused', 'unknown'] as const
+
+/** The states of a venue's payment account. */
+export const PAYMENT_ACCOUNT_STATES = [
+  'connecting',
+  'connected',
+  'lost_access',
+  'disconnected',
+] as const
+
+/**
+ * Where a dispute on a payment stands, in the platform's words (#108): `open` while the guest's
+ * bank asks or reviews, `won` once it closed with the venue keeping the money, `lost` once the
+ * money went back to the guest's bank. Null on `payments.dispute` when there is none.
+ */
+export const PAYMENT_DISPUTE_STATES = ['open', 'won', 'lost'] as const
+
+/**
+ * What a provider's notice is about, in the platform's words (#108): the provider's web part maps
+ * its own event types to these, so no provider event name reaches the platform. `account` is a
+ * change to a venue's account (re-read the connection), `access_lost` is the venue taking Restro's
+ * access away (#109). `other` has no
+ * handler: the worker marks it handled and does nothing.
+ */
+export const PROVIDER_NOTICE_KINDS = [
+  'payment',
+  'refund',
+  'dispute',
+  'account',
+  'access_lost',
+  'other',
+] as const
+
+/** `'a', 'b'` for a SQL `in (...)` list of fixed words. */
+const sqlWords = (words: readonly string[]) =>
+  sql.raw(`(${words.map((word) => `'${word}'`).join(', ')})`)
+
+/** A provider kind, as its package names itself (`sim`, and the first real provider's). */
+const PROVIDER_KIND_PATTERN = sql.raw(`'^[a-z][a-z0-9-]{0,31}$'`)
+/** A reference the provider gave (a payment, an account, an event): opaque and short. */
+const PROVIDER_REF_PATTERN = sql.raw(`'^[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}$'`)
+/**
+ * A JSON path that finds a line of a payment step's `lines` that is not a POS reference (1 to 200
+ * characters), a decimal quantity and a whole amount (`PaymentStepLinesSchema`).
+ */
+const PAYMENT_STEP_LINE_INVALID = sql.raw(
+  `'$[*] ? (@.type() != "object" || !exists(@.pos) || !exists(@.quantity) || !exists(@.amountMinor)` +
+    ` || @.pos.type() != "string" || !(@.pos like_regex "^.{1,200}$")` +
+    ` || @.quantity.type() != "string"` +
+    ` || !(@.quantity like_regex "^-?(0|[1-9][0-9]{0,14})([.][0-9]{1,6})?$")` +
+    ` || @.amountMinor.type() != "number" || @.amountMinor.floor() != @.amountMinor)'`,
+)
+
+/**
+ * A payment (`py_`) from a phone: lines of a table's bill paid by card (`on_bill`), or a pay-first
+ * round paid before it reaches the POS (`pay_first`). The worker drives it through the route as
+ * compare-and-sets on `state`; every POS and provider write is a `payment_steps` row first.
+ */
+export const payments = restro.table(
+  'payments',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    /** The real table whose bill is paid. */
+    tableId: text('table_id').notNull(),
+    sittingId: text('sitting_id').notNull(),
+    /** The table's bar at the start, whose queue it joins; null = the venue's queue (D124 §1). */
+    barId: text('bar_id'),
+    /** A pay-first payment's sent order. */
+    sentOrderId: text('sent_order_id'),
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    kind: text('kind').notNull(),
+    state: text('state').notNull(),
+    /** Why it was released or refused, a code from core's list; null otherwise. */
+    reason: text('reason'),
+    /** The sha-256 of the paying phone's payment handle; the handle itself is never stored. */
+    handleHash: text('handle_hash').notNull(),
+    /** The phone's action id (idempotency); cleared at the end of the service day. */
+    actionId: text('action_id'),
+    /** The total held: the POS's own line amounts plus the tip; null until priced. */
+    amountMinor: bigint('amount_minor', { mode: 'number' }),
+    /** The tip inside the amount; 0 for none (D127). */
+    tipMinor: bigint('tip_minor', { mode: 'number' }).notNull().default(0),
+    /** What was captured, once captured: never above the amount held. */
+    capturedMinor: bigint('captured_minor', { mode: 'number' }),
+    /**
+     * What the venue refunded in its own provider dashboard, as last read back from the provider
+     * (#108): an absolute amount, never added up from notices; never above `captured_minor`.
+     */
+    refundedMinor: bigint('refunded_minor', { mode: 'number' }).notNull().default(0),
+    /** A dispute on the payment, as last read back (`PAYMENT_DISPUTE_STATES`); null for none. */
+    dispute: text('dispute'),
+    /**
+     * When the latest dispute was first read as open, when it was read closed (`won` or `lost`)
+     * and the provider's answer-by date (#222; D122 §8). Set by `payment.observe` only.
+     */
+    disputeOpenedAt: timestamp('dispute_opened_at', { withTimezone: true }),
+    disputeClosedAt: timestamp('dispute_closed_at', { withTimezone: true }),
+    disputeDueAt: timestamp('dispute_due_at', { withTimezone: true }),
+    /** ISO 4217, upper case. */
+    currency: text('currency').notNull(),
+    /** The phone must confirm by then (design §6: 2 minutes, extended while the bank asks). */
+    confirmBy: timestamp('confirm_by', { withTimezone: true }),
+    /** The provider's session ends then (design §6: 10 minutes). */
+    sessionEndsAt: timestamp('session_ends_at', { withTimezone: true }),
+    /** The wait for a free payment table ends then (design §6: 60 seconds from `held`). */
+    queueEndsAt: timestamp('queue_ends_at', { withTimezone: true }),
+    /** The payment table it owns, from `queued` until final and the table reads empty. */
+    paymentTableId: text('payment_table_id'),
+    providerKind: text('provider_kind').notNull(),
+    /** *Backend*: the provider's id of the payment. */
+    providerPaymentRef: text('provider_payment_ref'),
+    /**
+     * *Backend*: what the paying phone's card form needs (the provider's form values, e.g. a client
+     * secret), only while `awaiting_guest`: set in the step that enters it, cleared in the one that
+     * leaves it, served only to the phone holding the payment's handle (#110).
+     */
+    formValues: jsonb('form_values').$type<Record<string, unknown>>(),
+    /** When the provider drops the hold uncaptured, as the provider reports it. */
+    captureBefore: timestamp('capture_before', { withTimezone: true }),
+    /** The fiscal receipt's number and the fiscal memory's, once the close or a read shows them. */
+    receiptNumber: text('receipt_number'),
+    fiscalMemoryNumber: text('fiscal_memory_number'),
+    /** Dispute evidence read from the provider at capture: the bank's check and its code. */
+    threeDsResult: text('three_ds_result'),
+    authorisationCode: text('authorisation_code'),
+    /**
+     * When the venue's paper receipt became one to bring (#200): set at capture, whenever no
+     * electronic receipt was sent (the receipt number is shown when the POS gave one). Null for any
+     * other payment.
+     */
+    receiptToBringAt: timestamp('receipt_to_bring_at', { withTimezone: true }),
+    /** When staff marked the paper receipt Brought, and the account that did (the shared device's own, or a person). */
+    receiptBroughtAt: timestamp('receipt_brought_at', { withTimezone: true }),
+    receiptBroughtBy: text('receipt_brought_by'),
+    /**
+     * *Backend*: the guest's email for the venue's electronic receipt (D127, #186), kept only until
+     * the close: a trigger erases it in the update that leaves `PAYMENT_EMAIL_STATES` (the close,
+     * a cancel, any final state), the check refuses it anywhere else, and a job erases it once the
+     * payment is older than any payment can take. Never in a log, an event, a Log entry, a step or
+     * a provider's metadata; never read by the guest page.
+     */
+    receiptEmail: text('receipt_email'),
+    /** When it reached a final state. */
+    settledAt: timestamp('settled_at', { withTimezone: true }),
+    /** Set when it is final: 18 months on (D122 §8, D127 4.2); the purge only compares it. */
+    retainUntil: timestamp('retain_until', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('payments_tenant_id_id_unique').on(t.tenantId, t.id),
+    unique('payments_tenant_id_action_id_unique').on(t.tenantId, t.actionId),
+    unique('payments_handle_hash_unique').on(t.handleHash),
+    venueFk('payments', t),
+    tableFk('payments', t),
+    foreignKey({
+      name: 'payments_sitting_fk',
+      columns: [t.tenantId, t.sittingId],
+      foreignColumns: [sittings.tenantId, sittings.id],
+    }),
+    foreignKey({
+      name: 'payments_bar_fk',
+      columns: [t.tenantId, t.barId],
+      foreignColumns: [bars.tenantId, bars.id],
+    }),
+    foreignKey({
+      name: 'payments_sent_order_fk',
+      columns: [t.tenantId, t.sentOrderId],
+      foreignColumns: [sentOrders.tenantId, sentOrders.id],
+    }),
+    foreignKey({
+      name: 'payments_payment_table_fk',
+      columns: [t.tenantId, t.paymentTableId],
+      foreignColumns: [venueTables.tenantId, venueTables.id],
+    }),
+    // A provider's payment belongs to one payment of ours.
+    uniqueIndex('payments_provider_payment_unique')
+      .on(t.providerKind, t.providerPaymentRef)
+      .where(sql`${t.providerPaymentRef} is not null`),
+    // The recovery job, and "Being paid" on the table's state: payments that are not final.
+    index('payments_open_idx').on(t.venueId, t.state).where(sql`${t.settledAt} is null`),
+    index('payments_table_id_created_at_idx').on(t.tableId, t.createdAt.desc()),
+    index('payments_retain_until_idx').on(t.retainUntil),
+    // "Bring the receipt" on Tonight and the end of night: the receipts not marked Brought (#200).
+    index('payments_receipt_open_idx')
+      .on(t.venueId, t.serviceDate)
+      .where(sql`${t.receiptToBringAt} is not null and ${t.receiptBroughtAt} is null`),
+    check('payments_id_format', sql`${t.id} ~ '^py_[0-9A-Za-z]+$'`),
+    check('payments_kind', sql`${t.kind} in ('on_bill', 'pay_first')`),
+    check('payments_state', sql`${t.state} in ${sqlWords(PAYMENT_STATES)}`),
+    check(
+      'payments_pay_first_sent_order',
+      sql`(${t.kind} = 'pay_first') = (${t.sentOrderId} is not null)`,
+    ),
+    check('payments_reason', sql`${t.reason} is null or ${t.reason} ~ ${NAME_PATTERN}`),
+    check('payments_handle_hash', sql`${t.handleHash} ~ '^[0-9a-f]{64}$'`),
+    check('payments_action_id', sql`${t.actionId} is null or ${t.actionId} ~ ${NAME_PATTERN}`),
+    check(
+      'payments_amounts',
+      sql`${t.tipMinor} >= 0 and (${t.amountMinor} is null or ${t.amountMinor} >= ${t.tipMinor})`,
+    ),
+    check(
+      'payments_captured_minor',
+      sql`${t.capturedMinor} is null or (${t.amountMinor} is not null and ${t.capturedMinor} between 0 and ${t.amountMinor})`,
+    ),
+    check(
+      'payments_refunded_minor',
+      sql`${t.refundedMinor} >= 0 and ${t.refundedMinor} <= coalesce(${t.capturedMinor}, 0)`,
+    ),
+    check(
+      'payments_dispute',
+      sql`${t.dispute} is null or ${t.dispute} in ${sqlWords(PAYMENT_DISPUTE_STATES)}`,
+    ),
+    check(
+      'payments_dispute_times',
+      sql`(${t.disputeClosedAt} is null or ${t.disputeOpenedAt} is not null) and (${t.disputeDueAt} is null or ${t.disputeOpenedAt} is not null)`,
+    ),
+    check('payments_currency', sql`${t.currency} ~ '^[A-Z]{3}$'`),
+    check('payments_provider_kind', sql`${t.providerKind} ~ ${PROVIDER_KIND_PATTERN}`),
+    check(
+      'payments_provider_payment_ref',
+      sql`${t.providerPaymentRef} is null or ${t.providerPaymentRef} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
+    check(
+      'payments_fiscal_numbers',
+      sql`(${t.receiptNumber} is null or char_length(${t.receiptNumber}) between 1 and 64) and (${t.fiscalMemoryNumber} is null or char_length(${t.fiscalMemoryNumber}) between 1 and 64)`,
+    ),
+    check(
+      'payments_evidence',
+      sql`(${t.threeDsResult} is null or ${t.threeDsResult} ~ ${NAME_PATTERN}) and (${t.authorisationCode} is null or char_length(${t.authorisationCode}) between 1 and 64)`,
+    ),
+    check(
+      'payments_receipt_brought',
+      sql`(${t.receiptBroughtAt} is null) = (${t.receiptBroughtBy} is null) and (${t.receiptBroughtAt} is null or ${t.receiptToBringAt} is not null) and (${t.receiptBroughtBy} is null or ${t.receiptBroughtBy} ~ ${SERVICE_ACTOR_PATTERN}) and (${t.receiptToBringAt} is null or ${t.state} = 'captured')`,
+    ),
+    check(
+      'payments_receipt_email',
+      sql`${t.receiptEmail} is null or (char_length(${t.receiptEmail}) between 3 and 254 and ${t.state} in ${sqlWords(PAYMENT_EMAIL_STATES)})`,
+    ),
+    check(
+      'payments_form_values',
+      sql`${t.formValues} is null or (${t.state} = 'awaiting_guest' and jsonb_typeof(${t.formValues}) = 'object')`,
+    ),
+    check(
+      'payments_settled',
+      sql`(${t.settledAt} is not null) = (${t.state} in ${sqlWords(PAYMENT_FINAL_STATES)})`,
+    ),
+    ...provenanceChecks('payments', t),
+  ],
+)
+
+/**
+ * One refund the venue made in its provider's dashboard, as Restro read it back (#222, #261; D122
+ * §8): one row per provider refund, matched by the provider's id (`provider_refund_ref`), with its
+ * amount, when it was seen and on which service day. The storno is the venue's own work at the
+ * till: "Storno done" records who and when (`storno_at`, `storno_by`). A refund the provider says
+ * did not go through marks its row `failed_at`. Written only by `payment.observe` and the storno
+ * commands; goes with its payment when the payment is purged.
+ *
+ * A row from before migration 0044 has no id: one row per rise of the old refund total. The first
+ * reading by id gives it the id of the refund of its amount, if there is one (`reconcileRefunds`).
+ */
+export const paymentRefunds = restro.table(
+  'payment_refunds',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    paymentId: text('payment_id').notNull(),
+    /** *Backend*: the provider's id of this refund; null on a row from before migration 0044. */
+    providerRefundRef: text('provider_refund_ref'),
+    /** The refund's amount in minor units (rule 8); on an older row, the rise it was read as. */
+    amountMinor: bigint('amount_minor', { mode: 'number' }).notNull(),
+    /** When Restro first read it. */
+    seenAt: timestamp('seen_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The venue's service day it was seen on. */
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    /** Set when the provider says the refund did not go through. */
+    failedAt: timestamp('failed_at', { withTimezone: true }),
+    /** When staff said the storno was made at the till, and the account that said so. */
+    stornoAt: timestamp('storno_at', { withTimezone: true }),
+    stornoBy: text('storno_by'),
+    /**
+     * How the refund came to be (the 11-18 refund decision, 148): `provider`, the venue made it in
+     * its own dashboard and Restro read it back; `line`, staff marked a paid line "Not served" and
+     * Restro sent it. A `line` row is written first, with the staff's actor, and is the worker's job:
+     * it has no provider id until `refundLine` answers.
+     */
+    origin: text('origin').notNull().default('provider'),
+    /** The payment line (`payment_lines.position`) a `line` refund is for; null otherwise. */
+    linePosition: integer('line_position'),
+    /**
+     * When Restro read a `line` refund back in the provider's list and it had not failed: the guest's
+     * bill says "refunded" only from then (D72). Null for a `provider` row, which is read by definition.
+     */
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('payment_refunds_tenant_id_id_unique').on(t.tenantId, t.id),
+    // A line is refunded once: a second row for it only after the first did not go through.
+    uniqueIndex('payment_refunds_line_unique')
+      .on(t.paymentId, t.linePosition)
+      .where(sql`${t.origin} = 'line' and ${t.failedAt} is null`),
+    check('payment_refunds_origin', sql`${t.origin} in ('provider', 'line')`),
+    check(
+      'payment_refunds_line',
+      sql`(${t.origin} = 'line') = (${t.linePosition} is not null) and (${t.linePosition} is null or ${t.linePosition} >= 1) and (${t.confirmedAt} is null or ${t.origin} = 'line')`,
+    ),
+    venueFk('payment_refunds', t),
+    foreignKey({
+      name: 'payment_refunds_payment_fk',
+      columns: [t.tenantId, t.paymentId],
+      foreignColumns: [payments.tenantId, payments.id],
+    }),
+    index('payment_refunds_payment_idx').on(t.paymentId, t.seenAt),
+    // One row per provider refund: a reading repeated, or two at once, can't make a second.
+    uniqueIndex('payment_refunds_provider_ref_unique')
+      .on(t.paymentId, t.providerRefundRef)
+      .where(sql`${t.providerRefundRef} is not null`),
+    // Tonight's storno to-dos: the refunds still waiting for a storno, whatever their day.
+    index('payment_refunds_open_idx')
+      .on(t.venueId, t.seenAt)
+      .where(sql`${t.stornoAt} is null and ${t.failedAt} is null`),
+    index('payment_refunds_day_idx').on(t.venueId, t.serviceDate),
+    check('payment_refunds_id_format', sql`${t.id} ~ '^rf_[0-9A-Za-z]+$'`),
+    check('payment_refunds_amount', sql`${t.amountMinor} > 0`),
+    check(
+      'payment_refunds_provider_ref',
+      sql`${t.providerRefundRef} is null or ${t.providerRefundRef} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
+    check(
+      'payment_refunds_storno',
+      sql`(${t.stornoAt} is null) = (${t.stornoBy} is null) and (${t.stornoBy} is null or ${t.stornoBy} ~ ${SERVICE_ACTOR_PATTERN})`,
+    ),
+    ...provenanceChecks('payment_refunds', t),
+  ],
+)
+
+/**
+ * One picked line of a payment: what the guest saw and confirmed, and the POS line it is
+ * (backend only). Written when the payment is priced; the last check compares the POS against it.
+ */
+export const paymentLines = restro.table(
+  'payment_lines',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    paymentId: text('payment_id').notNull(),
+    /**
+     * The table whose bill the line is on (D160 §2): the payment's own table, or another table of
+     * its linked group when one payment covers several. The worker isolates each table's lines on
+     * its own, and an undo puts a line back here.
+     */
+    tableId: text('table_id').notNull(),
+    /** The line's place in the payment, from 1. */
+    position: integer('position').notNull(),
+    /** *Backend*: the POS line reference (rule 3); null for a pay-first line until entered. */
+    posLineRef: text('pos_line_ref'),
+    /** The quantity picked, an exact decimal (rule 8: never a float). */
+    quantity: numeric('quantity', { precision: 21, scale: 6 }).notNull(),
+    /** The POS's own amount for that quantity, never price × quantity (D127 3.2). */
+    posAmountMinor: bigint('pos_amount_minor', { mode: 'number' }).notNull(),
+    /** The name the guest saw (one language, as picked at pricing): the record of what was shown. */
+    displayName: text('display_name').notNull(),
+    /**
+     * The line's name in every language of the menu (a `LocalizedText`), so each phone shows it in
+     * its guest's language (#197); null is "Other item", worded by the shell (D75).
+     */
+    name: jsonb('name').$type<Record<string, string> | null>(),
+    /**
+     * What the POS closed this line for (#197): set by the last check from the lines it matched on
+     * the payment table, at the POS's own amount, so the lines paid plus the tip are what was
+     * captured. Null until checked, and for a line the POS dropped (a voided one): such a line was
+     * not paid and is never shown as paid.
+     */
+    closedMinor: bigint('closed_minor', { mode: 'number' }),
+    /** The quantity the POS closed (a pay-first round's line may close for fewer); set with `closed_minor`. */
+    closedQuantity: numeric('closed_quantity', { precision: 21, scale: 6 }),
+    /**
+     * True while its payment claims it; the database clears it when the payment ends (`captured`,
+     * `released`, `stranded` or `capture_failed`). An `unconfirmed` payment is settled but has not
+     * ended: a manager's answer can still capture its card, so its lines stay claimed (0043). A POS
+     * line is in one open payment at a time (D127 5.2): the unique index below refuses a second.
+     */
+    open: boolean('open').notNull().default(true),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'payment_lines_pk', columns: [t.tenantId, t.paymentId, t.position] }),
+    venueFk('payment_lines', t),
+    tableFk('payment_lines', t),
+    foreignKey({
+      name: 'payment_lines_payment_fk',
+      columns: [t.tenantId, t.paymentId],
+      foreignColumns: [payments.tenantId, payments.id],
+    }),
+    // "Being paid" per line: the POS lines in a venue's payments.
+    index('payment_lines_pos_line_ref_idx')
+      .on(t.venueId, t.posLineRef)
+      .where(sql`${t.posLineRef} is not null`),
+    // "Being paid" and the open payments per table, for a payment that covers several tables.
+    index('payment_lines_open_table_idx').on(t.tenantId, t.tableId).where(sql`${t.open}`),
+    uniqueIndex('payment_lines_open_line_unique')
+      .on(t.tenantId, t.venueId, t.posLineRef)
+      .where(sql`${t.open} and ${t.posLineRef} is not null`),
+    check('payment_lines_position', sql`${t.position} >= 1`),
+    check('payment_lines_quantity', sql`${t.quantity} > 0`),
+    check(
+      'payment_lines_closed',
+      sql`(${t.closedMinor} is null) = (${t.closedQuantity} is null) and (${t.closedQuantity} is null or ${t.closedQuantity} > 0)`,
+    ),
+    check(
+      'payment_lines_name',
+      sql`${t.name} is null or (jsonb_typeof(${t.name}) = 'object' and ${t.name} <> '{}'::jsonb)`,
+    ),
+    check(
+      'payment_lines_pos_line_ref',
+      sql`${t.posLineRef} is null or char_length(${t.posLineRef}) between 1 and 255`,
+    ),
+    check('payment_lines_display_name', sql`char_length(${t.displayName}) between 1 and 200`),
+    ...provenanceChecks('payment_lines', t),
+  ],
+)
+
+/**
+ * One POS or provider write of a payment, append-only (D127 3.9): recorded `attempting` before the
+ * call, then a new row with the outcome. The recovery job resumes from the last one.
+ */
+export const paymentSteps = restro.table(
+  'payment_steps',
+  {
+    seq: bigint('seq', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    paymentId: text('payment_id').notNull(),
+    /** The call, e.g. `createHold`, `isolateLines`, `payAndClose`, `capture`. */
+    step: text('step').notNull(),
+    outcome: text('outcome').notNull(),
+    /**
+     * The connector's or provider's answer in short: a code, never a raw response. *Backend*: on a
+     * `payAndClose` `attempting` row, the POS reference of the bill it closes (rule 3).
+     */
+    answer: text('answer'),
+    /** The idempotency key the call carried. */
+    idempotencyKey: text('idempotency_key'),
+    /**
+     * *Backend*: on an `undoIsolate` `attempting` row only, the lines read on the payment table
+     * before the move back (POS references, quantities, amounts; rule 3), so a later run can prove
+     * them back on the real table (#153). Null on every other row.
+     */
+    lines: jsonb('lines'),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+    ...serviceProvenance(),
+  },
+  (t) => [
+    venueFk('payment_steps', t),
+    foreignKey({
+      name: 'payment_steps_payment_fk',
+      columns: [t.tenantId, t.paymentId],
+      foreignColumns: [payments.tenantId, payments.id],
+    }),
+    index('payment_steps_payment_id_seq_idx').on(t.paymentId, t.seq.desc()),
+    check('payment_steps_step', sql`${t.step} ~ ${NAME_PATTERN}`),
+    check('payment_steps_outcome', sql`${t.outcome} in ${sqlWords(PAYMENT_STEP_OUTCOMES)}`),
+    check(
+      'payment_steps_answer',
+      sql`${t.answer} is null or char_length(${t.answer}) between 1 and 500`,
+    ),
+    check(
+      'payment_steps_idempotency_key',
+      sql`${t.idempotencyKey} is null or ${t.idempotencyKey} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
+    // `PaymentStepLinesSchema` as far as SQL goes: on a move back's `attempting` row only, 1 to
+    // 500 lines, each a POS reference, a decimal quantity and a whole amount.
+    check(
+      'payment_steps_lines',
+      sql`${t.lines} is null or (${t.step} = 'undoIsolate' and ${t.outcome} = 'attempting'
+        and case when jsonb_typeof(${t.lines}) = 'array'
+          then jsonb_array_length(${t.lines}) between 1 and 500
+            and not jsonb_path_exists(${t.lines}, ${PAYMENT_STEP_LINE_INVALID})
+          else false end)`,
+    ),
+    ...provenanceChecks('payment_steps', t),
+  ],
+)
+
+/**
+ * A venue's payment account at its provider (D125 §The venue's side; #109 writes it): which
+ * provider, the account (backend only), and the connection as last read. The provider-side checks
+ * of D125 2.3 are stored as read; the till-side ones (the card payment type, marked payment
+ * tables) come from the venue's own data when the settings show what's missing.
+ */
+export const paymentAccounts = restro.table(
+  'payment_accounts',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    providerKind: text('provider_kind').notNull(),
+    /** *Backend*: the provider's id of the venue's account; null until the provider made one. */
+    accountRef: text('account_ref'),
+    /** The account's name as the provider shows it, for "Connected" in the settings. */
+    accountName: text('account_name'),
+    state: text('state').notNull(),
+    /** The provider-side checks as last read (D125 2.3); core checks the keys with Zod. */
+    checks: jsonb('checks').$type<Record<string, unknown>>().notNull().default({}),
+    checkedAt: timestamp('checked_at', { withTimezone: true }),
+    connectedAt: timestamp('connected_at', { withTimezone: true }),
+    /**
+     * Since when the provider's breaker pauses paying in the app at the venue (#112, D127 3.8), or
+     * null while paying flows. Ordering never stops for it.
+     */
+    payingPausedAt: timestamp('paying_paused_at', { withTimezone: true }),
+    /**
+     * Since when Restro's own refunds ("Not served", `refundLine`) are stopped at the venue, or null
+     * while they flow: a refund made with Restro's key that has no row of ours stopped them (a leaked
+     * key or a bug, never a busy night), and an owner switches them back on (the 11-18 refund
+     * decision, 148). A refund staff already confirmed is never held back by it.
+     */
+    refundRouteOffAt: timestamp('refund_route_off_at', { withTimezone: true }),
+    /** Why it was stopped: `stray` (a refund made with Restro's key that has no row of ours). */
+    refundRouteOffReason: text('refund_route_off_reason'),
+    /** The breaker's state (core's `BreakerStateSchema`), so a restarted worker restores it. */
+    breaker: jsonb('breaker').$type<Record<string, unknown>>(),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'payment_accounts_pk', columns: [t.tenantId, t.venueId] }),
+    check(
+      'payment_accounts_breaker',
+      sql`${t.breaker} is null or jsonb_typeof(${t.breaker}) = 'object'`,
+    ),
+    venueFk('payment_accounts', t),
+    // A notice names the account and the worker finds its venue by it: an account is one venue's.
+    uniqueIndex('payment_accounts_account_unique')
+      .on(t.providerKind, t.accountRef)
+      .where(sql`${t.accountRef} is not null`),
+    check('payment_accounts_provider_kind', sql`${t.providerKind} ~ ${PROVIDER_KIND_PATTERN}`),
+    check(
+      'payment_accounts_account_ref',
+      sql`${t.accountRef} is null or ${t.accountRef} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
+    check(
+      'payment_accounts_account_name',
+      sql`${t.accountName} is null or char_length(${t.accountName}) between 1 and 200`,
+    ),
+    check('payment_accounts_state', sql`${t.state} in ${sqlWords(PAYMENT_ACCOUNT_STATES)}`),
+    check(
+      'payment_accounts_connected_has_account',
+      sql`${t.state} not in ('connected', 'lost_access') or ${t.accountRef} is not null`,
+    ),
+    check('payment_accounts_checks_object', sql`jsonb_typeof(${t.checks}) = 'object'`),
+    check(
+      'payment_accounts_refund_route',
+      sql`(${t.refundRouteOffAt} is null) = (${t.refundRouteOffReason} is null) and (${t.refundRouteOffReason} is null or ${t.refundRouteOffReason} in ('stray'))`,
+    ),
+    ...provenanceChecks('payment_accounts', t),
+  ],
+)
+
+/**
+ * The provider's notices (D127 §Where things run; design §8): platform-level, with no venue and
+ * no tenant. The notice route stores each event once by its id and queues a worker job; the
+ * worker reads the object back from the provider and maps the account to its venue.
+ */
+export const providerNotices = restro.table(
+  'provider_notices',
+  {
+    seq: bigint('seq', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    providerKind: text('provider_kind').notNull(),
+    /** The provider's event id. */
+    eventId: text('event_id').notNull(),
+    /** The provider's live/test flag; the route refuses one that doesn't match this environment. */
+    live: boolean('live').notNull(),
+    /** *Backend*: the account the event is about, or null for a platform event. */
+    accountRef: text('account_ref'),
+    /** The event's type as the provider names it. */
+    type: text('type').notNull(),
+    /** What it is about in the platform's words (`PROVIDER_NOTICE_KINDS`), which picks the handler. */
+    kind: text('kind').notNull(),
+    /** *Backend*: the object the event is about (a payment, a refund, a dispute), read back. */
+    objectRef: text('object_ref'),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+    ...serviceProvenance(),
+  },
+  (t) => [
+    unique('provider_notices_event_unique').on(t.providerKind, t.eventId),
+    index('provider_notices_unhandled_idx').on(t.receivedAt).where(sql`${t.handledAt} is null`),
+    check('provider_notices_provider_kind', sql`${t.providerKind} ~ ${PROVIDER_KIND_PATTERN}`),
+    check('provider_notices_event_id', sql`${t.eventId} ~ ${PROVIDER_REF_PATTERN}`),
+    check(
+      'provider_notices_account_ref',
+      sql`${t.accountRef} is null or ${t.accountRef} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
+    check('provider_notices_type', sql`${t.type} ~ ${NAME_PATTERN}`),
+    check('provider_notices_kind', sql`${t.kind} in ${sqlWords(PROVIDER_NOTICE_KINDS)}`),
+    check(
+      'provider_notices_object_ref',
+      sql`${t.objectRef} is null or ${t.objectRef} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
+    check(
+      'provider_notices_handled_after_received',
+      sql`${t.handledAt} is null or ${t.handledAt} >= ${t.receivedAt}`,
+    ),
+    ...provenanceChecks('provider_notices', t),
+  ],
+)
+
+// --- Guest events -----------------------------------------------------------------------------
+
+/**
+ * The guest events (D142; ticket #335, tracker T84): the one append-only record of what a guest's
+ * phone did — the menu opened, an item opened, a line added to or taken off the table's order, a
+ * Send attempted, a payment started and finished, a waiter called, a language chosen. The staff
+ * side of a night is already in the service rows and the Log, so nothing here repeats them.
+ *
+ * No personal data of any kind (D111, rule 3): no name, phone, email, IP address, device id, card
+ * digit or free text. A guest is only ever the table's sitting, and nothing links one sitting to
+ * another. Written only by `recordEvents()` in `@restro/core/events` (rule 1); the kinds and their
+ * retention classes live there, so a new kind needs no migration.
+ *
+ * No foreign key, not even to `tenants`: the rows carry ids only, so nothing joins a core table
+ * (D103's no-join rule) and the model can move to an edge ingest without touching the menu engine.
+ * Row-level security still isolates it: FORCE RLS on `tenant_id` like every other tenant table.
+ */
+export const guestEvents = restro.table(
+  'guest_events',
+  {
+    seq: bigint('seq', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: text('tenant_id').notNull(),
+    venueId: text('venue_id').notNull(),
+    /** When it happened: the server's clock, less the age the phone reported for its own taps. */
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    /** A kind from core's list, e.g. `menu.opened`, `order.send_attempted`. */
+    kind: text('kind').notNull(),
+    /** The table whose code the phone showed; every guest event has one. */
+    tableId: text('table_id').notNull(),
+    /** The table's open sitting, or null where the table had none. */
+    sittingId: text('sitting_id'),
+    /**
+     * The item a guest opened (`item.opened`) or put on and took off the order
+     * (`order.line_added`, `order.line_removed`); null for every other kind.
+     */
+    nodeId: text('node_id'),
+    /** A pay event's amount in minor units (rule 8), with its currency; null for the rest. */
+    amountMinor: bigint('amount_minor', { mode: 'number' }),
+    currency: text('currency'),
+    /** The menu language a guest chose (`language.chosen`); null for every other kind. */
+    locale: text('locale'),
+    /** How it ended: `ok`, or a short failure class. Null where the kind has no outcome. */
+    outcome: text('outcome'),
+    /** `night` (31 days) or `record` (18 months), as the Log's classes (D122 §9). */
+    retention: text('retention').notNull(),
+    ...serviceProvenance(),
+  },
+  (t) => [
+    // Counting a night: scans, items looked at, sends, payments, per venue and service day.
+    index('guest_events_venue_service_date_kind_idx').on(t.venueId, t.serviceDate, t.kind),
+    // One table's funnel through the night, in order.
+    index('guest_events_venue_table_at_idx').on(t.venueId, t.tableId, t.at),
+    // The purge compares the class and the service day only.
+    index('guest_events_retention_service_date_idx').on(t.retention, t.serviceDate),
+    check('guest_events_tenant_id_format', sql`${t.tenantId} ~ '^tn_[0-9A-Za-z]+$'`),
+    check('guest_events_venue_id_format', sql`${t.venueId} ~ '^vn_[0-9A-Za-z]+$'`),
+    check('guest_events_kind', sql`${t.kind} ~ ${NAME_PATTERN}`),
+    check(
+      'guest_events_ids',
+      sql`${t.tableId} ~ '^tb_[0-9A-Za-z]+$' and (${t.sittingId} is null or ${t.sittingId} ~ '^st_[0-9A-Za-z]+$') and (${t.nodeId} is null or ${t.nodeId} ~ '^nd_[0-9A-Za-z]+$')`,
+    ),
+    check('guest_events_amount_minor', sql`${t.amountMinor} is null or ${t.amountMinor} >= 0`),
+    check(
+      'guest_events_amount_currency_pair',
+      sql`(${t.amountMinor} is null) = (${t.currency} is null)`,
+    ),
+    check('guest_events_currency', sql`${t.currency} is null or ${t.currency} ~ '^[A-Z]{3}$'`),
+    check('guest_events_locale', sql`${t.locale} is null or ${t.locale} ~ '^[a-z]{2}_[A-Z]{2}$'`),
+    check(
+      'guest_events_outcome',
+      sql`${t.outcome} is null or ${t.outcome} ~ '^[a-z][a-z0-9_]{0,63}$'`,
+    ),
+    check('guest_events_retention', sql`${t.retention} in ('night', 'record')`),
+    ...provenanceChecks('guest_events', t),
+  ],
+)
+
+// --- Reservations ------------------------------------------------------------------------------
+//
+// The reservations side (ticket #323; D134, D135, D137, D138, D140, D141). Service data (D122 §9):
+// no `layer` column anywhere here, `source`, `actor` and `job_id` NOT NULL on every row, written
+// only by `applyService` in core/service (rule 1). Nothing here holds a POS id (rule 3): a spot's
+// link to a table is Restro's own `tb_` id, and a reservation never touches the POS at all (D134,
+// rule 7).
+//
+// Blocks and the waiting list are **not** tables of their own (D137): a block is a reservation of
+// kind `block`, and a waiting party is a reservation of kind `walk_in` with the status `waiting`
+// and a fractional `queue_key`, so a reorder touches one row and the overlap rule and the statuses
+// are written once.
+//
+// Contact details live in exactly one place, `guests` (D140): a reservation carries a guest record
+// or a plain party label, never a phone number or an email of its own. Erasing a guest is then one
+// update of one row, and no reservation has to be rewritten to erase him (D83).
+
+/**
+ * A floor plan (`fp_`; D134): the venue's own drawing of its spots. A month of plans is readable
+ * (D141), so a plan is versioned by rows — a new plan is a new row and the old one is kept — and
+ * one plan at a time is the venue's current one.
+ */
+export const floorPlans = restro.table(
+  'floor_plans',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    name: text('name').notNull(),
+    /** The plan tonight's screens draw. Exactly one per venue among the plans not removed. */
+    isCurrent: boolean('is_current').notNull().default(false),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('floor_plans_tenant_id_id_unique').on(t.tenantId, t.id),
+    venueFk('floor_plans', t),
+    uniqueIndex('floor_plans_current_unique')
+      .on(t.tenantId, t.venueId)
+      .where(sql`${t.isCurrent} and ${t.removedAt} is null`),
+    index('floor_plans_venue_id_idx').on(t.venueId),
+    check('floor_plans_id_format', sql`${t.id} ~ '^fp_[0-9A-Za-z]+$'`),
+    check('floor_plans_name', sql`length(btrim(${t.name})) between 1 and 60`),
+    ...provenanceChecks('floor_plans', t),
+  ],
+)
+
+/**
+ * The shapes a spot can be drawn as: the shape folder's own names (D134, #327). The folder itself,
+ * with the numbers each shape allows, is `@restro/core`'s `spot-shapes.ts` — core cannot be
+ * imported here (it depends on this package), so `spot-shapes.test.ts` holds the two lists
+ * together and fails the build if they drift apart.
+ */
+export const SPOT_SHAPES = ['rect', 'circle', 'booth', 'pill'] as const
+
+const SPOT_SHAPE_VALUES = sql.raw(`('rect', 'circle', 'booth', 'pill')`)
+
+/** The legend symbols a venue's own spot kinds are drawn with (D134, #327). */
+export const SPOT_SYMBOLS = ['table', 'booth', 'stool', 'standing', 'counter', 'dot'] as const
+
+const SPOT_SYMBOL_VALUES = sql.raw(`('table', 'booth', 'stool', 'standing', 'counter', 'dot')`)
+
+/** The plan's grid: the bound a spot's numbers may not leave (`PLAN_GRID` in the shape folder). */
+const PLAN_GRID = 10_000
+
+/**
+ * A spot on a plan (`sp_`; D134): a thing a party can be seated at — a table, a booth, a sofa, a
+ * bar stool, whatever the venue's own kinds call it. A spot is **not** a Table: it may link to one
+ * by Restro's own `tb_` id, and a venue that takes no orders at a spot leaves that link empty.
+ * `seats` is the spot's own number of places; left empty it is the kind's default.
+ */
+export const spots = restro.table(
+  'spots',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    planId: text('plan_id').notNull(),
+    /** What staff call it ("12", "Bar 3"). Unique in the venue among the spots not removed. */
+    name: text('name').notNull(),
+    /** One of the venue's own spot kinds (`venue_spot_kinds.key`). */
+    kind: text('kind').notNull(),
+    shape: text('shape').notNull().default('rect'),
+    /** Where and how big on the plan, in the plan's own grid units. */
+    x: integer('x').notNull(),
+    y: integer('y').notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    rotation: integer('rotation').notNull().default(0),
+    seats: integer('seats'),
+    /** The Table orders at this spot go onto, as Restro's own id; null where there is none. */
+    tableId: text('table_id'),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('spots_tenant_id_id_unique').on(t.tenantId, t.id),
+    venueFk('spots', t),
+    foreignKey({
+      name: 'spots_plan_fk',
+      columns: [t.tenantId, t.planId],
+      foreignColumns: [floorPlans.tenantId, floorPlans.id],
+    }),
+    // A null `table_id` leaves the key unchecked (MATCH SIMPLE), which is what a spot with no
+    // Table needs.
+    tableFk('spots', t),
+    uniqueIndex('spots_venue_name_unique')
+      .on(t.tenantId, t.venueId, t.name)
+      .where(sql`${t.removedAt} is null`),
+    index('spots_plan_id_idx').on(t.planId),
+    check('spots_id_format', sql`${t.id} ~ '^sp_[0-9A-Za-z]+$'`),
+    check('spots_plan_id_format', sql`${t.planId} ~ '^fp_[0-9A-Za-z]+$'`),
+    check('spots_table_id_format', sql`${t.tableId} is null or ${t.tableId} ~ '^tb_[0-9A-Za-z]+$'`),
+    check('spots_name', sql`length(btrim(${t.name})) between 1 and 40`),
+    check('spots_kind', sql`${t.kind} ~ '^[a-z][a-z0-9_]{0,31}$'`),
+    check('spots_shape', sql`${t.shape} in ${SPOT_SHAPE_VALUES}`),
+    check('spots_size', sql`${t.width} >= 2 and ${t.height} >= 2`),
+    check('spots_rotation', sql`${t.rotation} between 0 and 359`),
+    // The shape folder's own bounds (#327), so no stored row can draw a plan nobody can read: the
+    // spot sits inside the grid, a circle is round, and a shape nothing is gained by turning is
+    // not turned.
+    check(
+      'spots_on_plan',
+      sql`${t.x} >= 0 and ${t.y} >= 0 and ${t.x} + ${t.width} <= ${sql.raw(String(PLAN_GRID))} and ${t.y} + ${t.height} <= ${sql.raw(String(PLAN_GRID))}`,
+    ),
+    check('spots_round', sql`${t.shape} <> 'circle' or ${t.width} = ${t.height}`),
+    check('spots_turned', sql`${t.shape} <> 'circle' or ${t.rotation} = 0`),
+    check('spots_seats', sql`${t.seats} is null or ${t.seats} between 1 and 100`),
+    ...provenanceChecks('spots', t),
+  ],
+)
+
+/**
+ * A kind of spot the venue defines for itself (D134): its code, the words staff see, and how many
+ * places a spot of that kind has unless the spot says otherwise. The key is a code, never free
+ * text, so the Log can name it.
+ */
+export const venueSpotKinds = restro.table(
+  'venue_spot_kinds',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    key: text('key').notNull(),
+    label: text('label').notNull(),
+    /** Its legend symbol, one of `SPOT_SYMBOLS`: a name our own components draw, never a picture. */
+    symbol: text('symbol').notNull().default('dot'),
+    /** Whether the plan offers it as a filter (D134: a kind filters when choosing spots). */
+    filters: boolean('filters').notNull().default(true),
+    defaultSeats: integer('default_seats'),
+    sortKey: byteOrderText('sort_key').notNull().default('a0'),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'venue_spot_kinds_pkey', columns: [t.tenantId, t.venueId, t.key] }),
+    venueFk('venue_spot_kinds', t),
+    check('venue_spot_kinds_key', sql`${t.key} ~ '^[a-z][a-z0-9_]{0,31}$'`),
+    check('venue_spot_kinds_label', sql`length(btrim(${t.label})) between 1 and 40`),
+    check('venue_spot_kinds_symbol', sql`${t.symbol} in ${SPOT_SYMBOL_VALUES}`),
+    check(
+      'venue_spot_kinds_default_seats',
+      sql`${t.defaultSeats} is null or ${t.defaultSeats} between 1 and 100`,
+    ),
+    check('venue_spot_kinds_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
+    ...provenanceChecks('venue_spot_kinds', t),
+  ],
+)
+
+/**
+ * A guest record (`gu_`; D140): the venue's own list of the people who book. Keyed by a normalised
+ * phone number, so one person is one row however many bookings he has. Nothing is shared between
+ * venues: a guest of one club is unknown at another.
+ *
+ * Erasing him is an **update** of this row (D83, D140): `erased_at` is set and every detail is
+ * cleared, the key included, so a later booking from the same number starts a new record. His
+ * reservations keep their party size and their spot; no reservation is rewritten.
+ *
+ * His visit and no-show counts are **not** columns: they are counted from his reservations when a
+ * hostess asks, which is why D140 can call them a rough count for a hostess and never accounting.
+ */
+export const guests = restro.table(
+  'guests',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    /** The phone number normalised to its digits: the key. Null once the guest is erased. */
+    phoneKey: text('phone_key'),
+    name: text('name'),
+    phone: text('phone'),
+    email: text('email'),
+    note: text('note'),
+    isRegular: boolean('is_regular').notNull().default(false),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    erasedAt: timestamp('erased_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('guests_tenant_id_id_unique').on(t.tenantId, t.id),
+    venueFk('guests', t),
+    uniqueIndex('guests_venue_phone_key_unique')
+      .on(t.tenantId, t.venueId, t.phoneKey)
+      .where(sql`${t.erasedAt} is null`),
+    check('guests_id_format', sql`${t.id} ~ '^gu_[0-9A-Za-z]+$'`),
+    check('guests_phone_key', sql`${t.phoneKey} is null or ${t.phoneKey} ~ '^[0-9]{6,20}$'`),
+    check('guests_name', sql`${t.name} is null or length(btrim(${t.name})) between 1 and 80`),
+    check('guests_phone', sql`${t.phone} is null or length(${t.phone}) <= 40`),
+    check('guests_email', sql`${t.email} is null or length(${t.email}) <= 200`),
+    check('guests_note', sql`${t.note} is null or length(${t.note}) <= 500`),
+    // Erased means empty: the record stays, every detail of the person is gone (D140).
+    check(
+      'guests_erased_is_empty',
+      sql`${t.erasedAt} is null or (${t.phoneKey} is null and ${t.name} is null and ${t.phone} is null and ${t.email} is null and ${t.note} is null and not ${t.isRegular})`,
+    ),
+    // A record nobody erased is somebody: it has the key that makes it one person.
+    check('guests_key_present', sql`${t.erasedAt} is not null or ${t.phoneKey} is not null`),
+    ...provenanceChecks('guests', t),
+  ],
+)
+
+/** What a reservation is (D137): a booking, a walk-in off the floor or the queue, or a block. */
+export const RESERVATION_KINDS = ['booking', 'walk_in', 'block'] as const
+
+const RESERVATION_KIND_VALUES = sql.raw(`('booking', 'walk_in', 'block')`)
+
+/** The eight statuses of a reservation (D135's seven and D138's Not seated). */
+export const RESERVATION_STATUSES = [
+  'requested',
+  'reserved',
+  'waiting',
+  'seated',
+  'finished',
+  'no_show',
+  'cancelled',
+  'not_seated',
+] as const
+
+const RESERVATION_STATUS_VALUES = sql.raw(
+  `('requested', 'reserved', 'waiting', 'seated', 'finished', 'no_show', 'cancelled', 'not_seated')`,
+)
+
+/** What a reservation's prepayment is doing (D136). Declared here; part 1 writes none of it. */
+export const RESERVATION_PREPAY_STATES = ['none', 'asked', 'held', 'taken', 'released'] as const
+
+const RESERVATION_PREPAY_STATE_VALUES = sql.raw(`('none', 'asked', 'held', 'taken', 'released')`)
+
+/**
+ * A reservation (`rv_`; D135, D137): a booking, a walk-in, a waiting party or a block, in one
+ * table with one `kind`. It belongs to a **service day**, not a calendar date (D45): a booking
+ * taken for 01:00 belongs to the night that began the evening before.
+ *
+ * `turn_minutes` is the reservation's own hold, left empty to use the venue's one setting — never
+ * a second setting beside it (D135). `ends_at` is an end time staff set themselves, which replaces
+ * the computed one.
+ *
+ * The previous status an arrival's undo returns a party to is **not** a column: every status move
+ * writes a Log entry naming the reservation (D141), so ticket #329 reads where the party was from
+ * the Log rather than from a second copy that could disagree with it.
+ *
+ * The four `prepay_` columns are D136's money record, declared here and written by nothing in
+ * part 1: integer minor units only (rule 8), never a float.
+ */
+export const reservations = restro.table(
+  'reservations',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    /** The venue's service day (D45), never a calendar date. */
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    /** An end time staff set, which replaces the turn time's. */
+    endsAt: timestamp('ends_at', { withTimezone: true }),
+    turnMinutes: integer('turn_minutes'),
+    kind: text('kind').notNull(),
+    status: text('status').notNull(),
+    /** How many are coming. A block is nobody, so it carries none. */
+    partySize: integer('party_size'),
+    /** The queue's fractional key while a walk-in waits; cleared when it leaves the queue. */
+    queueKey: byteOrderText('queue_key'),
+    /** The venue's guest record, where the booking has a phone number (D140). */
+    guestId: text('guest_id'),
+    /** The name on a booking with no guest record ("Ivan"); never a phone or an email. */
+    partyLabel: text('party_label'),
+    note: text('note'),
+    /** Why, as a code: a cancellation's reason, a block's reason. Never free text. */
+    reason: text('reason'),
+    /** The staff member who made it; absent for a reservation nobody's hand made (a sweep). */
+    madeBy: text('made_by'),
+    /** When the party was seated: what the plan reads its spots as held from (ticket #327). */
+    seatedAt: timestamp('seated_at', { withTimezone: true }),
+    /** When it reached an end status. */
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    /**
+     * When it was taken out of the book (D135's "delete", which Restore undoes). A line somebody
+     * entered by mistake should not sit in the night's list as a cancellation nobody made, so
+     * `deleted_at` hides it — and the row itself stays, because app code deletes nothing
+     * (CLAUDE.md's never-list) and the Log must still name what was there.
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    /** D136's pay rule on a reservation; ticket #334 writes it. */
+    payRule: text('pay_rule'),
+    /** D136's money record, declared and unwritten in part 1 (rule 8: minor units). */
+    prepayMinor: bigint('prepay_minor', { mode: 'number' }),
+    prepayCurrency: text('prepay_currency'),
+    prepayState: text('prepay_state').notNull().default('none'),
+    prepayPaymentId: text('prepay_payment_id'),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('reservations_tenant_id_id_unique').on(t.tenantId, t.id),
+    venueFk('reservations', t),
+    foreignKey({
+      name: 'reservations_guest_fk',
+      columns: [t.tenantId, t.guestId],
+      foreignColumns: [guests.tenantId, guests.id],
+    }),
+    foreignKey({
+      name: 'reservations_made_by_fk',
+      columns: [t.tenantId, t.madeBy],
+      foreignColumns: [staffMembers.tenantId, staffMembers.id],
+    }),
+    // A night's screens read one venue's night by status.
+    index('reservations_venue_service_date_idx').on(t.venueId, t.serviceDate, t.status),
+    // The waiting list, in its own order.
+    index('reservations_queue_idx')
+      .on(t.venueId, t.serviceDate, t.queueKey)
+      .where(sql`${t.status} = 'waiting'`),
+    // A guest's own bookings, for his card (D140).
+    index('reservations_guest_id_idx').on(t.guestId),
+    check('reservations_id_format', sql`${t.id} ~ '^rv_[0-9A-Za-z]+$'`),
+    check('reservations_kind', sql`${t.kind} in ${RESERVATION_KIND_VALUES}`),
+    check('reservations_status', sql`${t.status} in ${RESERVATION_STATUS_VALUES}`),
+    // A block is nobody at a table: it is never asked for, queued, seated or counted as absent.
+    check(
+      'reservations_block_status',
+      sql`${t.kind} <> 'block' or ${t.status} in ('reserved', 'finished', 'cancelled')`,
+    ),
+    // A party has a size; a block has none.
+    check('reservations_party_size', sql`(${t.kind} = 'block') = (${t.partySize} is null)`),
+    check(
+      'reservations_party_size_range',
+      sql`${t.partySize} is null or ${t.partySize} between 1 and 500`,
+    ),
+    // Only a walk-in queues, and a waiting party always has its place in the queue.
+    check(
+      'reservations_queue_key',
+      sql`(${t.queueKey} is null or ${t.kind} = 'walk_in') and (${t.status} <> 'waiting' or ${t.queueKey} is not null)`,
+    ),
+    check(
+      'reservations_queue_key_format',
+      sql`${t.queueKey} is null or ${t.queueKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`,
+    ),
+    // A booking is somebody: a guest record, or the name on the book.
+    check(
+      'reservations_booking_party',
+      sql`${t.kind} <> 'booking' or ${t.guestId} is not null or ${t.partyLabel} is not null`,
+    ),
+    check(
+      'reservations_guest_id_format',
+      sql`${t.guestId} is null or ${t.guestId} ~ '^gu_[0-9A-Za-z]+$'`,
+    ),
+    check(
+      'reservations_made_by_format',
+      sql`${t.madeBy} is null or ${t.madeBy} ~ '^sm_[0-9A-Za-z]+$'`,
+    ),
+    check(
+      'reservations_party_label',
+      sql`${t.partyLabel} is null or length(btrim(${t.partyLabel})) between 1 and 80`,
+    ),
+    check('reservations_note', sql`${t.note} is null or length(${t.note}) <= 500`),
+    check(
+      'reservations_reason',
+      sql`${t.reason} is null or ${t.reason} ~ '^[a-z][a-z0-9_]{0,63}$'`,
+    ),
+    check(
+      'reservations_turn_minutes',
+      sql`${t.turnMinutes} is null or ${t.turnMinutes} between 1 and 1440`,
+    ),
+    check(
+      'reservations_ends_after_starts',
+      sql`${t.endsAt} is null or ${t.endsAt} > ${t.startsAt}`,
+    ),
+    // The money record (D136, rule 8): an amount has a currency, and both or neither.
+    check('reservations_prepay_minor', sql`${t.prepayMinor} is null or ${t.prepayMinor} >= 0`),
+    check(
+      'reservations_prepay_pair',
+      sql`(${t.prepayMinor} is null) = (${t.prepayCurrency} is null)`,
+    ),
+    check(
+      'reservations_prepay_currency',
+      sql`${t.prepayCurrency} is null or ${t.prepayCurrency} ~ '^[A-Z]{3}$'`,
+    ),
+    check('reservations_prepay_state', sql`${t.prepayState} in ${RESERVATION_PREPAY_STATE_VALUES}`),
+    check(
+      'reservations_prepay_payment_id',
+      sql`${t.prepayPaymentId} is null or ${t.prepayPaymentId} ~ '^py_[0-9A-Za-z]+$'`,
+    ),
+    check(
+      'reservations_pay_rule',
+      sql`${t.payRule} is null or ${t.payRule} ~ '^[a-z][a-z0-9_]{0,63}$'`,
+    ),
+    ...provenanceChecks('reservations', t),
+  ],
+)
+
+/**
+ * The spots one reservation holds (D134, D135). A row per spot per stretch, so moving a party to
+ * another table keeps what it held before: a release is `released_at`, never a delete (CLAUDE.md's
+ * never-list). `held_from` and `held_to` are the reservation's own stretch unless staff moved the
+ * party mid-night; an empty `held_to` leaves the end to the turn time, as the reservation does.
+ */
+export const reservationSpots = restro.table(
+  'reservation_spots',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    reservationId: text('reservation_id').notNull(),
+    spotId: text('spot_id').notNull(),
+    heldFrom: timestamp('held_from', { withTimezone: true }).notNull(),
+    heldTo: timestamp('held_to', { withTimezone: true }),
+    releasedAt: timestamp('released_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'reservation_spots_pkey',
+      columns: [t.tenantId, t.reservationId, t.spotId, t.heldFrom],
+    }),
+    foreignKey({
+      name: 'reservation_spots_reservation_fk',
+      columns: [t.tenantId, t.reservationId],
+      foreignColumns: [reservations.tenantId, reservations.id],
+    }),
+    foreignKey({
+      name: 'reservation_spots_spot_fk',
+      columns: [t.tenantId, t.spotId],
+      foreignColumns: [spots.tenantId, spots.id],
+    }),
+    // What is holding a spot tonight: the overlap rule's own read.
+    index('reservation_spots_spot_idx')
+      .on(t.spotId, t.heldFrom)
+      .where(sql`${t.releasedAt} is null`),
+    check('reservation_spots_reservation_id_format', sql`${t.reservationId} ~ '^rv_[0-9A-Za-z]+$'`),
+    check('reservation_spots_spot_id_format', sql`${t.spotId} ~ '^sp_[0-9A-Za-z]+$'`),
+    check('reservation_spots_held_to', sql`${t.heldTo} is null or ${t.heldTo} > ${t.heldFrom}`),
+    ...provenanceChecks('reservation_spots', t),
+  ],
+)
+
+/**
+ * A manager's private note about a guest (D140): his own list, which other staff never read. Row
+ * security keeps it inside the venue; **the privacy is the command's** — only the staff member
+ * whose note it is reads it back, which needs no second Postgres role. Erasing the guest clears
+ * every note about him (D83).
+ */
+export const guestPrivateNotes = restro.table(
+  'guest_private_notes',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    guestId: text('guest_id').notNull(),
+    /** Whose note it is: the one person who may read it. */
+    staffMemberId: text('staff_member_id').notNull(),
+    note: text('note'),
+    erasedAt: timestamp('erased_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'guest_private_notes_pkey',
+      columns: [t.tenantId, t.guestId, t.staffMemberId],
+    }),
+    venueFk('guest_private_notes', t),
+    foreignKey({
+      name: 'guest_private_notes_guest_fk',
+      columns: [t.tenantId, t.guestId],
+      foreignColumns: [guests.tenantId, guests.id],
+    }),
+    foreignKey({
+      name: 'guest_private_notes_staff_fk',
+      columns: [t.tenantId, t.staffMemberId],
+      foreignColumns: [staffMembers.tenantId, staffMembers.id],
+    }),
+    check('guest_private_notes_guest_id_format', sql`${t.guestId} ~ '^gu_[0-9A-Za-z]+$'`),
+    check('guest_private_notes_staff_id_format', sql`${t.staffMemberId} ~ '^sm_[0-9A-Za-z]+$'`),
+    check('guest_private_notes_note', sql`${t.note} is null or length(${t.note}) <= 500`),
+    check('guest_private_notes_erased_is_empty', sql`${t.erasedAt} is null or ${t.note} is null`),
+    ...provenanceChecks('guest_private_notes', t),
+  ],
+)
+
+/**
+ * A venue's reservation settings (D135, D138, D141). One row per venue, written by its own
+ * command. `turn_minutes` is **the** turn time: how long a spot is held and so the shortest gap
+ * before the next booking (D135) — there is no second setting beside it, and no default is
+ * invented anywhere else: a venue with no row here has no turn time, and a booking that needs one
+ * is refused until an owner sets it.
+ *
+ * `pin_actions` is D141's configurable list of which taps ask for four digits; ticket #324 reads
+ * and writes it. `online` holds part 2's own values (D136), whose shape ticket #325 gave: declared
+ * as one object here so part 1 invents no column for a setting nobody has decided.
+ */
+export const reservationSettings = restro.table(
+  'reservation_settings',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    turnMinutes: integer('turn_minutes').notNull(),
+    /** Whether a night that has passed may still be written (D135). Off unless a venue asks. */
+    editPastNights: boolean('edit_past_nights').notNull().default(false),
+    /**
+     * Whether the manager keeps a private guest list beside the venue's shared one (D140: "by
+     * default", so on until a venue says otherwise).
+     */
+    privateNotesOn: boolean('private_notes_on').notNull().default(true),
+    /** Whether a booking needs a phone number (D135: required by default, a switch makes it optional). */
+    phoneRequired: boolean('phone_required').notNull().default(true),
+    /**
+     * The venue's one-off closed dates (ticket #325; D136): service days as `YYYY-MM-DD`, oldest
+     * first, on top of the service hours the venue already has. Written only by the closed-date
+     * commands.
+     */
+    closedDates: jsonb('closed_dates').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    pinActions: jsonb('pin_actions')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    /**
+     * Part 2's values (D136, ticket #325), declared and stored with their defaults and read by
+     * nothing in part 1. The shape is core's `OnlineSettingsSchema`; the default below is its own
+     * defaults as JSON, and a test in core keeps the two equal.
+     */
+    online: jsonb('online')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(
+        sql`'{"guestMay":"night","autoConfirm":false,"prepayment":false,"prepaymentMinor":null,"prepaymentWording":{},"refundWording":{}}'::jsonb`,
+      ),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'reservation_settings_pkey', columns: [t.tenantId, t.venueId] }),
+    venueFk('reservation_settings', t),
+    check('reservation_settings_turn_minutes', sql`${t.turnMinutes} between 1 and 1440`),
+    check('reservation_settings_pin_actions_object', sql`jsonb_typeof(${t.pinActions}) = 'object'`),
+    check('reservation_settings_online_object', sql`jsonb_typeof(${t.online}) = 'object'`),
+    check('reservation_settings_closed_dates_array', sql`jsonb_typeof(${t.closedDates}) = 'array'`),
+    ...provenanceChecks('reservation_settings', t),
+  ],
+)
+
+/**
+ * The record of one night's reservations (D138): when it was closed, by whom, whether it was ended
+ * early, and when the sweep marked the parties nobody seated. One row per venue per service day.
+ *
+ * It is a table of its own rather than a column on `service_days`, because a service day is closed
+ * only once it has really ended (`service-day-close.ts` refuses `day_not_ended` for today), and
+ * D138's early end is exactly a night an admin closes while it is still going.
+ */
+export const reservationNights = restro.table(
+  'reservation_nights',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    /** Who closed it (the service actor's text), or null for the closing hour's own sweep. */
+    closedBy: text('closed_by'),
+    /** True when an admin ended the night before its closing hour (D138). */
+    closedEarly: boolean('closed_early').notNull().default(false),
+    /** How many bills were still open at an early end: what the warning showed (D138). */
+    openBillsAtClose: integer('open_bills_at_close'),
+    /** When the sweep marked the waiting parties nobody seated as Not seated (D138). */
+    sweptAt: timestamp('swept_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'reservation_nights_pkey',
+      columns: [t.tenantId, t.venueId, t.serviceDate],
+    }),
+    venueFk('reservation_nights', t),
+    check(
+      'reservation_nights_closed_by',
+      sql`${t.closedBy} is null or ${t.closedBy} ~ ${SERVICE_ACTOR_PATTERN}`,
+    ),
+    check(
+      'reservation_nights_closed_early',
+      sql`not ${t.closedEarly} or ${t.closedAt} is not null`,
+    ),
+    check(
+      'reservation_nights_open_bills',
+      sql`${t.openBillsAtClose} is null or ${t.openBillsAtClose} >= 0`,
+    ),
+    ...provenanceChecks('reservation_nights', t),
   ],
 )

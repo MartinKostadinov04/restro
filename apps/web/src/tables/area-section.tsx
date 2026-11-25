@@ -35,12 +35,16 @@ import {
   renameAreaAction,
   setAreaHiddenAction,
 } from '@/server/tables/actions'
-import type { HallView, MenuChoice } from '@/server/tables/view'
+import type { HallView, MenuChoice, PayFirstTabView } from '@/server/tables/view'
 
 import { ConfirmDialog } from './confirm-dialog'
+import { PayFirstPicker } from './pay-first-picker'
 import { RoutePicker } from './route-picker'
-import { TableCard } from './table-card'
+import { type PaymentTableAccess, TableCard } from './table-card'
 import { useRun } from './use-run'
+
+/** The anchor of an area's section, for the jump links of the tab's area index (S14). */
+export const areaAnchor = (areaId: string) => `area-${areaId}`
 
 export function AreaSection({
   hall,
@@ -51,6 +55,8 @@ export function AreaSection({
   fromTill,
   menus,
   areas,
+  payment,
+  payFirst,
 }: {
   hall: HallView
   /** The area's place among the venue's areas, and how many areas there are. */
@@ -62,9 +68,13 @@ export function AreaSection({
   menus: readonly MenuChoice[]
   /** Every area of the venue, in order: "Move to …" on a table lists the others. */
   areas: readonly { readonly id: string; readonly name: string; readonly tableCount: number }[]
+  /** Payment tables, where a connector can take payments; null elsewhere. */
+  payment: PaymentTableAccess | null
+  /** Pay first rows, where pay first can take effect; null elsewhere. */
+  payFirst: PayFirstTabView | null
 }) {
   const t = useTranslations('tables')
-  const { pending, run } = useRun()
+  const { pending, run, dialog: passwordAgain } = useRun()
   const nameId = useId()
   const [name, setName] = useState(hall.name)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -115,7 +125,8 @@ export function AreaSection({
 
   return (
     <section
-      className="space-y-3"
+      id={areaAnchor(hall.id)}
+      className="scroll-mt-4 space-y-3"
       data-testid="hall"
       data-area-id={hall.id}
       data-hidden={!hall.isPublic}
@@ -168,6 +179,16 @@ export function AreaSection({
             effective={hall.menu}
             canManage={canManage}
           />
+          {payFirst !== null && hall.payFirst !== null ? (
+            <PayFirstPicker
+              venueId={venueId}
+              target={{ areaId: hall.id }}
+              targetName={t('route.area', { name: hall.name })}
+              payFirst={hall.payFirst}
+              canSet={payFirst.canSet}
+              email={payFirst.email}
+            />
+          ) : null}
         </div>
 
         {canManage ? (
@@ -325,6 +346,8 @@ export function AreaSection({
               canManage={canManage}
               fromTill={fromTill}
               areaPublic={hall.isPublic}
+              payment={payment}
+              payFirst={payFirst}
               menus={menus}
               otherAreas={otherAreas}
               index={position}
@@ -350,6 +373,7 @@ export function AreaSection({
           )
         }
       />
+      {passwordAgain}
     </section>
   )
 }

@@ -141,3 +141,7 @@ export {
   barsyMethodAuth,
   isBarsyReadMethod,
 } from './read-methods.ts'
+export { BARSY_SERVICE_CAPABILITIES } from './service/capabilities.ts'
+export type { BarsyServiceReaderOptions } from './service/reader.ts'
+export { createBarsyServiceReader } from './service/reader.ts'
+export { BARSY_WAITER_ACTIONS } from './service/waiter-actions.ts'

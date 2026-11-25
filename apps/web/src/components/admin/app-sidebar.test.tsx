@@ -49,6 +49,7 @@ interface Options {
   /** Start with the sidebar collapsed to icons. */
   collapsed?: boolean
   canCreateVenue?: boolean
+  offerSettings?: boolean
   organizations?: typeof ONE_ORGANIZATION
 }
 
@@ -57,6 +58,7 @@ function renderSidebar({
   search = '',
   collapsed = false,
   canCreateVenue = true,
+  offerSettings = true,
   organizations = ONE_ORGANIZATION,
 }: Options = {}) {
   navigation.pathname = pathname
@@ -68,6 +70,7 @@ function renderSidebar({
         organizations={organizations}
         activeOrganizationId="tn_one"
         canCreateVenue={canCreateVenue}
+        offerSettings={offerSettings}
         user={{ name: 'Maria Petrova', email: 'maria@example.com' }}
       />
     </SidebarProvider>,
@@ -207,6 +210,7 @@ describe('the Venues group', () => {
           organizations={ONE_ORGANIZATION}
           activeOrganizationId="tn_one"
           canCreateVenue={false}
+          offerSettings
           user={{ name: 'Maria Petrova', email: 'maria@example.com' }}
         />
       </SidebarProvider>,
@@ -235,6 +239,13 @@ describe('the Organisation group', () => {
     expect(venueItems().every((link) => link.getAttribute('aria-current') === null)).toBe(true)
   })
 
+  it('offers a shared device neither a new venue nor the organisation’s Settings (RR-85)', () => {
+    renderSidebar({ canCreateVenue: false, offerSettings: false })
+    expect(screen.queryByTestId('venue-nav-new')).toBeNull()
+    expect(screen.queryByTestId('nav-settings')).toBeNull()
+    expect(venueItems().length).toBeGreaterThan(0)
+  })
+
   it('speaks Bulgarian first-class', () => {
     renderWithIntl(
       <SidebarProvider>
@@ -243,6 +254,7 @@ describe('the Organisation group', () => {
           organizations={ONE_ORGANIZATION}
           activeOrganizationId="tn_one"
           canCreateVenue
+          offerSettings
           user={{ name: 'Maria Petrova', email: 'maria@example.com' }}
         />
       </SidebarProvider>,

@@ -26,7 +26,7 @@ import { type ApplyResult, apply } from './apply'
 import { loadMenuDocument } from './load-document'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
-import { loadUnplacedItems } from './unplaced'
+import { itemsOfVenue, loadUnplacedItems } from './unplaced'
 
 const EXTERNAL_ARTICLE = '556677889'
 
@@ -563,6 +563,66 @@ describe.skipIf(!hasDatabase)('structure: moveNode, structural events, atomic, u
       expect((await loadUnplacedItems(app, tenant, secondMenu.id)).itemIds).not.toContain(item)
     })
 
+    it('never lists a hand-made item in a POS venue, nor counts it as that venue’s (S14, D87)', async () => {
+      // A POS venue: a till venue of the integration serves it (the integration layer's link).
+      const posVenueId = (await provisionVenue(app, tenant, { name: 'POS', slug: testSlug('pos') }))
+        .id
+      await owner.query(
+        'insert into restro.barsy_venues (tenant_id, integration_id, bid, name, venue_id) values ($1, $2, 7, $3, $4)',
+        [tenant, integration, 'Till', posVenueId],
+      )
+      try {
+        const posMenu = await provisionMenu(app, tenant, posVenueId)
+        const item = await makeItem('Лимонада на къщата')
+        // A hand-made venue may take it; the POS venue's menu comes from its POS only.
+        expect((await loadUnplacedItems(app, tenant, menu.id)).itemIds).toContain(item)
+        expect((await loadUnplacedItems(app, tenant, posMenu.id)).itemIds).not.toContain(item)
+        expect([...(await itemsOfVenue(app, tenant, posVenueId, [item]))]).toEqual([])
+        expect([...(await itemsOfVenue(app, tenant, venueId, [item]))]).toEqual([item])
+
+        // The control: the POS venue's own till item is still its, unplaced and counted.
+        const tillItem = newId('nd')
+        const articleId = `s14-${Date.now()}`
+        const record = newId('sr')
+        await withTenantWrite(app, tenant, (tx) =>
+          tx.execute(sql`
+            insert into restro.source_records
+              (id, tenant_id, integration_id, external_type, external_id, scope, content_hash, raw,
+               payload)
+            values (${record}, ${tenant}, ${integration}, 'article', ${articleId}, 'master',
+                    ${sha256Hex(record)}, '{}', '{}'::jsonb)`),
+        )
+        const result = await apply(
+          app,
+          tenant,
+          changeSet(`till:${integration}`, [
+            { op: 'createNode', id: tillItem, nodeType: 'item', parent: null, status: 'active' },
+            {
+              op: 'linkSource',
+              node: { id: tillItem },
+              link: { integration, externalType: 'article', externalId: articleId },
+            },
+            {
+              op: 'setField',
+              node: { id: tillItem },
+              fieldKey: 'price',
+              layer: 'till',
+              scope: `venue:${posVenueId}`,
+              value: { amount_minor: 450, currency: 'EUR' },
+              sourceRecordId: record,
+              mappingVersion: 1,
+            },
+          ]),
+        )
+        expect(result.rejected).toEqual([])
+        expect((await loadUnplacedItems(app, tenant, posMenu.id)).itemIds).toContain(tillItem)
+        expect([...(await itemsOfVenue(app, tenant, posVenueId, [tillItem]))]).toEqual([tillItem])
+      } finally {
+        // The link would make later tests of this integration see one more till venue.
+        await owner.query('delete from restro.barsy_venues where venue_id = $1', [posVenueId])
+      }
+    })
+
     it('lists a till item only in the venue the till read it for (T72)', async () => {
       // As a pull leaves it: linked to the till, a price for the second venue only, placed nowhere.
       const item = newId('nd')
@@ -602,6 +662,52 @@ describe.skipIf(!hasDatabase)('structure: moveNode, structural events, atomic, u
       expect((await loadUnplacedItems(app, tenant, secondMenu.id)).itemIds).toContain(item)
       // The other venue never sees it, nameless and priceless, in its Unsorted.
       expect((await loadUnplacedItems(app, tenant, menu.id)).itemIds).not.toContain(item)
+      // RR-72: the same answer when an action asks.
+      expect(await itemsOfVenue(app, tenant, secondVenueId, [item])).toContain(item)
+      expect(await itemsOfVenue(app, tenant, venueId, [item])).not.toContain(item)
+    })
+
+    it('itemsOfVenue: everything the composer shows is the venue’s, and what is another’s is not (RR-72)', async () => {
+      // Placed in a nested section of the live menu.
+      const top = await makeSection(menu.id)
+      const nested = await makeSection(top)
+      const inNested = await makeItem('Вложен')
+      // Placed in a menu of the venue that is not live.
+      const notLive = await provisionMenu(app, tenant, venueId)
+      const inNotLive = await makeItem('Не е активно')
+      const notLiveSection = await makeSection(notLive.id)
+      // Placed at the other venue, and only there.
+      const there = await makeSection(secondMenu.id)
+      const atOther = await makeItem('На другото място')
+      await run([
+        { op: 'setPlacement', item: { id: inNested }, section: { id: nested }, sortKey: 'end' },
+        {
+          op: 'setPlacement',
+          item: { id: inNotLive },
+          section: { id: notLiveSection },
+          sortKey: 'end',
+        },
+        { op: 'setPlacement', item: { id: atOther }, section: { id: there }, sortKey: 'end' },
+      ])
+      // Unsorted: hand-made and placed nowhere.
+      const unsorted = await makeItem('Несортиран')
+
+      // What the composer's two lists hold, asked of the real query: nothing shown is refused.
+      const shown = [
+        ...(await loadUnplacedItems(app, tenant, menu.id)).itemIds,
+        ...(await loadUnplacedItems(app, tenant, notLive.id)).itemIds,
+        inNested,
+        inNotLive,
+      ]
+      expect(shown).toContain(unsorted)
+      const ours = await itemsOfVenue(app, tenant, venueId, shown)
+      expect(shown.filter((id) => !ours.has(id))).toEqual([])
+
+      expect([...(await itemsOfVenue(app, tenant, venueId, [atOther]))]).toEqual([])
+      expect([...(await itemsOfVenue(app, tenant, secondVenueId, [atOther]))]).toEqual([atOther])
+      expect([...(await itemsOfVenue(app, tenant, secondVenueId, [inNested]))]).toEqual([])
+      // Another tenant's item is nobody's here.
+      expect([...(await itemsOfVenue(app, otherTenant, venueId, [inNested]))]).toEqual([])
     })
 
     it('refuses a menu the tenant does not have, and never returns another tenant’s items', async () => {

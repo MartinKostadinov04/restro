@@ -24,7 +24,6 @@ import { type FormEvent, useId, useState, useTransition } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { FormSection } from '@/components/ui/form-section'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -33,6 +32,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { TimeField } from '@/components/ui/time-field'
+import { useFieldValidity } from '@/lib/use-field-validity'
 import { saveAutomationAction } from '@/server/publish/actions'
 import type { PublishActionError } from '@/server/publish/service'
 import type { AutomationView } from '@/server/publish/view'
@@ -89,6 +90,7 @@ export function AutomationSettings({
   const t = useTranslations('publish.automation')
   const errors = useTranslations('publish.errors')
   const formId = useId()
+  const validity = useFieldValidity()
   const source = view.source
   const [mode, setMode] = useState<SyncMode>(view.sync.mode)
   const [minutes, setMinutes] = useState<IncrementalMinutes>(view.sync.incremental_minutes)
@@ -100,13 +102,7 @@ export function AutomationSettings({
 
   const inherited = view.syncInherited || view.afterSyncInherited
   const timeValid = CLOCK_TIME_PATTERN.test(time)
-  // Saving also makes inherited values the venue's own, so an unchanged form is worth saving then.
-  const dirty =
-    mode !== view.sync.mode ||
-    minutes !== view.sync.incremental_minutes ||
-    time !== view.sync.full_pull_time ||
-    afterSync !== view.afterSync ||
-    inherited
+  // `inherited`: saving makes the connection's values the venue's own.
   const edit =
     <T,>(set: (value: T) => void) =>
     (value: T) => {
@@ -116,13 +112,21 @@ export function AutomationSettings({
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (!timeValid) return
-    setError(null)
+    // A refused Save must not keep saying the last one went through.
     setSaved(false)
+    if (validity.blocked()) return
+    // Save stays pressable while the time is empty: say so by moving to the field. A hidden
+    // schedule (manual mode) keeps the time it had.
+    if (!timeValid && mode === 'auto') {
+      document.getElementById(`${formId}-time`)?.focus()
+      return
+    }
+    const fullPullTime = timeValid ? time : view.sync.full_pull_time
+    setError(null)
     startTransition(async () => {
       const result = await saveAutomationAction({
         venueId,
-        sync: { mode, incremental_minutes: minutes, full_pull_time: time },
+        sync: { mode, incremental_minutes: minutes, full_pull_time: fullPullTime },
         afterSync,
       })
       if (result.ok) setSaved(true)
@@ -133,6 +137,12 @@ export function AutomationSettings({
   return (
     <FormSection title={t('title')} description={t('description', { source })}>
       <form onSubmit={submit} className="grid gap-5" data-testid="automation-form">
+        {/* A role that may read but not change: one line says so before the greyed choices (S27). */}
+        {canManage ? null : (
+          <p className="text-sm text-muted-foreground" data-testid="automation-readonly">
+            {t('readOnly')}
+          </p>
+        )}
         <fieldset className="grid gap-2" disabled={!canManage}>
           <legend className="mb-1 text-sm font-medium">{t('sync.legend', { source })}</legend>
           {SYNC_MODES.map((value) => (
@@ -172,13 +182,12 @@ export function AutomationSettings({
               <div className="grid gap-1.5">
                 <Label htmlFor={`${formId}-time`}>{t('sync.fullRead')}</Label>
                 <div className="flex items-center gap-2">
-                  <Input
+                  <TimeField
                     id={`${formId}-time`}
-                    type="time"
-                    step={60}
                     className="w-32"
                     value={time}
-                    onChange={(event) => edit(setTime)(event.target.value)}
+                    onChange={edit(setTime)}
+                    onValidityChange={validity.onValidityChange}
                     aria-invalid={!timeValid}
                     disabled={!canManage}
                     data-testid="automation-time"
@@ -231,11 +240,7 @@ export function AutomationSettings({
         ) : null}
         {canManage ? (
           <div className="flex justify-end">
-            <Button
-              type="submit"
-              disabled={pending || !dirty || !timeValid}
-              data-testid="automation-save"
-            >
+            <Button type="submit" disabled={pending} data-testid="automation-save">
               {pending ? t('saving') : t('save')}
             </Button>
           </div>

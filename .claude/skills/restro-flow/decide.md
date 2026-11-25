@@ -6,7 +6,7 @@ Two flows with no code change. Both end in plain language, `GLOSSARY.md` terms, 
 
 Martin asks how something works today, or why it is the way it is.
 
-1. **Facts from the repo, never from Martin:** the code, its tests, the decisions it cites (`docs/decisions/D<n>.md`; `revisit-decision` when a decision alone does not explain the why), the adjustments plan, the glossary. Read what the question needs, not the area.
+1. **Facts from the repo, never from Martin:** the code, its tests, the decisions it cites (`docs/decisions/D<n>.md`; `revisit-decision` when a decision alone does not explain the why), the adjustments plan, the glossary. Read what the question needs, not the area. Done when you can name the decisions, the code and the tests that make today's behaviour.
 2. **Answer** in a few short paragraphs: what happens, in whose terms (guest, owner, manager), and which decision made it so (cite the D-number). Offer `/mattpocock-skills:wait-what` if it did not land.
 3. **Reclassify** when the explanation exposes a problem: a bug → `bug.md`; a contradiction with a decision → Decide; a wish → `change.md`.
 

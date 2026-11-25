@@ -1,0 +1,432 @@
+// The write-target guard (D122 §9; spec #64 Implementation Decisions 3; ticket #66). Two write
+// paths share the write side of the db package (`db-write-only-from-core-write-paths`): `apply()`
+// in core/apply writes the menu side, `applyService()` in core/service the service side. This
+// static check pins which tables each one may name, so neither drifts into the other's tables.
+// Only tightens (D67): a new target for core/service is added to SERVICE_WRITE_TARGETS by the
+// ticket that writes it, and never a menu-side table.
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join, relative, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { describe, expect, it } from 'vitest'
+
+const srcRoot = fileURLToPath(new URL('.', import.meta.url))
+const applyRoot = join(srcRoot, 'apply')
+const serviceRoot = join(srcRoot, 'service')
+const eventsRoot = join(srcRoot, 'events')
+
+/**
+ * The service side: the Drizzle exports and Postgres names of the tables only `applyService`
+ * writes (migrations 0028 and 0030). `tables.code_generation` belongs here too (see below).
+ */
+const SERVICE_TABLES: Readonly<Record<string, string>> = {
+  sittings: 'sittings',
+  tableOrders: 'table_orders',
+  sentOrders: 'sent_orders',
+  sentOrderNotes: 'sent_order_notes',
+  locks: 'locks',
+  billReadings: 'bill_readings',
+  logEntries: 'log_entries',
+  waiterCalls: 'waiter_calls',
+  alerts: 'alerts',
+  pauses: 'pauses',
+  serviceDays: 'service_days',
+  staffMembers: 'staff_members',
+  venueRoles: 'venue_roles',
+  staffAssignments: 'staff_assignments',
+  sharedDevices: 'shared_devices',
+  pushSubscriptions: 'push_subscriptions',
+  operators: 'operators',
+  // Paying (D127, #104): no code writes them yet; the tickets that do add them to
+  // SERVICE_WRITE_TARGETS.
+  payments: 'payments',
+  paymentLines: 'payment_lines',
+  paymentSteps: 'payment_steps',
+  paymentRefunds: 'payment_refunds',
+  paymentAccounts: 'payment_accounts',
+  providerNotices: 'provider_notices',
+  // Reservations (#323): the plan and its spots, the venue's spot kinds, the reservations and the
+  // spots they hold, the guest records and the private notes about them, the venue's reservation
+  // settings and the record of each night. Service data (D122 §9), written by `applyService` and
+  // by nothing else.
+  floorPlans: 'floor_plans',
+  spots: 'spots',
+  venueSpotKinds: 'venue_spot_kinds',
+  reservations: 'reservations',
+  reservationSpots: 'reservation_spots',
+  guests: 'guests',
+  guestPrivateNotes: 'guest_private_notes',
+  reservationSettings: 'reservation_settings',
+  reservationNights: 'reservation_nights',
+}
+
+/**
+ * The reservation tables: written by core/service and nowhere else in the repo (#323). A
+ * reservation is service data with no layer (D122 §9), so the menu write path never names one, and
+ * no screen, worker job or connector writes one either.
+ */
+const RESERVATION_TABLES = [
+  'floorPlans',
+  'spots',
+  'venueSpotKinds',
+  'reservations',
+  'reservationSpots',
+  'guests',
+  'guestPrivateNotes',
+  'reservationSettings',
+  'reservationNights',
+] as const
+
+/** The paying tables: written by core/service and nowhere else in the repo (#104). */
+const PAYING_TABLES = [
+  'payments',
+  'paymentLines',
+  'paymentSteps',
+  'paymentRefunds',
+  'paymentAccounts',
+  'providerNotices',
+] as const
+
+const repoRoot = join(srcRoot, '..', '..', '..')
+
+/**
+ * What core/service may write, by Drizzle export (only ever names from SERVICE_TABLES, plus
+ * `venueTables` for `code_generation` alone). #69's machinery writes the table's order (its
+ * version and ring of action ids), the lease rows and the Log; #71's floor commands write the
+ * pause of a vanished table; each later command adds the tables it writes (#70: `venueTables`, for
+ * the re-issue's code generation; #72: the staff side, i.e. people, roles, assignments and shared
+ * devices, never `operators`; #73: the sittings; #74: the readings of a table's bill; #75: the
+ * alert of a table's order rate trip, to Restro's admin team; #108: the provider's notices and a
+ * payment's refund and dispute; #81: the waiter calls; #77: the sent orders and their notes; #110:
+ * a payment's lines and its provider steps).
+ */
+const SERVICE_WRITE_TARGETS: readonly string[] = [
+  'sittings',
+  'sentOrders',
+  'sentOrderNotes',
+  'billReadings',
+  'tableOrders',
+  'locks',
+  'logEntries',
+  'pauses',
+  'venueTables',
+  'staffMembers',
+  'venueRoles',
+  'staffAssignments',
+  'sharedDevices',
+  'alerts',
+  'waiterCalls',
+  // #83: a signed-in account registers an installed device for Web Push; the worker ends one the
+  // push service refused.
+  'pushSubscriptions',
+  // #108: the notice route stores a provider's notice, the worker marks it handled and records
+  // the payment's refund and dispute as read back.
+  'providerNotices',
+  'payments',
+  // #110: the pay commands write a payment's lines (greyed while it isn't final) and the steps
+  // recorded `attempting` before each provider call.
+  'paymentLines',
+  'paymentSteps',
+  // #222: a refund the venue made in its provider's dashboard, and its storno.
+  'paymentRefunds',
+  // #109: a venue's payment account: connect, read back, lose, disconnect.
+  // #112: the provider breaker pauses and lifts paying at a venue account.
+  'paymentAccounts',
+  // #84: the end of a service day keeps its totals.
+  'serviceDays',
+  // #323: the reservations side. Every one of them is written by a command of
+  // `reservations/commands.ts` and by nothing else in the repo.
+  'floorPlans',
+  'spots',
+  'venueSpotKinds',
+  'reservations',
+  'reservationSpots',
+  'guests',
+  'guestPrivateNotes',
+  'reservationSettings',
+  'reservationNights',
+]
+
+function sourceFiles(dir: string): string[] {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      return ['node_modules', '.next', 'dist', 'e2e', 'tests'].includes(entry.name)
+        ? []
+        : sourceFiles(path)
+    }
+    return /\.tsx?$/.test(entry.name) && !/\.(test|spec)\.tsx?$/.test(entry.name) ? [path] : []
+  })
+}
+
+/** The table each Drizzle write in the text targets: `.insert(x)`, `.update(x)`, `.delete(x)`. */
+function drizzleWriteTargets(text: string): string[] {
+  return [...text.matchAll(/\.(?:insert|update|delete)\(\s*([A-Za-z_$][\w$]*)\s*\)/g)].map(
+    (match) => match[1] ?? '',
+  )
+}
+
+/** The tables raw SQL in the text writes: `insert into restro.x`, `update restro.x`, `delete from restro.x`. */
+function sqlWriteTargets(text: string): string[] {
+  return [
+    ...text.matchAll(/\b(?:insert\s+into|update|delete\s+from)\s+"?restro"?\."?([a-z_]+)"?/gi),
+  ].map((match) => (match[1] ?? '').toLowerCase())
+}
+
+/** Every name the text imports from the db package's read or write side. */
+function dbImports(text: string): string[] {
+  const names: string[] = []
+  for (const match of text.matchAll(
+    /import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+['"]@restro\/db(?:\/write)?['"]/g,
+  )) {
+    for (const part of (match[1] ?? '').split(',')) {
+      const name = part
+        .replace(/^\s*type\s+/, '')
+        .split(/\s+as\s+/)[0]
+        ?.trim()
+      if (name) names.push(name)
+    }
+  }
+  return names
+}
+
+/** The text without `//` line comments and block comments (words in them name nothing). */
+function stripComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1')
+}
+
+const rel = (file: string) => relative(srcRoot, file).replaceAll('\\', '/')
+
+describe('the write-target guard', () => {
+  const applyFiles = sourceFiles(applyRoot)
+  const serviceFiles = sourceFiles(serviceRoot)
+
+  it('finds the menu write path (the guard is looking at real files)', () => {
+    expect(applyFiles.length).toBeGreaterThan(10)
+    expect(
+      applyFiles.some((file) => drizzleWriteTargets(readFileSync(file, 'utf8')).length > 0),
+    ).toBe(true)
+  })
+
+  it('core/apply imports no service table from the db package', () => {
+    const found = applyFiles.flatMap((file) =>
+      dbImports(readFileSync(file, 'utf8'))
+        .filter((name) => Object.hasOwn(SERVICE_TABLES, name))
+        .map((name) => `${rel(file)}: ${name}`),
+    )
+    expect(found).toEqual([])
+  })
+
+  it('core/apply writes no service table, by Drizzle or by SQL', () => {
+    const serviceNames = new Set(Object.values(SERVICE_TABLES))
+    const found = applyFiles.flatMap((file) => {
+      const text = readFileSync(file, 'utf8')
+      return [
+        ...drizzleWriteTargets(text).filter((name) => Object.hasOwn(SERVICE_TABLES, name)),
+        ...sqlWriteTargets(text).filter((name) => serviceNames.has(name)),
+      ].map((name) => `${rel(file)}: ${name}`)
+    })
+    expect(found).toEqual([])
+  })
+
+  it("core/apply never names a table's code generation (applyService re-issues codes)", () => {
+    const found = applyFiles
+      .filter((file) => /codeGeneration|code_generation/.test(readFileSync(file, 'utf8')))
+      .map(rel)
+    expect(found).toEqual([])
+  })
+
+  it('core/service writes only its declared targets, all on the service side', () => {
+    for (const target of SERVICE_WRITE_TARGETS) {
+      expect(Object.hasOwn(SERVICE_TABLES, target) || target === 'venueTables', target).toBe(true)
+    }
+    const allowed = new Set(SERVICE_WRITE_TARGETS)
+    const allowedSql = new Set(
+      SERVICE_WRITE_TARGETS.map(
+        (name) => SERVICE_TABLES[name] ?? (name === 'venueTables' ? 'tables' : name),
+      ),
+    )
+    const found = serviceFiles.flatMap((file) => {
+      const text = readFileSync(file, 'utf8')
+      return [
+        ...drizzleWriteTargets(text).filter((name) => !allowed.has(name)),
+        ...sqlWriteTargets(text).filter((name) => !allowedSql.has(name)),
+      ].map((name) => `${rel(file)}: ${name}`)
+    })
+    expect(found).toEqual([])
+  })
+
+  it('nothing outside core/service writes a paying table, anywhere in the repo', () => {
+    const drizzleNames = new Set<string>(PAYING_TABLES)
+    const sqlNames = new Set(PAYING_TABLES.map((name) => SERVICE_TABLES[name]))
+    const files = ['apps', 'packages'].flatMap((top) => sourceFiles(join(repoRoot, top)))
+    expect(files.length).toBeGreaterThan(100)
+    const outside = (dir: string) => (file: string) => !file.startsWith(dir + sep)
+    const found = files
+      .filter(outside(serviceRoot))
+      .filter(outside(join(repoRoot, 'packages', 'db')))
+      .flatMap((file) => {
+        const text = readFileSync(file, 'utf8')
+        return [
+          ...drizzleWriteTargets(text).filter((name) => drizzleNames.has(name)),
+          ...sqlWriteTargets(text).filter((name) => sqlNames.has(name)),
+        ].map((name) => `${relative(repoRoot, file).replaceAll(sep, '/')}: ${name}`)
+      })
+    expect(found).toEqual([])
+  })
+
+  it('nothing outside core/service writes a reservation table, anywhere in the repo', () => {
+    const drizzleNames = new Set<string>(RESERVATION_TABLES)
+    const sqlNames = new Set(RESERVATION_TABLES.map((name) => SERVICE_TABLES[name]))
+    const files = ['apps', 'packages'].flatMap((top) => sourceFiles(join(repoRoot, top)))
+    expect(files.length).toBeGreaterThan(100)
+    const outside = (dir: string) => (file: string) => !file.startsWith(dir + sep)
+    const found = files
+      .filter(outside(serviceRoot))
+      .filter(outside(join(repoRoot, 'packages', 'db')))
+      .flatMap((file) => {
+        const text = readFileSync(file, 'utf8')
+        return [
+          ...drizzleWriteTargets(text).filter((name) => drizzleNames.has(name)),
+          ...sqlWriteTargets(text).filter((name) => sqlNames.has(name)),
+        ].map((name) => `${relative(repoRoot, file).replaceAll(sep, '/')}: ${name}`)
+      })
+    expect(found).toEqual([])
+  })
+
+  it('no reservation module imports a connector or a payment provider (D134, rule 7)', () => {
+    const reservationFiles = sourceFiles(join(serviceRoot, 'reservations'))
+    expect(reservationFiles.length).toBeGreaterThan(5)
+    const found = reservationFiles
+      .filter((file) =>
+        /from\s+['"](?:@restro\/(?:barsy|stripe)|[^'"]*connectors)/.test(
+          readFileSync(file, 'utf8'),
+        ),
+      )
+      .map(rel)
+    expect(found).toEqual([])
+  })
+
+  it('core/service touches no column of `tables` but code_generation', () => {
+    const found = serviceFiles.flatMap((file) => {
+      const text = readFileSync(file, 'utf8')
+      return [...text.matchAll(/\.update\(\s*venueTables\s*\)\s*\.set\(\s*\{([^}]*)\}/g)]
+        .flatMap((match) =>
+          (match[1] ?? '')
+            .split(',')
+            .map((part) => part.split(':')[0]?.trim() ?? '')
+            .filter((key) => key !== '' && key !== 'codeGeneration' && key !== 'updatedAt'),
+        )
+        .map((key) => `${rel(file)}: tables.${key}`)
+    })
+    expect(found).toEqual([])
+  })
+
+  it('catches a write it is meant to catch (self-test on text)', () => {
+    expect(drizzleWriteTargets('await tx.insert(sentOrders).values({})')).toEqual(['sentOrders'])
+    expect(sqlWriteTargets('insert into restro.log_entries (seq) values (1)')).toEqual([
+      'log_entries',
+    ])
+    expect(sqlWriteTargets('UPDATE "restro"."sittings" SET x = 1')).toEqual(['sittings'])
+    expect(dbImports("import { type Venue, sittings as s, venues } from '@restro/db'")).toEqual([
+      'Venue',
+      'sittings',
+      'venues',
+    ])
+  })
+})
+
+// The guest events (D142; ticket #335). A third write path shares the write side of the db
+// package: `recordEvents()` in core/events writes `guest_events` and nothing else, and nothing
+// else in the repo writes `guest_events`. Only tightens (D67).
+describe('the guest-events write path', () => {
+  const eventsFiles = sourceFiles(eventsRoot)
+  const applyFiles = sourceFiles(applyRoot)
+  const serviceFiles = sourceFiles(serviceRoot)
+
+  it('finds the write path (the guard is looking at real files)', () => {
+    expect(eventsFiles.length).toBeGreaterThan(1)
+    expect(
+      eventsFiles.some((file) => drizzleWriteTargets(readFileSync(file, 'utf8')).length > 0),
+    ).toBe(true)
+  })
+
+  it('core/events writes `guestEvents` and nothing else', () => {
+    const found = eventsFiles.flatMap((file) => {
+      const text = readFileSync(file, 'utf8')
+      return [
+        ...drizzleWriteTargets(text).filter((name) => name !== 'guestEvents'),
+        ...sqlWriteTargets(text).filter((name) => name !== 'guest_events'),
+      ].map((name) => `${rel(file)}: ${name}`)
+    })
+    expect(found).toEqual([])
+  })
+
+  // D103, corrected 11-09: the guest-events module "never joins core tables", so it can move to an
+  // edge ingest. This is a source check, and it is only as strong as its three patterns say: the
+  // module names no db export but the table (a Drizzle table is the only way a join reaches
+  // another table, and tables are the camelCase exports; PascalCase ones are types), uses no join
+  // method or keyword, and its raw SQL names no `restro.` table but its own. The database-side
+  // guarantee is the foreign-key test in packages/db/tests/table-areas.test.ts. Today the module
+  // only inserts, so this holds trivially; it fails the day a read of it reaches into the core.
+  it('core/events names no table but its own and joins nothing (D103)', () => {
+    const found = eventsFiles.flatMap((file) => {
+      const text = stripComments(readFileSync(file, 'utf8'))
+      const tables = dbImports(text).filter((name) => /^[a-z]/.test(name) && name !== 'guestEvents')
+      const joins = [...text.matchAll(/\b(?:inner|left|right|full|cross)?join\s*\(|\bjoin\b/gi)]
+      const sqlNames = [...text.matchAll(/\brestro\s*\.\s*"?([a-z_]+)"?/gi)]
+        .map((match) => (match[1] ?? '').toLowerCase())
+        .filter((name) => name !== 'guest_events')
+      return [
+        ...tables.map((name) => `${rel(file)}: imports ${name}`),
+        ...joins.map((match) => `${rel(file)}: ${match[0]}`),
+        ...sqlNames.map((name) => `${rel(file)}: names restro.${name}`),
+      ]
+    })
+    expect(found).toEqual([])
+  })
+
+  it('catches a core table, a join and a core table in raw SQL in the events module', () => {
+    const bad = stripComments(
+      [
+        "import { guestEvents, venues } from '@restro/db'",
+        'await tx.select().from(guestEvents).innerJoin(venues, eq(a, b))',
+        'await tx.execute(sql`select 1 from restro.tables`)',
+      ].join('\n'),
+    )
+    expect(dbImports(bad).filter((name) => /^[a-z]/.test(name) && name !== 'guestEvents')).toEqual([
+      'venues',
+    ])
+    expect(/\b(?:inner|left|right|full|cross)?join\s*\(|\bjoin\b/i.test(bad)).toBe(true)
+    expect(/\brestro\s*\.\s*"?(?!guest_events)[a-z_]+/i.test(bad)).toBe(true)
+    // Words in comments do not count.
+    expect(
+      stripComments('// never joins core tables\n/* join restro.venues */ const a = 1'),
+    ).not.toMatch(/join|restro/)
+  })
+
+  it('neither core/apply nor core/service names the table itself', () => {
+    const found = [...applyFiles, ...serviceFiles]
+      .filter((file) => /guestEvents|guest_events/.test(readFileSync(file, 'utf8')))
+      .map(rel)
+    expect(found).toEqual([])
+  })
+
+  it('nothing outside core/events writes `guest_events`, anywhere in the repo', () => {
+    const files = ['apps', 'packages'].flatMap((top) => sourceFiles(join(repoRoot, top)))
+    expect(files.length).toBeGreaterThan(100)
+    const outside = (dir: string) => (file: string) => !file.startsWith(dir + sep)
+    const found = files
+      .filter(outside(eventsRoot))
+      .filter(outside(join(repoRoot, 'packages', 'db')))
+      .flatMap((file) => {
+        const text = readFileSync(file, 'utf8')
+        return [
+          ...drizzleWriteTargets(text).filter((name) => name === 'guestEvents'),
+          ...sqlWriteTargets(text).filter((name) => name === 'guest_events'),
+        ].map((name) => `${relative(repoRoot, file).replaceAll(sep, '/')}: ${name}`)
+      })
+    expect(found).toEqual([])
+  })
+})

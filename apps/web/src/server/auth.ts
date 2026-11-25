@@ -10,6 +10,7 @@
 // - Deleting rows: the app role has no DELETE on users, organisations or members (see
 //   packages/db/src/table-access.ts).
 import { provisionTenant } from '@restro/core/apply'
+import { FRESH_SIGN_IN_MINUTES } from '@restro/core/service'
 import { authMember } from '@restro/db'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
@@ -32,6 +33,8 @@ const DISABLED_HTTP_PATHS = [
   '/delete-user',
   '/delete-user/callback',
   '/change-email',
+  // A rename would change the name on past Log entries (names are read at display time, D122 §7).
+  '/update-user',
   '/organization/create',
   '/organization/update',
   '/organization/delete',
@@ -43,7 +46,21 @@ const DISABLED_HTTP_PATHS = [
   '/organization/remove-member',
   '/organization/update-member-role',
   '/organization/leave',
+  // Switching organisation goes through `switchOrganization` alone, which refuses a shared device
+  // (step 0's S1): over HTTP a tablet could leave its device row behind and become a full sign-in.
+  '/organization/set-active',
 ]
+
+/**
+ * A person's own session (D122 §7; #72): signed in for up to 30 days from the password, never
+ * stretched by use; "fresh" for 15 minutes, after which Better Auth's sensitive endpoints and
+ * Restro's settings changes (`freshSignIn` commands) ask for the password again.
+ */
+export const SESSION_OPTIONS = {
+  expiresIn: 30 * 24 * 60 * 60,
+  disableSessionRefresh: true,
+  freshAge: FRESH_SIGN_IN_MINUTES * 60,
+} as const
 
 /** `scripts: true` leaves out the Next.js cookie plugin, which only works inside a request. */
 export function createAuth({ scripts = false }: { scripts?: boolean } = {}) {
@@ -57,6 +74,7 @@ export function createAuth({ scripts = false }: { scripts?: boolean } = {}) {
     database: drizzleAdapter(db, { provider: 'pg', schema: authSchema }),
     emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 8 },
     rateLimit: { enabled: true },
+    session: SESSION_OPTIONS,
     disabledPaths: DISABLED_HTTP_PATHS,
     advanced: {
       cookiePrefix: AUTH_COOKIE_PREFIX,

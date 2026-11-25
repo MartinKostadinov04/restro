@@ -10,6 +10,9 @@ import { BackIcon, CloseIcon } from './icons'
 const FOCUSABLE =
   'button:not([disabled]):not([tabindex="-1"]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
 
+/** How many dialogs hold the page still: stacked dialogs close in any order, the last one frees it. */
+let scrollLocks = 0
+
 export function Overlay({
   title,
   titleLang,
@@ -17,6 +20,7 @@ export function Overlay({
   onClose,
   children,
   detail = false,
+  dish = false,
   leaving = false,
   extra = null,
 }: {
@@ -30,6 +34,8 @@ export function Overlay({
   readonly children: ReactNode
   /** The dish page: full screen, a round back button over the photo. */
   readonly detail?: boolean
+  /** The dish as a sheet (the Dish page's kind): the sheets' panel, tall, a round close button over its photo. */
+  readonly dish?: boolean
   /** The dialog is on its way out (the exit animation is playing). */
   readonly leaving?: boolean
   /** One more control beside the close button. */
@@ -41,7 +47,7 @@ export function Overlay({
 
   useEffect(() => {
     close.current?.focus({ preventScroll: true })
-    const previous = document.body.style.overflow
+    scrollLocks += 1
     document.body.style.overflow = 'hidden'
     const keepFocusInside = (event: KeyboardEvent) => {
       if (event.key !== 'Tab') return
@@ -59,7 +65,8 @@ export function Overlay({
     }
     document.addEventListener('keydown', keepFocusInside)
     return () => {
-      document.body.style.overflow = previous
+      scrollLocks -= 1
+      if (scrollLocks === 0) document.body.style.overflow = ''
       document.removeEventListener('keydown', keepFocusInside)
     }
   }, [])
@@ -74,7 +81,17 @@ export function Overlay({
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <div ref={panel} className={detail ? 'rm-overlay-panel is-detail' : 'rm-overlay-panel'}>
+      <div
+        ref={panel}
+        className={
+          detail
+            ? 'rm-overlay-panel is-detail'
+            : dish
+              ? 'rm-overlay-panel is-dish'
+              : 'rm-overlay-panel'
+        }
+        data-design-part={detail ? undefined : 'sheet'}
+      >
         <div className="rm-overlay-head">
           <span id={titleId} lang={titleLang}>
             {title}

@@ -9,7 +9,7 @@
 // address is switched off.
 import { ChevronDownIcon, ExternalLinkIcon, RocketIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -35,7 +35,24 @@ interface Row {
 /** The change count a row shows: what differs, or everything for a first publish. */
 const countOf = (menu: PublishBarMenu): number => menu.changes ?? 0
 
-export function PublishBar({ view }: { view: PublishBarView }) {
+/** A button's words wrap when large text would run them off a phone (RR-79). */
+const WRAPS = 'h-auto min-h-9 max-w-full whitespace-normal'
+
+export function PublishBar({
+  view,
+  onlyWhatWorks: tonightWay = false,
+}: {
+  view: PublishBarView
+  /**
+   * Tonight's way (RR-80, operational-screens.md): never a disabled control, so what can't be
+   * pressed now isn't drawn, nor the words on why. With nothing to press the bar is not there.
+   * A role that may not publish gets it too (RR-90): never a disabled control for a role that may
+   * not act. Outside Tonight that role still gets the line on where the venue stands, without the
+   * button and without a reason (S27, D146).
+   */
+  onlyWhatWorks?: boolean
+}) {
+  const onlyWhatWorks = tonightWay || !view.canPublish
   const t = useTranslations('publish.bar')
   const reasonOf = useBlockReason()
   const publisher = usePublisherContext()
@@ -43,32 +60,66 @@ export function PublishBar({ view }: { view: PublishBarView }) {
   const [asking, setAsking] = useState<PublishBarMenu | null>(null)
 
   const busy = publisher.busy
+  // Where each menu stands, whoever looks: the role decides only whether the button is drawn.
+  const venueState = { ...view, canPublish: true }
   const rows: Row[] = view.menus.map((menu) => ({
     menu,
-    block: publishBlock(targetOf(menu, view), busy || menu.busy !== null),
+    block: publishBlock(targetOf(menu, venueState), busy || menu.busy !== null),
   }))
   const several = rows.length > 1
   const open = rows.filter((row) => row.block === null)
   const single = rows[0]
-  // The button itself: off for the role, while something is busy, or when no menu has anything.
-  const block: PublishBlock | null = !view.canPublish
-    ? 'role'
-    : busy
-      ? 'busy'
-      : open.length > 0
-        ? null
-        : (single?.block ?? 'up_to_date')
+  // The venue: busy, or nothing any menu has to publish, or (null) something waiting.
+  const state: PublishBlock | null = busy
+    ? 'busy'
+    : open.length > 0
+      ? null
+      : (single?.block ?? 'up_to_date')
+  // The button itself: off for the role, or for the venue's state.
+  const block: PublishBlock | null = view.canPublish ? state : 'role'
   const total = open.reduce((sum, row) => sum + countOf(row.menu), 0)
 
+  // "Version N is live" answers the press; once the published menu's draft changes again it no
+  // longer holds, so it goes rather than stand beside "1 change waiting" (S5). Only that menu
+  // counts: a change to another menu of the venue leaves it. After an Approve the menu is not
+  // known here: the note stays until the person closes it.
+  const outcome = publisher.outcome
+  const publishedMenu = outcome?.kind === 'published' ? outcome.menu : undefined
+  const publishedRow =
+    publishedMenu === undefined
+      ? undefined
+      : rows.find((row) =>
+          publishedMenu.menuId === null ? row.menu.live : row.menu.menuId === publishedMenu.menuId,
+        )
+  const draftCount = publishedRow === undefined ? null : countOf(publishedRow.menu)
+  const draftSame = publishedRow === undefined ? null : publishedRow.menu.identical
+  const draftAtPublish = useRef<{ readonly count: number; readonly same: boolean } | null>(null)
+  const { dismiss } = publisher
+  useEffect(() => {
+    if (draftCount === null || draftSame === null) {
+      draftAtPublish.current = null
+      return
+    }
+    const before = draftAtPublish.current
+    if (before === null) draftAtPublish.current = { count: draftCount, same: draftSame }
+    else if (draftCount > before.count || (before.same && !draftSame)) dismiss()
+  }, [draftCount, draftSame, dismiss])
+
+  // One line on where the venue stands (S27). The words differ by role only where they would
+  // tell someone who may not publish what publishing does (RR-90: never a reason to a role that
+  // may not act, so never "Only an owner or admin can publish").
   const reason = ((): string => {
     if (single === undefined) return t('reason.noMenu')
-    if (block === 'role' || block === 'busy') return reasonOf(block, null)
-    if (block !== null) {
-      return several ? t('reason.allUpToDate') : reasonOf(block, single.menu.blocked)
+    if (state === 'busy') return reasonOf('busy', null)
+    if (state !== null) {
+      return several ? t('reason.allUpToDate') : reasonOf(state, single.menu.blocked)
     }
-    if (!several && !single.menu.published) return t('firstPublish')
+    if (!several && !single.menu.published) {
+      return view.canPublish ? t('firstPublish') : t('guestNothing')
+    }
     if (!several && single.menu.identical) {
-      return view.addressServed ? t('pausedSame') : t('addressOffSame')
+      if (view.canPublish) return view.addressServed ? t('pausedSame') : t('addressOffSame')
+      return view.addressServed ? t('state.paused') : t('state.addressOff')
     }
     return total > 0 ? t('waiting', { count: total }) : t('minor')
   })()
@@ -77,6 +128,10 @@ export function PublishBar({ view }: { view: PublishBarView }) {
     setAsking(null)
     publisher.publish(menu.live ? undefined : menu.menuId)
   }
+
+  // A role that may not publish, in the page header (S27): the state line without the button.
+  // Tonight's way draws nothing it cannot act on, so it has no such line.
+  const stateOnly = !view.canPublish && !tonightWay
 
   const label = busy ? t('publishing') : t('publish')
   const icon = <RocketIcon aria-hidden className={busy ? 'animate-pulse' : undefined} />
@@ -89,26 +144,35 @@ export function PublishBar({ view }: { view: PublishBarView }) {
 
   const liveMenu = rows.find((row) => row.menu.live)?.menu
   const guestOff = view.guestPath === null || !view.addressServed || liveMenu?.published !== true
+  const offerGuest = !onlyWhatWorks || !guestOff
+  const offerPublish = !onlyWhatWorks || block === null
+  const offerReason = offerPublish || block === 'busy' || stateOnly
+  if (!offerGuest && !offerReason) return null
+  // Before the first publish of a single menu, the reason line already says guests see nothing:
+  // the guest link's hint would say it twice (S5).
+  const saysFirstPublish =
+    !several && block === null && single !== undefined && !single.menu.published
   const guestHint =
     view.guestPath === null
       ? null
       : !view.addressServed
         ? t('guestOff')
-        : liveMenu?.published !== true
+        : liveMenu?.published !== true && !saysFirstPublish
           ? t('guestNothing')
           : null
 
   return (
     <div
-      className="grid justify-items-start gap-1.5 sm:justify-items-end"
+      className="grid max-w-full grid-cols-[minmax(0,1fr)] justify-items-start gap-1.5 sm:justify-items-end"
       data-testid="publish-bar"
     >
-      <div className="flex flex-wrap items-center gap-2">
-        {guestOff ? (
+      <div className="flex max-w-full flex-wrap items-center gap-2">
+        {!offerGuest ? null : guestOff ? (
           <Button
             type="button"
             variant="outline"
             disabled
+            className={WRAPS}
             aria-describedby={guestHint === null ? undefined : `${reasonId}-guest`}
             data-testid="guest-link"
           >
@@ -116,7 +180,7 @@ export function PublishBar({ view }: { view: PublishBarView }) {
             {t('openGuest')}
           </Button>
         ) : (
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className={WRAPS}>
             <a
               href={view.guestPath ?? undefined}
               target="_blank"
@@ -128,10 +192,15 @@ export function PublishBar({ view }: { view: PublishBarView }) {
             </a>
           </Button>
         )}
-        {several ? (
+        {!offerPublish ? null : several ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild disabled={block !== null}>
-              <Button type="button" aria-describedby={reasonId} data-testid="publish-button">
+              <Button
+                type="button"
+                className={WRAPS}
+                aria-describedby={reasonId}
+                data-testid="publish-button"
+              >
                 {icon}
                 {label}
                 {count}
@@ -140,7 +209,7 @@ export function PublishBar({ view }: { view: PublishBarView }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-72">
               <DropdownMenuLabel>{t('choose')}</DropdownMenuLabel>
-              {rows.map(({ menu, block: rowBlock }) => {
+              {(onlyWhatWorks ? open : rows).map(({ menu, block: rowBlock }) => {
                 const where = [...(menu.live ? [t('venueAddress')] : []), ...menu.areas]
                 return (
                   <DropdownMenuItem
@@ -182,6 +251,7 @@ export function PublishBar({ view }: { view: PublishBarView }) {
             type="button"
             disabled={block !== null || single === undefined}
             onClick={() => (single === undefined ? null : setAsking(single.menu))}
+            className={WRAPS}
             aria-describedby={reasonId}
             data-testid="publish-button"
           >
@@ -191,15 +261,17 @@ export function PublishBar({ view }: { view: PublishBarView }) {
           </Button>
         )}
       </div>
-      <p
-        id={reasonId}
-        className="text-xs text-muted-foreground"
-        data-testid="publish-block-reason"
-        data-block={block ?? 'none'}
-      >
-        {reason}
-      </p>
-      {guestHint !== null ? (
+      {offerReason ? (
+        <p
+          id={reasonId}
+          className="text-xs text-muted-foreground"
+          data-testid="publish-block-reason"
+          data-block={block ?? 'none'}
+        >
+          {reason}
+        </p>
+      ) : null}
+      {guestHint !== null && !onlyWhatWorks ? (
         <p
           id={`${reasonId}-guest`}
           className="text-xs text-muted-foreground"

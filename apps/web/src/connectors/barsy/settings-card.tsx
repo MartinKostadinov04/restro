@@ -77,7 +77,7 @@ export function BarsySettingsCard({
   return (
     <FormSection title={t('title')} description={t('description')}>
       <form onSubmit={submit} className="grid gap-5" data-testid="settings-form">
-        <div className="grid gap-1.5">
+        <div className="grid min-w-0 gap-1.5">
           <Label htmlFor={`${formId}-allergen`}>{t('allergen.label')}</Label>
           <Select
             value={allergenKey}
@@ -104,7 +104,7 @@ export function BarsySettingsCard({
           </p>
         </div>
 
-        <div className="grid gap-1.5">
+        <div className="grid min-w-0 gap-1.5">
           <Label htmlFor={`${formId}-locale`}>{t('locale.label')}</Label>
           <Select
             value={defaultLocale}

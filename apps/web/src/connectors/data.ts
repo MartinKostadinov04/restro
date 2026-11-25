@@ -32,8 +32,18 @@ export interface BarsyVenueSource {
   readonly priceSource: BarsyPriceSource
 }
 
+/** The simulated POS (#71) has no settings of its own: the tag is all there is. */
+export interface SimInstanceSettings {
+  readonly kind: 'sim'
+}
+
+/** The simulated POS has no part of its own in a venue's Menu source card either. */
+export interface SimVenueSource {
+  readonly kind: 'sim'
+}
+
 /** The system settings every connector supplies for its instances, tagged with the connector's kind. */
-export type InstanceSettingsData = BarsyInstanceSettings
+export type InstanceSettingsData = BarsyInstanceSettings | SimInstanceSettings
 
 /** The connector-supplied part of a venue's Menu source card, tagged with the connector's kind. */
-export type VenueSourceData = BarsyVenueSource
+export type VenueSourceData = BarsyVenueSource | SimVenueSource

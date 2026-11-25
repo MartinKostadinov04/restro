@@ -39,7 +39,7 @@ const radio = (id: string) => screen.getByTestId(id) as HTMLInputElement
 describe('the Automation settings', () => {
   it('shows the sync mode with its schedule in the venue’s time zone, and the rule after a sync, naming the POS', () => {
     render()
-    expect(screen.getByText('Reading the menu from TillOne')).toBeTruthy()
+    expect(screen.getByText('Sync from TillOne')).toBeTruthy()
     expect(radio('automation-sync-auto').checked).toBe(true)
     expect((screen.getByTestId('automation-time') as HTMLInputElement).value).toBe('12:00')
     expect(screen.getByTestId('automation-zone').textContent).toBe('Europe/Sofia')
@@ -50,23 +50,35 @@ describe('the Automation settings', () => {
     expect(screen.queryByTestId('automation-inherited')).toBeNull()
   })
 
-  it('saves nothing until something changes, then sends the mode, the schedule and the rule', async () => {
+  it('sends the mode, the schedule and the rule, and a click on Save straight after typing counts', async () => {
     const user = userEvent.setup()
     render()
-    expect(save().disabled).toBe(true)
+    expect(save().disabled).toBe(false)
     await user.clear(screen.getByTestId('automation-time'))
     await user.type(screen.getByTestId('automation-time'), '06:30')
     await user.click(radio('automation-after-manual'))
-    expect(save().disabled).toBe(false)
+    await user.type(screen.getByTestId('automation-time'), '{Backspace}{Backspace}45')
+    // The click leaves the field, which commits "06:45" on the way in (#428).
     await user.click(save())
     expect(actions.saveAutomationAction).toHaveBeenCalledWith({
       venueId: VENUE_ID,
-      sync: { mode: 'auto', incremental_minutes: 5, full_pull_time: '06:30' },
+      sync: { mode: 'auto', incremental_minutes: 5, full_pull_time: '06:45' },
       afterSync: 'manual',
     })
     expect((await screen.findByTestId('automation-saved')).textContent).toBe(
       'Saved. The settings apply from the next sync of this venue.',
     )
+  })
+
+  it('refuses a time that is not a time and takes the focus to it', async () => {
+    const user = userEvent.setup()
+    render()
+    const field = screen.getByTestId('automation-time')
+    await user.clear(field)
+    await user.type(field, '99:99')
+    await user.click(save())
+    expect(actions.saveAutomationAction).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(field)
   })
 
   it('manual mode hides the schedule and keeps it for later', async () => {
@@ -86,7 +98,7 @@ describe('the Automation settings', () => {
     const user = userEvent.setup()
     render({ ...own, syncInherited: true })
     expect(screen.getByTestId('automation-inherited').textContent).toContain(
-      'before they moved to the venue',
+      'Saving makes these settings this venue’s own.',
     )
     expect(save().disabled).toBe(false)
     await user.click(save())
@@ -109,9 +121,32 @@ describe('the Automation settings', () => {
     expect(radio('automation-sync-auto').disabled).toBe(true)
   })
 
+  it('says in one line, before the greyed choices, that only owners and admins change them (S27)', () => {
+    render(own, false)
+    const line = screen.getByTestId('automation-readonly')
+    expect(line.textContent).toBe('Only owners and admins can change this.')
+    // Read first: it comes before the first choice it explains.
+    expect(
+      line.compareDocumentPosition(radio('automation-sync-auto')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('has no read-only line for an owner or admin', () => {
+    render(own, true)
+    expect(screen.queryByTestId('automation-readonly')).toBeNull()
+  })
+
+  it('says the read-only line in Bulgarian', () => {
+    render(own, false, 'bg')
+    expect(screen.getByTestId('automation-readonly').textContent).toBe(
+      'Само собственици и администратори могат да променят това.',
+    )
+  })
+
   it('speaks Bulgarian', () => {
     render(own, true, 'bg')
-    expect(screen.getByText('Четене на менюто от TillOne')).toBeTruthy()
+    expect(screen.getByText('Синхронизиране от TillOne')).toBeTruthy()
     expect(screen.getByText('Публикувай автоматично')).toBeTruthy()
   })
 })

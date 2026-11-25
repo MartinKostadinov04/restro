@@ -18,7 +18,6 @@ import {
   renameMenu,
   restoreMenu,
   setLiveMenu,
-  setMenuSettings,
 } from './menus'
 import { provisionMenu, provisionTenant, provisionVenue } from './provision'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
@@ -73,7 +72,6 @@ describe.skipIf(!hasDatabase)('menus of a venue (as the restro_app role)', () =>
       venueId: handA,
       name: null,
       sortKey: 'a0',
-      settings: {},
       deletedAt: null,
       live: true,
     })
@@ -125,23 +123,6 @@ describe.skipIf(!hasDatabase)('menus of a venue (as the restro_app role)', () =>
     })
     expect(moved.ok).toBe(true)
     expect((await listMenus(app, tenant, handA)).map((menu) => menu.id)).toEqual([second, firstA])
-    expect(
-      await setMenuSettings(app, tenant, {
-        venueId: handA,
-        menuId: second,
-        settings: { layout: 'two_columns', layout_switch: true },
-      }),
-    ).toMatchObject({
-      ok: true,
-      menu: { settings: { layout: 'two_columns', layout_switch: true } },
-    })
-    expect(
-      await setMenuSettings(app, tenant, {
-        venueId: handA,
-        menuId: second,
-        settings: { layout: 'grid' },
-      }),
-    ).toMatchObject({ ok: false, error: 'invalid_input' })
     expect(
       await renameMenu(app, tenant, { venueId: handB, menuId: second, name: 'Other' }),
     ).toMatchObject({ ok: false, error: 'unknown_menu' })

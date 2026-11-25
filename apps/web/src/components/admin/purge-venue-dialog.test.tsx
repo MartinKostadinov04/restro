@@ -79,7 +79,7 @@ describe('the Delete permanently dialog', () => {
     // … what never comes back, what is freed, and what stays.
     expect(effects).toContain('The codes never come back')
     expect(effects).toContain('address name is freed')
-    expect(effects).toContain('Items that the till or another venue still uses stay')
+    expect(effects).toContain('Items that the POS or another venue still uses stay')
   })
 
   it('keeps the button shut until the venue’s name is typed exactly (spaces around it do not count)', async () => {
@@ -130,7 +130,7 @@ describe('the Delete permanently dialog', () => {
     ['invalid', 'This venue could not be found.'],
     ['not_deleted', 'This venue is not in the deleted venues. Delete it first.'],
     ['name_mismatch', 'The name does not match. Type it exactly as shown.'],
-    ['failed', 'Something went wrong. The venue was not deleted, try again.'],
+    ['failed', "Restro couldn't delete the venue. Nothing changed; try again."],
   ] as const)('shows the answer %s and stays open', async (error, text) => {
     vi.mocked(purgeVenueAction).mockResolvedValue({ ok: false, error })
     const user = dialog()
@@ -153,16 +153,16 @@ describe('the Delete permanently dialog', () => {
     await user.type(typed(), NAME)
     await user.click(confirm())
     expect((await screen.findByTestId('purge-venue-error')).textContent).toContain(
-      'Something went wrong',
+      'Nothing changed; try again',
     )
     expect(purged).not.toHaveBeenCalled()
   })
 
-  it('starts empty each time it is opened, and Cancel closes it without a call', async () => {
+  it('starts empty each time it is opened, and Keep venue closes it without a call (S20)', async () => {
     const user = dialog()
     await user.click(opener())
     await user.type(typed(), 'Neon')
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await user.click(screen.getByRole('button', { name: 'Keep venue' }))
     await waitFor(() => expect(screen.queryByTestId('purge-venue-dialog')).toBeNull())
     await user.click(opener())
     expect(typed().value).toBe('')
@@ -178,5 +178,7 @@ describe('the Delete permanently dialog', () => {
       'Кодовете никога не се връщат',
     )
     expect(confirm().textContent).toBe('Изтрий завинаги')
+    // The way out names what it keeps (copy rule 11, S20).
+    expect(screen.getByRole('button', { name: 'Запази заведението' })).toBeTruthy()
   })
 })

@@ -30,7 +30,7 @@ let GUEST: VenueAddress
 const GUEST_PATH = `/m/demo-club/${GUEST_SLUG}`
 /** The tagged fixture menu has no venue row: its code is a fixed one. */
 const TAG_PATH = `/m/${TAG_SLUG}-${TAG_PUBLIC_ID}`
-/** The look fixture (SH-04): the reference template, the dark scheme forced, Playfair Display. */
+/** The look fixture (SH-04): the dark scheme forced, Playfair Display. */
 const LOOK_PATH = `/m/${LOOK_SLUG}-${LOOK_PUBLIC_ID}`
 
 test.beforeAll(async () => {
@@ -100,20 +100,13 @@ test.describe('the menu of /m/demo-club-<code>', () => {
     await expect.poll(() => sectionTitles(page).then((titles) => titles[0])).toBe('Коктейли')
   })
 
-  test('is the Editorial Market, the registry’s default, as the venue chose no template (SH-04)', async ({
-    page,
-  }) => {
+  test('is the renderer, the one face (D128)', async ({ page }) => {
     await open(page, `${GUEST.path}?lang=bg`)
     const face = page.locator('[data-face]:not([data-testid])')
     await expect(face).toHaveAttribute('data-face', 'editorial-market')
     // Its layout (one of three) and the colour scheme it follows are on its root.
     await expect(face).toHaveAttribute('data-layout', /^(list|one|two)$/)
     await expect(face).toHaveAttribute('data-scheme', 'auto')
-    // One template only: the other face's code and styles never reach the page.
-    await expect(page.locator('[data-face="qr-phone"]')).toHaveCount(0)
-    expect(await page.evaluate(() => document.documentElement.outerHTML.includes('rq-root'))).toBe(
-      false,
-    )
   })
 
   test('opens the allergen legend from a code, with the full names', async ({ page }) => {
@@ -201,9 +194,8 @@ test.describe('the menu of /m/demo-club-<code>', () => {
     expect(photos.find((photo) => photo.item === 'Негрони')?.loading).toBe('eager')
     expect(photos.find((photo) => photo.item === 'Загорка 500 мл')?.loading).toBe('lazy')
 
-    // Controls and tap size: every button and link of the Editorial Market is 44 x 44 px (SH-07; it
-    // was recorded here as an annotation, SH-04, while the template was delivered with smaller
-    // ones). The reference template (qr-phone) is held to the same by its test below.
+    // Controls and tap size: every button and link of the renderer is 44 x 44 px (SH-07; it was
+    // recorded here as an annotation, SH-04, while the template was delivered with smaller ones).
     const small = await page.locator('button, a[href], [role="radio"]').evaluateAll((elements) =>
       elements
         .map((element) => {
@@ -265,14 +257,17 @@ test.describe('the dish page in the address bar', () => {
   test('opening a dish adds #item-<id>; Back closes it and stays on the menu; Forward reopens it', async ({
     page,
   }) => {
-    await open(page, `${GUEST.path}?lang=bg&t=${GUEST_TABLE_TOKEN}`)
+    await open(page, `${GUEST.path}?lang=bg#t=${GUEST_TABLE_TOKEN}`)
     const menuUrl = page.url()
+    expect(new URL(menuUrl).hash).toBe(`#t=${GUEST_TABLE_TOKEN}`)
+    // The dish's address takes the fragment; the table's code comes back with Back (#70).
+    const dishUrl = (id: string) => `${menuUrl.split('#')[0]}#item-${id}`
     const mojito = await card(page, 'Мохито').getAttribute('data-item')
     expect(mojito).toMatch(/^nd_/)
 
     await openMojito(page)
     await expect(dishOf(page)).toBeVisible()
-    expect(page.url()).toBe(`${menuUrl}#item-${mojito}`)
+    expect(page.url()).toBe(dishUrl(mojito ?? ''))
 
     await page.goBack()
     await expect(dishOf(page)).toBeHidden()
@@ -283,7 +278,17 @@ test.describe('the dish page in the address bar', () => {
 
     await page.goForward()
     await expect(dishOf(page)).toBeVisible()
-    expect(page.url()).toBe(`${menuUrl}#item-${mojito}`)
+    expect(page.url()).toBe(dishUrl(mojito ?? ''))
+
+    // A fresh load of the dish page in this tab (as a reload there, without the history behind
+    // it): its address carries no code, the tab kept it (#70). Closing the dish cleans the address.
+    await page.goto('about:blank')
+    await page.goto(dishUrl(mojito ?? ''))
+    await expect(dishOf(page)).toBeVisible()
+    await dishOf(page).getByRole('button', { name: 'Обратно към менюто' }).click()
+    await expect(dishOf(page)).toBeHidden()
+    expect(new URL(page.url()).hash).toBe('')
+    await expect(page.getByText(`Маса ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
   })
 
   test('closing a dish with its own button goes back one step, and one more Back leaves the page', async ({
@@ -372,18 +377,15 @@ test.describe('the dish page in the address bar', () => {
   })
 })
 
-// The look fixture: a venue that chose the reference template (qr-phone) and forces the dark scheme
-// with Playfair Display. It proves the registry on a production build: the template named in the
-// snapshot is the one drawn, its own code loads and the other's does not, the forced scheme wins over
-// the guest's screen, and the font comes from this app.
-test.describe('the template and the look the snapshot names (SH-04)', () => {
-  test('draws the reference template, forced dark on a light screen, and not the Editorial Market', async ({
-    page,
-  }) => {
+// The look fixture: a menu that forces the dark scheme with Playfair Display. It proves on a
+// production build that the snapshot's look is the one drawn: the forced scheme wins over the guest's
+// screen, and the font comes from this app.
+test.describe('the look the snapshot names (SH-04)', () => {
+  test('draws the renderer, forced dark on a light screen', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' })
     await open(page, `${LOOK_PATH}?lang=en`)
     const face = page.locator('[data-face]:not([data-testid])')
-    await expect(face).toHaveAttribute('data-face', 'qr-phone')
+    await expect(face).toHaveAttribute('data-face', 'editorial-market')
     await expect(face).toHaveAttribute('data-scheme', 'dark')
     // Forced: dark although the guest's screen is light.
     const luminance = await face.evaluate((root) => {
@@ -393,13 +395,9 @@ test.describe('the template and the look the snapshot names (SH-04)', () => {
       return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
     })
     expect(luminance).toBeLessThan(0.15)
-    await expect(page.locator('[data-face="editorial-market"]')).toHaveCount(0)
-    expect(await page.evaluate(() => document.documentElement.outerHTML.includes('rm-item'))).toBe(
-      false,
-    )
   })
 
-  test('holds every control of the reference template to 44 px', async ({ page }) => {
+  test('holds every control to 44 px', async ({ page }) => {
     await open(page, `${LOOK_PATH}?lang=bg`)
     const small = await page.locator('button, nav a').evaluateAll((elements) =>
       elements
@@ -488,14 +486,16 @@ test.describe('the template and the look the snapshot names (SH-04)', () => {
 })
 
 test.describe('the address in the browser (D68)', () => {
-  test('a stale slug finds the menu, and the address bar is corrected, keeping ?t= and ?lang=', async ({
+  test('a stale slug finds the menu, and the address bar is corrected, keeping ?lang= and moving an older ?t= into #t=', async ({
     page,
   }) => {
-    const search = `?lang=bg&t=${GUEST_TABLE_TOKEN}`
-    await page.goto(`/m/an-older-name-${GUEST.publicId}${search}`)
+    // A link of before #70 carried the table's code in the query; the page moves it to the fragment.
+    await page.goto(`/m/an-older-name-${GUEST.publicId}?lang=bg&t=${GUEST_TABLE_TOKEN}`)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Демо клуб')
     await expect.poll(() => new URL(page.url()).pathname).toBe(GUEST_PATH)
-    expect(new URL(page.url()).search).toBe(search)
+    expect(new URL(page.url()).search).toBe('?lang=bg')
+    expect(new URL(page.url()).hash).toBe(`#t=${GUEST_TABLE_TOKEN}`)
+    await expect(page.getByText(`Маса ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
     // The corrected address is the one that reloads.
     await page.reload()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Демо клуб')
@@ -549,22 +549,30 @@ test.describe('the table code', () => {
   }) => {
     const redirect = await request.get(`/t/${GUEST_TABLE_TOKEN}`, { maxRedirects: 0 })
     expect(redirect.status()).toBe(302)
-    expect(redirect.headers().location).toBe(`${GUEST_PATH}?t=${GUEST_TABLE_TOKEN}`)
+    // The code goes on in the fragment, which no server, log or Referer sees (D122, #70).
+    expect(redirect.headers().location).toBe(`${GUEST_PATH}#t=${GUEST_TABLE_TOKEN}`)
 
     await page.goto(`/t/${GUEST_TABLE_TOKEN}`)
-    await page.waitForURL(`**${GUEST_PATH}?t=${GUEST_TABLE_TOKEN}`)
+    await page.waitForURL(`**${GUEST_PATH}#t=${GUEST_TABLE_TOKEN}`)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     // The Editorial Market shows the table in the bar at the top, next to the language switch.
     await expect(page.getByText(`Маса ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
     await page.screenshot({ path: shot('guest-bg-light-table') })
   })
 
-  test('an English browser gets the English menu without asking', async ({ browser }) => {
+  test("an English browser at a Bulgarian venue gets Bulgarian; the guest's pick is remembered (P11)", async ({
+    browser,
+  }) => {
     const context = await browser.newContext({ ...devices['Pixel 7'], locale: 'en-GB' })
     const page = await context.newPage()
     await page.goto(`/t/${GUEST_TABLE_TOKEN}`)
+    // The venue's own language first, whatever the browser says.
+    await expect(page.getByText(`Маса ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
+    // After the guest picks English, the next scan of the table's code opens in English.
+    await page.getByRole('button', { name: 'EN', exact: true }).click()
     await expect(page.getByText(`Table ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Club')
+    await page.goto(`/t/${GUEST_TABLE_TOKEN}`)
+    await expect(page.getByText(`Table ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
     await context.close()
   })
 
@@ -580,7 +588,8 @@ test.describe('the table code', () => {
     await expect(page.getByText('Този код за маса не е активен.')).toBeVisible()
     await expect(page.getByText('Попитайте персонала.')).toBeVisible()
     expect(await page.content()).not.toContain(GUEST_SLUG)
-    await page.screenshot({ path: shot('table-code-not-active') })
+    // A picture for the docs only: it checks nothing, so a run without SCREENSHOT_DIR takes none.
+    if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: shot('table-code-not-active') })
   })
 
   test('the menu and the table address send no referrer, so the code in the address stays here (A5-F5)', async ({
@@ -637,7 +646,7 @@ test.describe('what the page asks for (rule 4)', () => {
         bodies.push({ url: url.pathname, text: await response.text() })
       }
     })
-    await open(page, `${GUEST_PATH}?t=${GUEST_TABLE_TOKEN}`)
+    await open(page, `${GUEST_PATH}#t=${GUEST_TABLE_TOKEN}`)
     await page.waitForLoadState('networkidle')
 
     const allowed = (pathname: string) =>
@@ -657,6 +666,8 @@ test.describe('what the page asks for (rule 4)', () => {
       ).toBe(true)
     }
     expect(urls.some((pathname) => pathname.startsWith('/api/'))).toBe(false)
+    // The table's file is named after the code's hash: the code itself is in no request (#70).
+    expect(urls.filter((pathname) => pathname.includes(GUEST_TABLE_TOKEN))).toEqual([])
 
     // None of what came back holds a barsy id (article or category id of the demo installation).
     const externalIds = [
@@ -708,7 +719,7 @@ test.describe('screenshots (BG and EN, light and dark)', () => {
     for (const lang of ['bg', 'en'] as const) {
       test(`${lang} ${scheme}`, async ({ page }) => {
         await page.emulateMedia({ colorScheme: scheme })
-        await open(page, `${GUEST.path}?lang=${lang}&t=${GUEST_TABLE_TOKEN}`)
+        await open(page, `${GUEST.path}?lang=${lang}#t=${GUEST_TABLE_TOKEN}`)
         // The page follows the guest's screen: a dark page on a dark screen, a light one otherwise.
         const luminance = await page.evaluate(() => {
           const root = document.querySelector('[data-face]:not([data-testid])') as HTMLElement
@@ -728,7 +739,7 @@ test.describe('screenshots (BG and EN, light and dark)', () => {
   test('iPhone 13 sized screen, bg light', async ({ browser }) => {
     const context = await browser.newContext({ ...devices['iPhone 13'], colorScheme: 'light' })
     const page = await context.newPage()
-    await open(page, `${GUEST.path}?lang=bg&t=${GUEST_TABLE_TOKEN}`)
+    await open(page, `${GUEST.path}?lang=bg#t=${GUEST_TABLE_TOKEN}`)
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true)

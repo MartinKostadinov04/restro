@@ -109,6 +109,20 @@ export function minorToDecimal(minor: number, scale = 2): string {
 }
 
 /**
+ * Converts signed integer minor units to an exact decimal string: `1250` → `"12.50"`, `-400` →
+ * `"-4.00"`. For the POS's own signed amounts only (a waiter's discount line, a bill's total):
+ * everything Restro prices goes through `minorToDecimal`, which refuses a negative amount (rule 8,
+ * check V2). Throws `MoneyError` for anything but a safe integer.
+ */
+export function signedMinorToDecimal(minor: number, scale = 2): string {
+  assertScale(scale)
+  if (!Number.isSafeInteger(minor)) {
+    throw new MoneyError(`minor units must be a safe integer, got ${minor}`)
+  }
+  return minor < 0 ? `-${minorToDecimal(-minor, scale)}` : minorToDecimal(minor, scale)
+}
+
+/**
  * Adds two amounts of integer minor units (rule 8): `addMinor(1250, 150)` → `1400`. Throws
  * `MoneyError` unless both are non-negative safe integers (prices, deltas and totals are never
  * negative, check V2) and the sum is a safe integer too, so a total can never turn into a float
@@ -123,6 +137,25 @@ export function addMinor(a: number, b: number): number {
   const sum = a + b
   if (!Number.isSafeInteger(sum)) throw new MoneyError(`sum too large: ${a} + ${b}`)
   return sum
+}
+
+/**
+ * Sums signed amounts of integer minor units (rule 8), for the POS's own amounts, which can be
+ * negative (a discount line, a bill's total): `sumSignedMinor([3600, -100])` → `3500`. Throws
+ * `MoneyError` unless every amount and the sum are safe integers.
+ */
+export function sumSignedMinor(amounts: readonly number[]): number {
+  let sum = 0n
+  for (const amount of amounts) {
+    if (!Number.isSafeInteger(amount)) {
+      throw new MoneyError(`minor units must be a safe integer, got ${amount}`)
+    }
+    sum += BigInt(amount)
+  }
+  if (sum > BigInt(Number.MAX_SAFE_INTEGER) || sum < BigInt(Number.MIN_SAFE_INTEGER)) {
+    throw new MoneyError(`sum too large: ${amounts.join(' + ')}`)
+  }
+  return Number(sum)
 }
 
 /** Throws unless `amount` is a non-negative safe integer (prices, deltas and totals, check V2). */
@@ -210,4 +243,28 @@ export function formatMoney(minor: number, currency: Currency, locale: Locale): 
     formatters.set(cacheKey, formatter)
   }
   return formatter.format(minorToDecimal(minor, scale) as Intl.StringNumericLiteral)
+}
+
+/**
+ * Formats signed minor units for display, for the POS's own signed amounts alone: a waiter's
+ * discount line shows as `"-4,00 €"`. Like `formatMoney`, the amount reaches Intl as an exact
+ * decimal string, never a float. Everything Restro prices uses `formatMoney`, which refuses a
+ * negative amount.
+ */
+export function formatSignedMoney(minor: number, currency: Currency, locale: Locale): string {
+  if (minor >= 0) return formatMoney(minor, currency, locale)
+  const scale = CURRENCY_SCALE[currency]
+  const cacheKey = `signed|${locale}|${currency}`
+  let formatter = formatters.get(cacheKey)
+  if (formatter === undefined) {
+    formatter = new Intl.NumberFormat(localeToBcp47(locale), {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: scale,
+      maximumFractionDigits: scale,
+      signDisplay: 'auto',
+    })
+    formatters.set(cacheKey, formatter)
+  }
+  return formatter.format(signedMinorToDecimal(minor, scale) as Intl.StringNumericLiteral)
 }

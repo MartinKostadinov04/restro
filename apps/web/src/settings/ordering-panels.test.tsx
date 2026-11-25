@@ -1,0 +1,539 @@
+// @vitest-environment jsdom
+import { DEFAULT_ORDERING_SETTINGS, type LegalDetails, type OrderingSettings } from '@restro/core'
+import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { saveOrderingAction } from '@/server/settings/ordering-actions'
+import type { OrderingView } from '@/server/settings/ordering-view'
+import { savePayingAction } from '@/server/settings/paying-actions'
+import { renderWithIntl } from '@/test-utils'
+
+import { hoursProblemOf, isNextMorning, nearestOpenDay, noNightOpen } from './hours'
+import { HoursPanel } from './hours-panel'
+import { OrderingPanel } from './ordering-panel'
+
+vi.mock('@/server/settings/ordering-actions', () => ({ saveOrderingAction: vi.fn() }))
+vi.mock('@/server/settings/paying-actions', () => ({ savePayingAction: vi.fn() }))
+vi.mock('@/lib/auth-client', () => ({ authClient: { signIn: { email: vi.fn() } } }))
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), message: vi.fn() },
+}))
+
+const VENUE = 'vn_0000000000000000000001'
+const THU = { opens: '23:00', lastOrders: '04:30', closes: '05:00' }
+
+function view(
+  overrides: Partial<OrderingSettings> = {},
+  more: Partial<OrderingView> = {},
+): OrderingView {
+  return {
+    venueId: VENUE,
+    settings: { ...DEFAULT_ORDERING_SETTINGS, ...overrides },
+    dayEndsAt: '07:00',
+    timezone: 'Europe/Sofia',
+    currency: 'EUR',
+    canChange: true,
+    hasPos: true,
+    tillLabel: 'barsy',
+    openNow: false,
+    spotSetAt: null,
+    email: 'owner@example.com',
+    privacyNotice: true,
+    orderingOn: false,
+    legal: null,
+    canEditLegal: true,
+    ...more,
+  }
+}
+
+const OK = { ok: true, details: {} } as const
+
+beforeEach(() => {
+  vi.mocked(saveOrderingAction).mockReset()
+  vi.mocked(saveOrderingAction).mockResolvedValue(OK)
+  vi.mocked(toast.success).mockReset()
+  vi.mocked(toast.error).mockReset()
+})
+
+describe('the hours helpers', () => {
+  it('words what serviceHoursProblem says, under the right field', () => {
+    expect(hoursProblemOf(THU, '07:00:00')).toBeNull()
+    expect(hoursProblemOf({ ...THU, lastOrders: '22:00' }, '07:00')).toEqual({
+      field: 'lastOrders',
+      key: 'st_err_last',
+    })
+    expect(hoursProblemOf({ ...THU, closes: '03:00' }, '07:00')).toEqual({
+      field: 'closes',
+      key: 'st_err_close',
+    })
+    expect(hoursProblemOf({ ...THU, closes: '07:00' }, '07:00')).toEqual({
+      field: 'closes',
+      key: 'st_err_dayend',
+    })
+    expect(
+      hoursProblemOf({ opens: '23:00', lastOrders: '06:50', closes: '06:55' }, '07:00'),
+    ).toEqual({ field: 'lastOrders', key: 'st_err_15' })
+  })
+
+  it('knows a time after midnight and the nearest open day', () => {
+    expect(isNextMorning('04:30', '23:00')).toBe(true)
+    expect(isNextMorning('23:30', '23:00')).toBe(false)
+    const hours = { ...DEFAULT_ORDERING_SETTINGS.serviceHours, thu: THU }
+    expect(noNightOpen(DEFAULT_ORDERING_SETTINGS.serviceHours)).toBe(true)
+    expect(noNightOpen(hours)).toBe(false)
+    expect(nearestOpenDay(hours, 'fri')).toEqual(THU)
+    expect(nearestOpenDay(DEFAULT_ORDERING_SETTINGS.serviceHours, 'fri')).toBeNull()
+  })
+})
+
+describe('Settings › Hours', () => {
+  it('says phones cannot order while no night is open', () => {
+    renderWithIntl(<HoursPanel view={view()} />)
+    expect(screen.getByTestId('hours-none').textContent).toBe(
+      "Phones can't order until you open at least one night.",
+    )
+    expect(within(screen.getByTestId('hours-days')).getAllByText('Closed')).toHaveLength(7)
+  })
+
+  it('opens a night through the dialog and saves only the hours', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<HoursPanel view={view()} />)
+    await user.click(screen.getByRole('switch', { name: 'Thursday' }))
+    await user.type(screen.getByLabelText('Opens'), '23:00')
+    await user.type(screen.getByLabelText('Last orders'), '04:30')
+    await user.type(screen.getByLabelText('Closes'), '05:00')
+    await user.click(screen.getByRole('checkbox', { name: 'Fri' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(saveOrderingAction).toHaveBeenCalledTimes(1))
+    const sent = vi.mocked(saveOrderingAction).mock.calls[0]?.[0] as {
+      changes: { serviceHours: Record<string, unknown> }
+    }
+    expect(sent.changes.serviceHours.thu).toEqual(THU)
+    expect(sent.changes.serviceHours.fri).toEqual(THU)
+    expect(sent.changes.serviceHours.sat).toBeNull()
+  })
+
+  it('shows the problem under its field and keeps the dialog, saving nothing', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<HoursPanel view={view()} />)
+    await user.click(screen.getByRole('switch', { name: 'Friday' }))
+    await user.type(screen.getByLabelText('Opens'), '23:00')
+    await user.type(screen.getByLabelText('Last orders'), '06:50')
+    await user.type(screen.getByLabelText('Closes'), '06:55')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect((await screen.findAllByRole('alert'))[0]?.textContent).toBe(
+      'Last orders must be at least 15 minutes before the night ends (07:00).',
+    )
+    expect(saveOrderingAction).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy()
+  })
+
+  it('closes a night at once, with Undo that puts the hours back', async () => {
+    const user = userEvent.setup()
+    const settings = { serviceHours: { ...DEFAULT_ORDERING_SETTINGS.serviceHours, fri: THU } }
+    renderWithIntl(<HoursPanel view={view(settings)} />)
+    expect(
+      screen.getByText('23:00 – 05:00 (next morning) · last orders 04:30 (next morning)'),
+    ).toBeTruthy()
+    await user.click(screen.getByRole('switch', { name: 'Friday' }))
+    await waitFor(() =>
+      expect(saveOrderingAction).toHaveBeenCalledWith({
+        venueId: VENUE,
+        changes: {
+          serviceHours: { ...settings.serviceHours, fri: null },
+          closedDayHours: { fri: THU },
+        },
+      }),
+    )
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    const options = vi.mocked(toast.success).mock.calls[0]?.[1] as unknown as {
+      action: { onClick: () => void }
+    }
+    options.action.onClick()
+    await waitFor(() =>
+      expect(saveOrderingAction).toHaveBeenLastCalledWith({
+        venueId: VENUE,
+        changes: { serviceHours: settings.serviceHours },
+      }),
+    )
+  })
+
+  it('brings a closed day’s times back when it is switched on again, with no dialog (RR-58)', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<HoursPanel view={view({ closedDayHours: { fri: THU } })} />)
+    await user.click(screen.getByRole('switch', { name: 'Friday' }))
+    await waitFor(() =>
+      expect(saveOrderingAction).toHaveBeenCalledWith({
+        venueId: VENUE,
+        changes: { serviceHours: { ...DEFAULT_ORDERING_SETTINGS.serviceHours, fri: THU } },
+      }),
+    )
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('opens the dialog on kept times the service day has moved past, with them in it', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(
+      <HoursPanel view={view({ closedDayHours: { fri: THU } }, { dayEndsAt: '04:00' })} />,
+    )
+    await user.click(screen.getByRole('switch', { name: 'Friday' }))
+    await screen.findByRole('dialog')
+    expect(saveOrderingAction).not.toHaveBeenCalled()
+  })
+
+  it('keeps the dialog and what was typed when the connection is down (RR-76)', async () => {
+    const user = userEvent.setup()
+    vi.mocked(saveOrderingAction).mockRejectedValue(new TypeError('Failed to fetch'))
+    const settings = { serviceHours: { ...DEFAULT_ORDERING_SETTINGS.serviceHours, thu: THU } }
+    renderWithIntl(<HoursPanel view={view(settings)} />)
+    await user.click(screen.getByRole('button', { name: 'Thursday: Change' }))
+    const dialog = await screen.findByRole('dialog')
+    const saveButton = within(dialog).getByRole('button', { name: 'Save' })
+    await user.click(saveButton)
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(toast.error).mock.calls[0]).toEqual([
+      "Couldn't save. Check the connection and try again.",
+      { duration: Number.POSITIVE_INFINITY, closeButton: true },
+    ])
+    // The screen is still there, the dialog with it; nothing says it was saved.
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('gives a refused save’s toast a close button (RR-58)', async () => {
+    const user = userEvent.setup()
+    vi.mocked(saveOrderingAction).mockResolvedValue({ ok: false, error: 'permission_denied' })
+    renderWithIntl(<HoursPanel view={view({ closedDayHours: { fri: THU } })} />)
+    await user.click(screen.getByRole('switch', { name: 'Friday' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(toast.error).mock.calls[0]?.[1]).toEqual({
+      duration: Number.POSITIVE_INFINITY,
+      closeButton: true,
+    })
+  })
+
+  it('says "Applies from now." when a night is open and its hours change', async () => {
+    const user = userEvent.setup()
+    const settings = { serviceHours: { ...DEFAULT_ORDERING_SETTINGS.serviceHours, fri: THU } }
+    renderWithIntl(<HoursPanel view={view(settings, { openNow: true })} />)
+    await user.click(screen.getByRole('switch', { name: 'Friday' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(vi.mocked(toast.success).mock.calls[0]?.[0]).toBe('Saved Applies from now.')
+  })
+
+  it('shows the pre-opening check only for a venue with a POS', () => {
+    const { unmount } = renderWithIntl(<HoursPanel view={view()} />)
+    expect(screen.getByTestId('hours-preopen').textContent).toBe(
+      'From 2 h before opening Restro checks the connection to barsy every 10 min; if it still fails 30 min before opening, you get an alert.',
+    )
+    unmount()
+    renderWithIntl(<HoursPanel view={view({}, { hasPos: false })} />)
+    expect(screen.queryByTestId('hours-preopen')).toBeNull()
+  })
+
+  it('shows read-only values with one line and no controls for a role without the right', () => {
+    const settings = { serviceHours: { ...DEFAULT_ORDERING_SETTINGS.serviceHours, fri: THU } }
+    renderWithIntl(<HoursPanel view={view(settings, { canChange: false })} />)
+    expect(screen.getByTestId('settings-readonly').textContent).toBe(
+      'Only someone with the right to change settings can change these.',
+    )
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Change/ })).toBeNull()
+  })
+
+  it('writes the same in Bulgarian', () => {
+    renderWithIntl(<HoursPanel view={view()} />, { locale: 'bg' })
+    expect(screen.getByRole('heading', { name: 'Работно време' })).toBeTruthy()
+    expect(screen.getByTestId('hours-none').textContent).toBe(
+      'Телефоните не могат да поръчват, докато не отворите поне една вечер.',
+    )
+  })
+})
+
+describe('Settings › Ordering', () => {
+  it('shows D118’s defaults and the unset spot with its warning and one primary action', () => {
+    renderWithIntl(<OrderingPanel view={view()} />)
+    expect(screen.getByTestId('ord-cap-value').textContent).toBe('€150.00')
+    expect(screen.getByTestId('ord-spot-unset').textContent).toContain(
+      "Set the venue's spot, or nobody can order",
+    )
+    expect(screen.getByRole('button', { name: "I'm at the venue – use this spot" })).toBeTruthy()
+  })
+
+  it('shows no spot warning while the location check is off', () => {
+    renderWithIntl(<OrderingPanel view={view({ locationCheck: false })} />)
+    expect(screen.queryByTestId('ord-spot-unset')).toBeNull()
+  })
+
+  it('changes the cap in place: Enter saves through the money module, Escape cancels', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<OrderingPanel view={view()} />)
+    await user.click(screen.getByRole('button', { name: 'Change the largest order' }))
+    const input = screen.getByLabelText('Largest order on the bill without paying first')
+    await user.clear(input)
+    await user.type(input, '200,50{Enter}')
+    await waitFor(() =>
+      expect(saveOrderingAction).toHaveBeenCalledWith({
+        venueId: VENUE,
+        changes: { capMinor: 20_050 },
+      }),
+    )
+    vi.mocked(saveOrderingAction).mockClear()
+    await user.click(screen.getByRole('button', { name: 'Change the largest order' }))
+    await user.type(
+      screen.getByLabelText('Largest order on the bill without paying first'),
+      '9{Escape}',
+    )
+    expect(saveOrderingAction).not.toHaveBeenCalled()
+  })
+
+  it('saves a changed cap when the field is left, once; an unchanged one just closes (RR-58)', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<OrderingPanel view={view()} />)
+    await user.click(screen.getByRole('button', { name: 'Change the largest order' }))
+    await user.tab()
+    expect(saveOrderingAction).not.toHaveBeenCalled()
+    // The cap's field closed (the legal details' fields below stay).
+    expect(
+      screen.queryByRole('textbox', { name: 'Largest order on the bill without paying first' }),
+    ).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Change the largest order' }))
+    const input = screen.getByLabelText('Largest order on the bill without paying first')
+    await user.clear(input)
+    await user.type(input, '75')
+    await user.tab()
+    await waitFor(() => expect(saveOrderingAction).toHaveBeenCalledTimes(1))
+    expect(saveOrderingAction).toHaveBeenCalledWith({
+      venueId: VENUE,
+      changes: { capMinor: 7_500 },
+    })
+  })
+
+  it('keeps what was typed when the field is left with no amount in it', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<OrderingPanel view={view()} />)
+    await user.click(screen.getByRole('button', { name: 'Change the largest order' }))
+    const input = screen.getByLabelText('Largest order on the bill without paying first')
+    await user.clear(input)
+    await user.type(input, 'lots')
+    await user.tab()
+    expect(saveOrderingAction).not.toHaveBeenCalled()
+    expect(
+      (screen.getByLabelText('Largest order on the bill without paying first') as HTMLInputElement)
+        .value,
+    ).toBe('lots')
+    expect(screen.getByRole('alert').textContent).toContain('Enter an amount')
+  })
+
+  it('has no switch for tables a waiter has opened: nothing read it (RR-35)', () => {
+    renderWithIntl(<OrderingPanel view={view()} />)
+    expect(screen.queryByText('Only at tables a waiter has opened')).toBeNull()
+  })
+
+  it('refuses a cap that is not an amount', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<OrderingPanel view={view()} />)
+    await user.click(screen.getByRole('button', { name: 'Change the largest order' }))
+    const input = screen.getByLabelText('Largest order on the bill without paying first')
+    await user.clear(input)
+    await user.type(input, 'lots{Enter}')
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Enter an amount above zero and up to €10,000.00.',
+    )
+    expect(saveOrderingAction).not.toHaveBeenCalled()
+  })
+
+  it('switches the cap off and the location check off, with the consequence shown at once', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<OrderingPanel view={view({ locationCheck: false })} />)
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByTestId('ord-loc-off').textContent).toBe(
+      "Anyone with a photo of a table code could order onto that table's bill.",
+    )
+    await user.click(
+      screen.getByRole('switch', { name: 'Largest order on the bill without paying first' }),
+    )
+    await waitFor(() =>
+      expect(saveOrderingAction).toHaveBeenCalledWith({
+        venueId: VENUE,
+        changes: { capMinor: null },
+      }),
+    )
+  })
+
+  it('sets the spot from where the owner stands, and refuses a rough reading', async () => {
+    const user = userEvent.setup()
+    const getCurrentPosition = vi.fn()
+    Object.defineProperty(navigator, 'geolocation', {
+      value: { getCurrentPosition },
+      configurable: true,
+    })
+    renderWithIntl(<OrderingPanel view={view()} />)
+    const button = screen.getByRole('button', { name: "I'm at the venue – use this spot" })
+
+    getCurrentPosition.mockImplementationOnce((ok: PositionCallback) =>
+      ok({
+        coords: { latitude: 42.69751, longitude: 23.32415, accuracy: 340 },
+      } as GeolocationPosition),
+    )
+    await user.click(button)
+    expect(toast.error).toHaveBeenCalledWith(
+      'The reading is too rough (340 m). Step away from walls or turn Wi-Fi on, and try again.',
+      { duration: Number.POSITIVE_INFINITY },
+    )
+    expect(saveOrderingAction).not.toHaveBeenCalled()
+
+    getCurrentPosition.mockImplementationOnce((ok: PositionCallback) =>
+      ok({
+        coords: { latitude: 42.69751, longitude: 23.32415, accuracy: 12 },
+      } as GeolocationPosition),
+    )
+    await user.click(button)
+    await waitFor(() =>
+      expect(saveOrderingAction).toHaveBeenCalledWith({
+        venueId: VENUE,
+        changes: { spot: { lat: 42.69751, lng: 23.32415 } },
+      }),
+    )
+
+    getCurrentPosition.mockImplementationOnce(
+      (_: PositionCallback, refuse: PositionErrorCallback) =>
+        refuse({ code: 1 } as GeolocationPositionError),
+    )
+    await user.click(button)
+    expect(toast.error).toHaveBeenLastCalledWith(
+      "Your browser didn't share the location. Allow it for this site, or set the spot on a phone at the venue.",
+      { duration: Number.POSITIVE_INFINITY },
+    )
+  })
+
+  it('shows a set spot with its date and a plain map link, no map', () => {
+    renderWithIntl(
+      <OrderingPanel
+        view={view(
+          { spot: { lat: 42.69751, lng: 23.32415 } },
+          { spotSetAt: '2026-10-27T21:40:00.000Z' },
+        )}
+      />,
+    )
+    const line = screen.getByTestId('ord-spot-set')
+    expect(line.textContent).toContain('Set on')
+    const link = within(line).getByRole('link', { name: 'See on a map' })
+    expect(link.getAttribute('href')).toContain('openstreetmap.org')
+    expect(screen.getByRole('button', { name: 'Use where I am now' })).toBeTruthy()
+  })
+
+  describe('the privacy notice link (RR-O15, RR-O44)', () => {
+    const LEGAL_FORM = `/venues/${VENUE}?tab=settings&section=ordering#ord-legal`
+    const LEGAL: LegalDetails = {
+      name: 'Club Nights EOOD',
+      eik: '123456789',
+      address: 'Sofia, 1 Example Street',
+      privacyUrl: 'https://club.example/privacy',
+    }
+
+    it('keeps the location check off without the link, and says where to add it', async () => {
+      const user = userEvent.setup()
+      renderWithIntl(
+        <OrderingPanel view={view({ locationCheck: false }, { privacyNotice: false })} />,
+      )
+      await user.click(screen.getByRole('button', { name: 'More' }))
+      const check = screen.getByRole('switch', { name: 'Check guests are in the venue' })
+      expect(check.hasAttribute('disabled')).toBe(true)
+      const line = screen.getByTestId('ord-loc-privacy')
+      expect(line.textContent).toBe(
+        'Turns on once the venue has a privacy notice link. Add it in Settings › Ordering.',
+      )
+      expect(within(line).getByRole('link').getAttribute('href')).toBe(LEGAL_FORM)
+      await user.click(check)
+      expect(saveOrderingAction).not.toHaveBeenCalled()
+    })
+
+    it('leaves a location check that is on as it is, with the same line', async () => {
+      const user = userEvent.setup()
+      renderWithIntl(
+        <OrderingPanel view={view({ locationCheck: true }, { privacyNotice: false })} />,
+      )
+      await user.click(screen.getByRole('button', { name: 'More' }))
+      const check = screen.getByRole('switch', { name: 'Check guests are in the venue' })
+      expect(check.getAttribute('aria-checked')).toBe('true')
+      expect(check.hasAttribute('disabled')).toBe(false)
+      expect(screen.getByTestId('ord-loc-privacy').textContent).toMatch(
+        /^On, but the venue has no privacy notice link/,
+      )
+    })
+
+    it('says so at the top when ordering from the phone is on without the link', () => {
+      renderWithIntl(<OrderingPanel view={view({}, { privacyNotice: false, orderingOn: true })} />)
+      const line = screen.getByTestId('ord-privacy-ordering')
+      expect(line.textContent).toMatch(/^Ordering from the phone is on, but the venue has no/)
+      expect(within(line).getByRole('link').getAttribute('href')).toBe(LEGAL_FORM)
+    })
+
+    it('has the form for the legal details with the link, saved as Settings › Paying saves it (#288)', async () => {
+      vi.mocked(savePayingAction).mockReset().mockResolvedValue(OK)
+      const user = userEvent.setup()
+      renderWithIntl(<OrderingPanel view={view({}, { privacyNotice: false })} />)
+      const form = screen.getByTestId('ord-legal')
+      expect(form.getAttribute('id')).toBe('ord-legal')
+      expect(form.textContent).toContain('before they share their location or order')
+      await user.type(within(form).getByLabelText('Legal name'), LEGAL.name)
+      await user.click(within(form).getByRole('button', { name: 'Save' }))
+      expect(form.textContent).toContain('Fill this in to turn ordering from the phone on.')
+      expect(savePayingAction).not.toHaveBeenCalled()
+      await user.type(within(form).getByLabelText('ЕИК (company number)'), LEGAL.eik)
+      await user.type(within(form).getByLabelText('Registered address'), LEGAL.address)
+      await user.type(within(form).getByLabelText('Privacy notice link'), LEGAL.privacyUrl)
+      await user.click(within(form).getByRole('button', { name: 'Save' }))
+      await waitFor(() =>
+        expect(savePayingAction).toHaveBeenCalledWith({
+          venueId: VENUE,
+          changes: { legalDetails: LEGAL },
+        }),
+      )
+    })
+
+    it('shows the saved details read-only to a person without the right to save them', () => {
+      renderWithIntl(<OrderingPanel view={view({}, { legal: LEGAL, canEditLegal: false })} />)
+      const card = screen.getByTestId('ord-legal')
+      expect(card.textContent).toContain(LEGAL.privacyUrl)
+      expect(within(card).queryByRole('textbox')).toBeNull()
+      expect(within(card).queryByRole('button')).toBeNull()
+    })
+
+    it('shows nothing of them to a person without the right while none are saved', () => {
+      renderWithIntl(
+        <OrderingPanel view={view({}, { privacyNotice: false, canEditLegal: false })} />,
+      )
+      expect(screen.queryByTestId('ord-legal')).toBeNull()
+    })
+
+    it('shows no line once the link is on file', () => {
+      renderWithIntl(<OrderingPanel view={view({}, { orderingOn: true })} />)
+      expect(screen.queryByTestId('ord-privacy-ordering')).toBeNull()
+      expect(screen.queryByTestId('ord-loc-privacy')).toBeNull()
+    })
+
+    it('writes the line in Bulgarian', async () => {
+      const user = userEvent.setup()
+      renderWithIntl(
+        <OrderingPanel view={view({ locationCheck: false }, { privacyNotice: false })} />,
+        { locale: 'bg' },
+      )
+      await user.click(screen.getByRole('button', { name: 'Още' }))
+      expect(screen.getByTestId('ord-loc-privacy').textContent).toBe(
+        'Включва се, след като заведението има връзка към политиката за поверителност. Добавете я в Настройки › Поръчки.',
+      )
+    })
+  })
+
+  it('has no controls for a role without the right', () => {
+    renderWithIntl(<OrderingPanel view={view({}, { canChange: false })} />)
+    expect(screen.getByTestId('settings-readonly')).toBeTruthy()
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByRole('button', { name: /use this spot/ })).toBeNull()
+  })
+})

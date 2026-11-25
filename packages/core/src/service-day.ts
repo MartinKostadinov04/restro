@@ -1,6 +1,8 @@
 // The venue's service day (D45) and local timestamps, without a date library: `Intl` gives the
-// wall-clock time in the venue's time zone, and the service day is a calendar date, so no
-// duration arithmetic (and no daylight-saving trap) is involved. Pure: the instant is an input.
+// wall-clock time in the venue's time zone, and the service day is a calendar date, so no duration
+// arithmetic is involved. A clock change is `instantOfWall`'s alone: a time the clocks skip, or
+// read twice, still comes to one instant, and later wall times never come to earlier instants.
+// Pure: the instant is an input.
 
 /** `HH:MM` or `HH:MM:SS` (Postgres returns `time` columns with seconds). */
 const CLOCK_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/
@@ -65,15 +67,54 @@ export function wallClock(at: Date, timeZone: string): WallClock {
 
 const pad = (value: number, length = 2) => String(value).padStart(length, '0')
 
+const DAY_MS = 24 * 60 * 60_000
+/** No zone moves its clocks by more than this in one change. */
+const MOST_A_CLOCK_MOVES_SECONDS = 2 * 3600
+
+/** A wall-clock reading written as if it were UTC: comparable with another, never an instant. */
+function wallMs(local: WallClock): number {
+  return Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second)
+}
+
+/**
+ * The instant at which the clocks of `timeZone` read `wall` (see `wallMs`), so that a later wall
+ * time is never an earlier instant, across either clock change:
+ * - a time they read twice (autumn) is the later of the two, when the night has run its full length;
+ * - a time they skip (spring) is the instant they jump, the first one that is past it.
+ */
+function instantOfWall(wall: number, timeZone: string): number {
+  // Any zone's offset is under a day, so these two are the offsets on either side of a change.
+  const before = wallClock(new Date(wall - DAY_MS), timeZone).offsetMinutes
+  const after = wallClock(new Date(wall + DAY_MS), timeZone).offsetMinutes
+  const underBefore = wall - before * 60_000
+  if (before === after) return underBefore
+  const underAfter = wall - after * 60_000
+  const earlier = Math.min(underBefore, underAfter)
+  const later = Math.max(underBefore, underAfter)
+  const reads = (instant: number) => wallMs(wallClock(new Date(instant), timeZone))
+  if (reads(later) === wall) return later
+  if (reads(earlier) === wall) return earlier
+  // Skipped: the offset changes somewhere between the two, to the second.
+  let low = earlier
+  let high = later
+  while (high - low > 1_000) {
+    const middle = low + Math.floor((high - low) / 2)
+    if (wallClock(new Date(middle), timeZone).offsetMinutes === before) low = middle
+    else high = middle
+  }
+  return Math.floor(high / 1_000) * 1_000
+}
+
 function isoDate(year: number, month: number, day: number): string {
   return `${pad(year, 4)}-${pad(month)}-${pad(day)}`
 }
 
 /**
  * The service day `at` belongs to, as `YYYY-MM-DD`: the venue's local calendar date, or the day
- * before while the local time is earlier than `dayEndsAt` (D45: a night that runs to 07:00
- * belongs to the evening it started). Throws `RangeError` for an unknown time zone or a
- * malformed `dayEndsAt`.
+ * before until that date's `dayEndsAt` has passed (D45: a night that runs to 07:00 belongs to the
+ * evening it started). The day moves on once, at `instantOfWall`'s instant of `dayEndsAt`, so a
+ * `dayEndsAt` the clocks read twice never takes it back. Throws `RangeError` for an unknown time
+ * zone or a malformed `dayEndsAt`.
  */
 export function serviceDate(at: Date, timeZone: string, dayEndsAt: string): string {
   const end = CLOCK_PATTERN.exec(dayEndsAt)
@@ -81,7 +122,16 @@ export function serviceDate(at: Date, timeZone: string, dayEndsAt: string): stri
   const local = wallClock(at, timeZone)
   const localSeconds = local.hour * 3600 + local.minute * 60 + local.second
   const endSeconds = Number(end[1]) * 3600 + Number(end[2]) * 60 + Number(end[3] ?? 0)
-  if (localSeconds >= endSeconds) return isoDate(local.year, local.month, local.day)
+  // Away from `dayEndsAt` a clock change cannot alter the answer, and this runs on every read.
+  const passedEnd =
+    Math.abs(localSeconds - endSeconds) > MOST_A_CLOCK_MOVES_SECONDS
+      ? localSeconds >= endSeconds
+      : at.getTime() >=
+        instantOfWall(
+          Date.UTC(local.year, local.month - 1, local.day) + endSeconds * 1_000,
+          timeZone,
+        )
+  if (passedEnd) return isoDate(local.year, local.month, local.day)
   // The calendar day before (UTC arithmetic on a date only: no time zone involved).
   const previous = new Date(Date.UTC(local.year, local.month - 1, local.day - 1))
   return isoDate(previous.getUTCFullYear(), previous.getUTCMonth() + 1, previous.getUTCDate())
@@ -138,4 +188,66 @@ export function isoInTimeZone(at: Date, timeZone: string): string {
     `${isoDate(local.year, local.month, local.day)}T${pad(local.hour)}:${pad(local.minute)}:` +
     `${pad(local.second)}${sign}${pad(Math.floor(offset / 60))}:${pad(offset % 60)}`
   )
+}
+
+/**
+ * The calendar date `days` after a service date (`YYYY-MM-DD`), as a date-only string. A service
+ * day is named by its own calendar date (D45), so stepping one is calendar arithmetic and nothing
+ * more: the venue's clock is applied afterwards by `localInstant`, which is where a daylight-saving
+ * change is accounted for. Negative `days` steps back.
+ */
+export function addDaysToDay(day: string, days: number): string {
+  const [year, month, date] = day.split('-').map(Number) as [number, number, number]
+  return new Date(Date.UTC(year, month - 1, date + days)).toISOString().slice(0, 10)
+}
+
+/**
+ * When service day `day` begins and ends at a venue: from the end of the day before to its own end,
+ * in the venue's zone (D45). `dayEndsAt` is the venue's `HH:MM`. One rule for the read side (the
+ * plan's `nightBounds`) and the write side (the overlap rule's nights), so the two never disagree.
+ */
+export function serviceDayBounds(
+  day: string,
+  timeZone: string,
+  dayEndsAt: string,
+): { readonly from: Date; readonly to: Date } {
+  return {
+    from: localInstant(day, dayEndsAt, timeZone, dayEndsAt),
+    to: localInstant(addDaysToDay(day, 1), dayEndsAt, timeZone, dayEndsAt),
+  }
+}
+
+/**
+ * The instant the service day of `at` began (to the second): the end of the day before. What a
+ * connector compares a bill's opening with, so a bill left open from last night is never joined
+ * (#77). Found by halving the 26 hours before `at`, so a daylight-saving change needs no rule.
+ */
+export function serviceDayStartsAt(at: Date, timeZone: string, dayEndsAt: string): Date {
+  const today = serviceDate(at, timeZone, dayEndsAt)
+  let low = at.getTime() - 26 * 3_600_000
+  let high = at.getTime()
+  // `low` is always in an earlier day, `high` in today's.
+  while (high - low > 1_000) {
+    const middle = Math.floor((low + high) / 2)
+    if (serviceDate(new Date(middle), timeZone, dayEndsAt) === today) high = middle
+    else low = middle
+  }
+  return new Date(Math.floor(high / 1_000) * 1_000)
+}
+
+/**
+ * The instant at which the wall clocks of `timeZone` read `time` (`HH:MM`) on service day `day`: a
+ * time before `dayEndsAt` belongs to the next calendar date (a night that runs past midnight). A
+ * time lost to a daylight-saving jump is the instant of the jump, so it stays before any later time
+ * of that night (`instantOfWall`).
+ */
+export function localInstant(day: string, time: string, timeZone: string, dayEndsAt: string): Date {
+  const [year, month, date] = day.split('-').map(Number) as [number, number, number]
+  const clock = CLOCK_PATTERN.exec(time)
+  const end = CLOCK_PATTERN.exec(dayEndsAt)
+  if (clock === null || end === null) throw new RangeError('times must be HH:MM or HH:MM:SS')
+  const minutes = Number(clock[1]) * 60 + Number(clock[2])
+  const endMinutes = Number(end[1]) * 60 + Number(end[2])
+  const nextDay = minutes < endMinutes ? 1 : 0
+  return new Date(instantOfWall(Date.UTC(year, month - 1, date + nextDay, 0, minutes), timeZone))
 }

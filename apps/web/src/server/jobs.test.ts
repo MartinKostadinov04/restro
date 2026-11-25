@@ -36,15 +36,22 @@ describe('enqueueJob', () => {
     ])
   })
 
-  it('sends an automatic publish with its merge delay and its own key, a manual one at once', async () => {
+  it('sends an automatic publish with its merge delay and its own key and group, a manual one at once', async () => {
     const { sent, sender } = recorder()
     const menuId = newId('nd')
     const payload = { tenantId, menuId, venueId, actor: 'system' } as const
     await enqueueJob(JOB_NAMES.publishMenu, { ...payload, reason: 'auto_sync' }, sender)
     await enqueueJob(JOB_NAMES.publishMenu, { ...payload, reason: 'manual' }, sender)
     expect(sent.map((call) => call.options)).toEqual([
-      { singletonKey: `${menuId}:${venueId}:auto`, startAfter: 30 },
-      { singletonKey: `${menuId}:${venueId}:manual:new` },
+      {
+        singletonKey: `${menuId}:${venueId}:auto`,
+        startAfter: 30,
+        group: { id: `${menuId}:${venueId}:auto` },
+      },
+      {
+        singletonKey: `${menuId}:${venueId}:manual:new`,
+        group: { id: `${menuId}:${venueId}:manual:new` },
+      },
     ])
   })
 

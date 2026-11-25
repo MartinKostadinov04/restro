@@ -168,6 +168,7 @@ export function TagsPanel({
                                   enabledLocales={enabledLocales}
                                   initial={{ label: tag.label, color: tag.color }}
                                   submitLabel={t('save')}
+                                  cancelLabel={t('dontSave')}
                                   busy={busy}
                                   onSubmit={(value) => void save(tag.id, value)}
                                   onCancel={() => setEditing(null)}

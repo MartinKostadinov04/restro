@@ -32,7 +32,6 @@ describe('the list of manifests', () => {
       visibleFaces().map((entry) => entry.id),
     )
     expect(visibleManifests()[0]?.id).toBe(DEFAULT_FACE_ID)
-    expect(visibleManifests().some((entry) => entry.id === 'qr-phone')).toBe(false)
   })
 
   it('reads the default face for a venue that chose none, or a name that is not a face', () => {
@@ -60,10 +59,6 @@ describe('the list of manifests', () => {
     const faceImports = [...code.matchAll(/from '(@restro\/[a-z-]+[^']*)'/g)].map(
       (match) => match[1],
     )
-    expect(faceImports.sort()).toEqual([
-      '@restro/editorial-market/manifest',
-      '@restro/qr-phone/manifest',
-      '@restro/shell',
-    ])
+    expect(faceImports.sort()).toEqual(['@restro/editorial-market/manifest', '@restro/shell'])
   })
 })

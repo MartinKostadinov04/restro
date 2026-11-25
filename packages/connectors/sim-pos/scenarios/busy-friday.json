@@ -1,0 +1,100 @@
+{
+  "name": "busy-friday",
+  "extends": "demo-bar",
+  "description": "A full house: every table has a bill, one with half a portion (half-up rounding), one with a bill-level charge of 5.00 EUR (so its total is not the sum of its rows: Q37, the simulated POS refuses to move rows off it). Chaos draws a slow answer, a failed call or a dropped list item on about one call in twenty; the seed is printed so a run can be replayed.",
+  "seed": 20261022,
+  "chaos": {
+    "seed": 20261022,
+    "rate": 0.05,
+    "faults": [
+      { "kind": "slow", "ms": { "min": 200, "max": 1500 } },
+      { "kind": "fail" },
+      { "kind": "dropItem" }
+    ]
+  },
+  "bills": [
+    {
+      "table": "30001",
+      "by": "maria",
+      "minutesAgo": 140,
+      "rows": [{ "article": "2007", "quantity": "2" }, { "article": "2501", "quantity": "1" }]
+    },
+    {
+      "table": "30002",
+      "by": "maria",
+      "minutesAgo": 120,
+      "rows": [{ "article": "2101", "quantity": "4" }, { "article": "2503", "quantity": "2" }]
+    },
+    {
+      "table": "30003",
+      "by": "maria",
+      "minutesAgo": 95,
+      "rows": [{ "article": "2401", "quantity": "1" }, { "article": "2205", "quantity": "4" }]
+    },
+    {
+      "table": "30004",
+      "by": "maria",
+      "minutesAgo": 80,
+      "rows": [{ "article": "2301", "quantity": "6" }]
+    },
+    {
+      "table": "30005",
+      "by": "maria",
+      "minutesAgo": 60,
+      "rows": [
+        { "article": "2504", "quantity": "1" },
+        { "article": "2501", "quantity": "0.5" },
+        { "article": "2201", "quantity": "2" }
+      ]
+    },
+    {
+      "table": "30006",
+      "by": "maria",
+      "minutesAgo": 45,
+      "rows": [{ "article": "2002", "quantity": "3" }]
+    },
+    {
+      "table": "up 7",
+      "by": "maria",
+      "minutesAgo": 75,
+      "rows": [
+        { "article": "2001", "quantity": "1" },
+        { "article": "2002", "quantity": "1" },
+        { "article": "2003", "quantity": "1" },
+        { "article": "2102", "quantity": "2" },
+        { "article": "2202", "quantity": "2" }
+      ]
+    },
+    {
+      "table": "up 8",
+      "by": "ivan",
+      "minutesAgo": 70,
+      "rows": [{ "article": "2402", "quantity": "1" }, { "article": "2203", "quantity": "2" }]
+    },
+    {
+      "table": "up 9",
+      "by": "ivan",
+      "minutesAgo": 55,
+      "rows": [{ "article": "2006", "quantity": "2" }, { "article": "2302", "quantity": "2" }]
+    },
+    {
+      "table": "up 10",
+      "by": "ivan",
+      "minutesAgo": 40,
+      "rows": [{ "article": "2104", "quantity": "3" }]
+    },
+    {
+      "table": "up 11",
+      "by": "ivan",
+      "minutesAgo": 30,
+      "rows": [{ "article": "2303", "quantity": "2" }, { "article": "2204", "quantity": "2" }]
+    },
+    {
+      "table": "up 12",
+      "by": "ivan",
+      "minutesAgo": 20,
+      "rows": [{ "article": "2403", "quantity": "1" }]
+    }
+  ],
+  "setup": [{ "op": "charge-bill", "args": { "table": "up 11", "amountMinor": 500 } }]
+}

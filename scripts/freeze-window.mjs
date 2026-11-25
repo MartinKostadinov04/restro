@@ -1,4 +1,4 @@
-// Production deploy freeze (CLAUDE.md, Git section; docs/architecture/stack.md, step 6).
+// Production deploy freeze (docs/agents/lead.md; docs/architecture/stack.md, step 6).
 //
 // No production deploys on the busy nights: Thursday, Friday, Saturday and Sunday from 18:00
 // until 08:00 the next morning, Europe/Sofia time. Equivalent rule: frozen on Thu, Fri, Sat

@@ -71,6 +71,40 @@ export function openOwnerPool(): pg.Pool {
 
 /** Tenant tables emptied by `cleanUp`, children before parents (foreign keys). */
 const TABLES_CHILDREN_FIRST = [
+  // The reservation tables (migration 0046) first: they refer to the staff members, the plans and
+  // the venues the lists below empty.
+  'guest_private_notes',
+  'reservation_spots',
+  'reservations',
+  'guests',
+  'spots',
+  'floor_plans',
+  'venue_spot_kinds',
+  'reservation_settings',
+  'reservation_nights',
+  // The paying tables (migration 0030), before the service tables they refer to.
+  'payment_refunds',
+  'payment_steps',
+  'payment_lines',
+  'payments',
+  'payment_accounts',
+  // The service tables (migration 0028), written by core/service's tests.
+  'sent_order_notes',
+  'log_entries',
+  'locks',
+  'bill_readings',
+  'waiter_calls',
+  'alerts',
+  'pauses',
+  'service_days',
+  'sent_orders',
+  'table_orders',
+  'sittings',
+  'staff_assignments',
+  'shared_devices',
+  'venue_roles',
+  'staff_members',
+  'push_subscriptions',
   'item_first_published',
   'publish_pointers',
   'snapshots',
@@ -85,6 +119,7 @@ const TABLES_CHILDREN_FIRST = [
   'job_runs',
   'places',
   'tables',
+  'bars',
   'areas',
   'venue_slug_history',
   'purge_log',

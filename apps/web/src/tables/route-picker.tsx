@@ -3,7 +3,7 @@
 // The menu picker of an area header and of a table card (brief S5, D95, adjustments M2): which menu
 // the code opens. The venue's live menu is the default; an area's choice overrides the venue's
 // and a table's overrides its area's; the first item of the list takes the choice away
-// ("Same as the venue" on an area, "Same as the area" on a table). A binned menu is not offered
+// ("The venue's menu" on an area, "Same as the area" on a table). A binned menu is not offered
 // (the view lists only menus in use). Owners and admins choose; everyone else reads.
 import { useTranslations } from 'next-intl'
 import { useId } from 'react'
@@ -52,16 +52,19 @@ export function RoutePicker({
   const isArea = 'areaId' in target
 
   const own = value === null ? undefined : menus.find((menu) => menu.id === value)
+  // On the picker short on purpose (S14): "The venue's menu" without its name, which is the
+  // venue's own name more often than not and was cut on every card; the open list marks the live
+  // menu by name. Someone who cannot open the list reads the name in the text (review of #480).
   const label =
     own !== undefined
       ? t('value', { menu: own.name })
       : effective === null
         ? t('value', { menu: t('inheritNone') })
-        : t('value', {
-            menu: t(effective.level === 'area' ? 'inheritArea' : 'inheritVenue', {
-              menu: effective.name,
-            }),
-          })
+        : effective.level === 'area'
+          ? t('inheritArea', { menu: effective.name })
+          : canManage
+            ? t('inheritVenue')
+            : t('inheritVenueNamed', { menu: effective.name })
   // The target chose a menu that is not published yet: guests get the next level up meanwhile.
   const fallback =
     own !== undefined && (effective === null || effective.id !== own.id)

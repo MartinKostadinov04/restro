@@ -12,13 +12,14 @@ import { ExternalLinkIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type FormEvent, useId, useState, useTransition } from 'react'
 import { toast } from 'sonner'
-
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { suggestSlug } from '@/lib/slug'
+import { WRAPS_FORM } from '@/lib/wrapping'
 import { renameVenueSlugAction } from '@/server/venues-actions'
 import type { RenameVenueSlugError } from '@/server/venues-result'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 interface VenueAddressProps {
   readonly venueId: string
@@ -52,6 +53,7 @@ export function VenueAddress({
   const [value, setValue] = useState(slug)
   const [error, setError] = useState<RenameVenueSlugError | null>(null)
   const [pending, startTransition] = useTransition()
+  const again = useSignInAgain(() => submit())
 
   const valid = isVenueSlug(value)
   const dirty = value !== saved
@@ -62,8 +64,8 @@ export function VenueAddress({
   const preview = addressOf(organizationSlug, value)
   const canOpen = isOrganizationSlug(organizationSlug) && valid && !dirty
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
+  function submit(event?: FormEvent) {
+    event?.preventDefault()
     if (!canEdit || !valid || !dirty || pending) return
     setError(null)
     startTransition(async () => {
@@ -76,13 +78,18 @@ export function VenueAddress({
         if (result.filesQueued) toast.success(t('slug.saved'))
         else toast.warning(t('slug.savedLate'))
       } else {
+        if (result.error === 'sign_in_again') {
+          again.ask()
+          return
+        }
         setError(result.error)
       }
     })
   }
 
   return (
-    <div className="grid gap-3">
+    <div className="grid grid-cols-1 gap-3">
+      {again.dialog}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <code
           className="break-all rounded-md bg-muted px-2 py-0.5 font-mono text-xs"
@@ -106,7 +113,12 @@ export function VenueAddress({
       </div>
 
       {canEdit ? (
-        <form onSubmit={submit} className="grid gap-2" noValidate data-testid="venue-slug-form">
+        <form
+          onSubmit={submit}
+          className="grid grid-cols-1 gap-2"
+          noValidate
+          data-testid="venue-slug-form"
+        >
           <Label htmlFor={`${formId}-slug`}>{t('slug.label')}</Label>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex w-full max-w-md items-center gap-1">
@@ -138,6 +150,7 @@ export function VenueAddress({
             <Button
               type="button"
               variant="outline"
+              className={WRAPS_FORM}
               disabled={pending || suggestion === '' || suggestion === value}
               onClick={() => {
                 setValue(suggestion)
@@ -149,6 +162,7 @@ export function VenueAddress({
             </Button>
             <Button
               type="submit"
+              className={WRAPS_FORM}
               disabled={pending || !valid || !dirty}
               data-testid="venue-slug-save"
             >

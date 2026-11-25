@@ -28,6 +28,7 @@ import {
   type LocalizedText,
   type NodeId,
   newId,
+  type PaymentMode,
   type SectionLayout,
   type TagId,
 } from '@restro/core'
@@ -48,7 +49,9 @@ import {
 import { pickLocalized } from '@/fields/localized'
 import { parseMoneyInput } from '@/fields/money-input'
 import { TillLabelProvider } from '@/fields/till-label'
+import { refreshIfReachable } from '@/hooks/use-timed-refresh'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
+import { cn } from '@/lib/utils'
 import type { ActionResult } from './action-result'
 import {
   createItemAction,
@@ -92,6 +95,7 @@ import { ItemSheet } from './item-sheet'
 import { itemName, sectionTitle } from './labels'
 import { NewItemDialog } from './new-item-dialog'
 import { NewSectionDialog } from './new-section-dialog'
+import { setItemPaymentModeAction } from './payment-mode-actions'
 import { type KeyedId, keyAtEnd, planKeys } from './plan'
 import { type ComposerOp, reduceView } from './reducer'
 import { SectionTree } from './section-tree'
@@ -123,6 +127,8 @@ interface ComposerProps {
   readonly enabledLocales: readonly Locale[]
   /** The venue's currency: the price of a new item is in it. */
   readonly currency: Currency
+  /** The person may change the menu (owner or admin, RR-70); without it Studio is read-only. */
+  readonly canEdit: boolean
   /** The person may mark items sold out tonight (owner or admin, D46). */
   readonly canMarkSoldOut: boolean
   /** The person may create items by hand (owner or admin, CF-01). */
@@ -131,6 +137,8 @@ interface ComposerProps {
   readonly hasTill: boolean
   /** The person may delete sections of the venue's own and items made by hand (owner or admin). */
   readonly canDelete: boolean
+  /** The venue's item default where pay first can take effect (D122 §8); null = no such row. */
+  readonly payFirstDefault: PaymentMode | null
 }
 
 /** The section to open first: the one in the URL, else the first one, else Unsorted. */
@@ -147,12 +155,16 @@ export function Composer({
   defaultLocale,
   enabledLocales,
   currency,
+  canEdit,
   canMarkSoldOut,
   canCreateItem,
   hasTill,
   canDelete,
+  payFirstDefault,
 }: ComposerProps) {
   const t = useTranslations('composer')
+  const owner = useTranslations('ownerSettings')
+  const modes = useTranslations('options.payment_mode')
   const uiLocale = useLocale()
   const locale = toDataLocale(isAdminLocale(uiLocale) ? uiLocale : 'bg')
   const searchParams = useSearchParams()
@@ -319,7 +331,7 @@ export function Composer({
   }
 
   // Items made by hand are for venues without a till, and for owners and admins.
-  const mayCreateItem = canCreateItem && !hasTill
+  const mayCreateItem = canEdit && canCreateItem && !hasTill
 
   /**
    * Creates an item by hand at the end of a section (or in Unsorted), then opens its sheet so the
@@ -418,13 +430,13 @@ export function Composer({
     startRename: setRenaming,
     renameSection: (sectionId, title) => {
       setRenaming(null)
-      mutate({ type: 'renameSection', sectionId, title }, () =>
+      mutate({ type: 'renameSection', sectionId, title, locale: renameLocale }, () =>
         renameSectionAction({ venueId, menuId, sectionId, title: { [renameLocale]: title } }),
       )
     },
     renameItem: (itemId, name) => {
       setRenaming(null)
-      mutate({ type: 'renameItem', itemId, name }, () =>
+      mutate({ type: 'renameItem', itemId, name, locale: renameLocale }, () =>
         renameItemAction({ venueId, menuId, itemId, name: { [renameLocale]: name } }),
       )
     },
@@ -476,6 +488,41 @@ export function Composer({
       )
     },
     openTagsPanel: () => setTagsOpen(true),
+
+    setPaymentMode: (itemIds, mode) => {
+      if (payFirstDefault === null || itemIds.length === 0) return
+      const inSentence = (value: PaymentMode) =>
+        uiLocale === 'bg' ? modes(value).toLocaleLowerCase('bg') : modes(value)
+      startTransition(async () => {
+        let result: ActionResult
+        try {
+          result = await setItemPaymentModeAction({ venueId, itemIds: [...itemIds], mode })
+        } catch {
+          result = { ok: false, error: 'failed' }
+        }
+        if (!result.ok) {
+          toast.error(
+            result.error === 'failed' || result.error === 'rejected'
+              ? owner('pf_err_save')
+              : t(`errors.${result.error}`, { source: view.tillLabel }),
+          )
+          return
+        }
+        // In a sentence: lower case in Bulgarian, "Като на заведението" too (the plan's words).
+        const same = owner('pf_i_same', { mode: inSentence(payFirstDefault) })
+        toast.success(
+          owner('pf_sel_toast', {
+            count: itemIds.length,
+            mode:
+              mode === null
+                ? uiLocale === 'bg'
+                  ? same.toLocaleLowerCase('bg')
+                  : same
+                : inSentence(mode),
+          }),
+        )
+      })
+    },
 
     setSoldOut: (itemIds, soldOut) => {
       if (!canMarkSoldOut) return
@@ -706,10 +753,12 @@ export function Composer({
           overTarget,
           selected,
           tagFilter,
+          canEdit,
           canMarkSoldOut,
           canCreateItem: mayCreateItem,
           hasTill,
-          canDelete,
+          canDelete: canEdit && canDelete,
+          payFirstDefault,
           renaming,
         }}
       >
@@ -719,36 +768,60 @@ export function Composer({
           onDragEnd={onDragEnd}
           dragHandleUsageInstructions={t('dnd.instructions')}
         >
-          <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]" data-testid="composer">
-            <aside className="grid content-start gap-3">
+          <div
+            // The selection bar is fixed to the bottom of the screen: while it shows, the page
+            // scrolls far enough for the last rows to clear it (taller on a phone, where it wraps).
+            // One column on a phone that never grows past the screen (`grid-cols-1` is
+            // minmax(0, 1fr)): a long badge wraps instead of widening the page (WCAG 1.4.10).
+            className={cn(
+              'grid grid-cols-1 gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]',
+              selected.size > 0 && 'pb-40 sm:pb-24',
+            )}
+            data-testid="composer"
+          >
+            {canEdit ? null : (
+              // Why a member sees no edit control (RR-70): said once, not on every row.
+              <p
+                className="text-sm text-muted-foreground lg:col-span-2"
+                data-testid="composer-read-only"
+              >
+                {t('readOnly')}
+              </p>
+            )}
+            <aside className="grid min-w-0 content-start gap-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-muted-foreground">{t('sections')}</h2>
+                {canEdit ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => actions.newSection(null)}
+                    data-testid="new-section"
+                  >
+                    <PlusIcon aria-hidden />
+                    {t('newSection')}
+                  </Button>
+                ) : null}
+              </div>
+
+              {/* The Tags panel adds, renames, orders and archives tags: an edit, owners and admins. */}
+              {canEdit ? (
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => actions.newSection(null)}
-                  data-testid="new-section"
+                  className="justify-start"
+                  onClick={() => setTagsOpen(true)}
+                  data-testid="open-tags"
                 >
-                  <PlusIcon aria-hidden />
-                  {t('newSection')}
+                  <TagsIcon aria-hidden />
+                  {t('tags.open')}
+                  <span className="ml-auto text-muted-foreground" data-testid="tag-count">
+                    {view.tagIds.filter((id) => view.tags[id]?.archived === false).length}
+                  </span>
                 </Button>
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="justify-start"
-                onClick={() => setTagsOpen(true)}
-                data-testid="open-tags"
-              >
-                <TagsIcon aria-hidden />
-                {t('tags.open')}
-                <span className="ml-auto text-muted-foreground" data-testid="tag-count">
-                  {view.tagIds.filter((id) => view.tags[id]?.archived === false).length}
-                </span>
-              </Button>
+              ) : null}
 
               {/* Small screens: a picker instead of the tree (its drops need room). */}
               <div className="lg:hidden">
@@ -817,14 +890,15 @@ export function Composer({
             key={openItemId}
             itemId={openItemId}
             menuId={menuId}
+            readOnly={!canEdit}
             tags={sheetTags}
             onCreateTag={createSheetTag}
             onOpenChange={(open) => {
               if (open) return
               clearOpenItem()
               // The sheet saves through its own actions; reload the composer's view so names,
-              // badges and issue counts match what was saved.
-              router.refresh()
+              // badges and issue counts match what was saved. With no connection the screen stays.
+              void refreshIfReachable(router.refresh)
             }}
           />
         ) : null}

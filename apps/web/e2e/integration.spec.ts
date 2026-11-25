@@ -300,14 +300,14 @@ test('the worker finishes: the run is in the history, one line first, the list u
   await openSettings(page)
   const e2e = instance(page, 'barsy – E2E')
   // Collapsed: one line with the last run, no list.
-  await expect(e2e.getByTestId('history-last')).toContainText('Пълна синхронизация', {
+  await expect(e2e.getByTestId('history-last')).toContainText('Пълно четене', {
     timeout: 15_000,
   })
   await expect(e2e.getByTestId('history-last')).toContainText('Завършено')
   await expect(e2e.getByTestId('run-row')).toHaveCount(0)
   await e2e.getByTestId('history-toggle').click()
 
-  const row = e2e.getByTestId('run-row').filter({ hasText: 'Пълна синхронизация' })
+  const row = e2e.getByTestId('run-row').filter({ hasText: 'Пълно четене' })
   await expect(row).toBeVisible()
   await expect(row.getByTestId('run-status')).toHaveText('Завършено')
   // The instance's history is every venue's: the run names the venue it was for.
@@ -340,7 +340,7 @@ test('the worker finishes: the run is in the history, one line first, the list u
   await expect(details.getByTestId('refused-write')).toHaveCount(2)
   await expect(details.getByTestId('refused-write').first()).toContainText('for_sale')
   await expect(details.getByTestId('refused-write').first()).toContainText(
-    'Би направило менюто по-малко предпазливо от касата',
+    'Би направило менюто по-малко предпазливо от barsy',
   )
   // No id of ours or of the till anywhere in the history.
   expect(await e2e.getByTestId('run-history').innerText()).not.toMatch(
@@ -349,7 +349,7 @@ test('the worker finishes: the run is in the history, one line first, the list u
 
   // The venue's own history is the same run, one line, without the venue column.
   await page.goto(`${venueUrl}?tab=settings`)
-  await expect(page.getByTestId('history-last')).toContainText('Пълна синхронизация')
+  await expect(page.getByTestId('history-last')).toContainText('Пълно четене')
   await page.getByTestId('history-toggle').click()
   await expect(page.getByTestId('run-row')).toHaveCount(1)
   await expect(page.getByTestId('run-venue')).toHaveCount(0)
@@ -570,7 +570,19 @@ test('saves the screenshots when SCREENSHOT_DIR is set', async ({ browser }) => 
     phone.target.getByRole('heading', { name: 'История на синхронизациите' }),
   ).toBeVisible()
   await snapshot('s1-integrations-bg-light-mobile.png', phone.target)
-  // No sideways scroll on the phone.
+  // No sideways scroll on the phone, with the connector's settings card on the page (#59: its
+  // select triggers sit in grid cells that need min-w-0), and no scrollbar on the tab strip when
+  // its tabs fit (trial finding 2.2).
+  await expect(phone.target.getByTestId('settings-form').first()).toBeVisible()
+  const strip = await phone.target
+    .getByRole('tablist')
+    .first()
+    .evaluate((list) => ({
+      vertical: list.scrollHeight - list.clientHeight,
+      horizontal: list.scrollWidth - list.clientWidth,
+    }))
+  expect(strip.vertical).toBeLessThanOrEqual(1)
+  expect(strip.horizontal).toBeLessThanOrEqual(1)
   const overflow = await phone.target.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   )

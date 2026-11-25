@@ -3,10 +3,15 @@
 // the answer it gave the first time. `runCommand` never throws: an error, a timeout or an answer
 // to some other command is `{ ok: false }`, which the screens treat as "the outcome is unknown".
 
-import type { CommandResult, GuestCommand } from '@restro/shell'
+import { type CommandResult, type GuestCommand, HOST_ANSWER_TIMEOUT_MS } from '@restro/shell'
 
-/** How long the face waits for the host's answer before it calls the outcome unknown. */
-export const SERVICE_TIMEOUT_MS = 15_000
+/**
+ * How long the face waits for the host's answer before it calls the outcome unknown. It is the
+ * host's own wait and a little more (DA-2): the host gives up first and answers `pending` with
+ * `answer_lost`, which the screens draw as a lost answer, so this wait is the backstop for a host
+ * that never answers at all.
+ */
+export const SERVICE_TIMEOUT_MS = HOST_ANSWER_TIMEOUT_MS + 5_000
 
 /** A uuid for one user action (version 4). */
 export function newActionId(): string {

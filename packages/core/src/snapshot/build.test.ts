@@ -193,25 +193,24 @@ describe('buildSnapshot', () => {
     })
   })
 
-  it('keeps only tags of the vocabulary, as tag ids, and keeps only "new" as a badge', () => {
+  it('keeps only tags of the vocabulary, as tag ids, and carries no badge at all', () => {
     const builder = barMenu()
     builder.set(NEGRONI, 'tags', 'manual', ['signature', SIGNATURE, 'tg_nope'])
     builder.set(NEGRONI, 'dietary', 'manual', ['vegetarian', 'vegan'])
-    const first = { [NEGRONI]: '2026-10-05T12:00:00+03:00' }
-    const resolveContext = { ...CONTEXT, firstPublishedAt: first }
-    const without = snapshotOf(builder, context(), resolveContext)
+    const without = snapshotOf(builder, context(), CONTEXT)
     expect(without.items[NEGRONI]).toMatchObject({
       tags: [],
       dietary: ['vegan', 'vegetarian'],
-      badges: ['new'],
+      // Restro adds none (D152), and a dietary label or tag is never repeated here.
+      badges: [],
     })
     expect(without.tags).toEqual({})
 
     const vocabulary = { [SIGNATURE]: { label: { en_US: 'Signature' } } }
-    const withTags = snapshotOf(builder, context({ tagVocabulary: vocabulary }), resolveContext)
+    const withTags = snapshotOf(builder, context({ tagVocabulary: vocabulary }), CONTEXT)
     expect(withTags.items[NEGRONI]).toMatchObject({
       tags: [SIGNATURE],
-      badges: ['new'],
+      badges: [],
     })
     expect(withTags.tags).toEqual(vocabulary)
   })

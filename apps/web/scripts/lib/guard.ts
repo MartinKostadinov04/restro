@@ -3,26 +3,30 @@
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
-/** Throws unless NODE_ENV is `development` and DATABASE_URL points at this machine. */
-export function assertDevEnvironment(env: Record<string, string | undefined>): void {
+/**
+ * Throws unless NODE_ENV is `development` and DATABASE_URL points at this machine. `script` names
+ * the command in the refusal, so the person reading it knows which one stopped.
+ */
+export function assertDevEnvironment(
+  env: Record<string, string | undefined>,
+  script = 'db:seed:dev',
+): void {
   if (env.NODE_ENV !== 'development') {
     throw new Error(
-      `db:seed:dev refuses to run: NODE_ENV is "${env.NODE_ENV ?? ''}", it must be "development".`,
+      `${script} refuses to run: NODE_ENV is "${env.NODE_ENV ?? ''}", it must be "development".`,
     )
   }
   const url = env.DATABASE_URL
-  if (!url) throw new Error('db:seed:dev refuses to run: DATABASE_URL is not set.')
+  if (!url) throw new Error(`${script} refuses to run: DATABASE_URL is not set.`)
   let host: string
   try {
     const parsed = new URL(url)
     host = parsed.searchParams.get('host') ?? parsed.hostname
   } catch {
-    throw new Error('db:seed:dev refuses to run: DATABASE_URL is not a valid URL.')
+    throw new Error(`${script} refuses to run: DATABASE_URL is not a valid URL.`)
   }
   if (!LOCAL_HOSTS.has(host)) {
-    throw new Error(
-      `db:seed:dev refuses to run: the database host "${host}" is not on this machine.`,
-    )
+    throw new Error(`${script} refuses to run: the database host "${host}" is not on this machine.`)
   }
 }
 
@@ -41,4 +45,22 @@ export function readAdminCredentials(env: Record<string, string | undefined>): {
   }
   if (password.length < 8) throw new Error('DEV_ADMIN_PASSWORD needs at least 8 characters.')
   return { email, password }
+}
+
+/**
+ * Whether the dev seed writes the demo menus (the Demo Club venue's barsy-shaped menu and Demo Bar's
+ * simulated-POS menu): not when SEED_DEMO_MENU is 0, which leaves the venues empty for a real sync
+ * (the Stage 2 acceptance run). Demo Bar is skipped with it.
+ */
+export function seedsDemoMenu(env: Record<string, string | undefined>): boolean {
+  return env.SEED_DEMO_MENU !== '0'
+}
+
+/**
+ * Whether the dev seed writes Demo Bar (#71): not when SEED_DEMO_MENU is 0 (it goes with the demo
+ * menus) nor when SEED_DEMO_BAR is 0. The e2e seed sets the second, so the specs that take "the
+ * venue" or "the menu" keep meeting the one demo venue; a spec of Demo Bar seeds it itself.
+ */
+export function seedsDemoBar(env: Record<string, string | undefined>): boolean {
+  return seedsDemoMenu(env) && env.SEED_DEMO_BAR !== '0'
 }

@@ -4,7 +4,7 @@
 //   - publish-menu writes the snapshot file and current.json; unchanged writes nothing new;
 //   - a rollback moves current.json back (publish-files), and the files are repairable;
 //   - a held publish (V11) writes no files; a refused one (V10) is recorded, not retried;
-//   - two automatic publishes inside the merge window are one publish (pg-boss `stately`);
+//   - two automatic publishes inside the merge window are one publish (one waiting job per key);
 //   - asset-variants: widths, aspect ratio, no metadata, a small original, idempotence, the backfill.
 import { createHash } from 'node:crypto'
 import { mkdtemp, rm, unlink } from 'node:fs/promises'
@@ -33,6 +33,8 @@ import {
   newId,
   prepareJob,
   type SnapshotId,
+  serviceDate,
+  serviceEditionLayer,
   type VenueId,
 } from '@restro/core'
 import {
@@ -43,7 +45,6 @@ import {
   provisionVenue,
   renameVenueSlug,
   rollbackTo,
-  setSoldOutTonight,
 } from '@restro/core/apply'
 import type { Job } from 'pg-boss'
 import sharp, { type WriteableMetadata } from 'sharp'
@@ -577,19 +578,31 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
     })
 
     // --- sold out tonight (brief S3-08): the mark reaches guests through live.json alone -----
+    // The world's venue reads its menu from a POS, where the owner's switch is gone (D124 §6,
+    // #80): the marks here are the switch's change set, written through apply() directly.
     const livePathOfMenu = () => livePath(scope().menuId, scope().venueId)
-    const mark = (itemIds: string[], soldOut: boolean) =>
-      setSoldOutTonight(
+    const mark = async (itemIds: string[], soldOut: boolean) => {
+      const layer = serviceEditionLayer(serviceDate(world.clock, 'Europe/Sofia', '07:00'))
+      const result = await apply(
         world.pool,
         world.tenantId,
-        {
-          venueId: world.venueId as VenueId,
-          itemIds: itemIds as NodeId[],
-          soldOut,
-          actor: 'user:us_manager',
-        },
-        { now: world.clock },
+        changeSet(
+          itemIds.map((id) =>
+            soldOut
+              ? {
+                  op: 'setField',
+                  node: { id },
+                  fieldKey: 'for_sale',
+                  layer,
+                  scope: 'master',
+                  value: false,
+                }
+              : { op: 'clearField', node: { id }, fieldKey: 'for_sale', layer, scope: 'master' },
+          ),
+        ),
       )
+      expect(result.rejected).toEqual([])
+    }
     // Friday 23:00 in Sofia, and the next morning: two service days.
     const friday = new Date('2026-10-09T20:00:00Z')
     const saturdayMorning = new Date('2026-10-10T05:00:00Z')
@@ -779,8 +792,13 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         prettyLogs: false,
         seal: null,
         barsy: { env: 'test', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
+        sim: { env: 'test', allowHosts: [] },
         assets: { kind: 'local', dir: tmpdir() },
         publish: { kind: 'local', dir: root },
+        revealToken: null,
+        billIdKey: null,
+        posSync: true,
+        send: false,
       }
       worker = await startWorker(config, { logger, jobs: [...jobs.values()] })
     }, SETUP_TIMEOUT_MS)
@@ -788,10 +806,10 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
       await worker?.stop()
     })
 
-    it('the queues use the stately policy', async () => {
+    it('the queues keep one run per key (short, grouped by key; #308)', async () => {
       for (const name of [JOB_NAMES.publishMenu, JOB_NAMES.publishFiles, JOB_NAMES.publishLive]) {
         expect(await worker.boss.getQueue(name), name).toMatchObject({
-          policy: 'stately',
+          policy: 'short',
           deadLetter: `${name}.dead`,
         })
       }

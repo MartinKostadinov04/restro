@@ -38,12 +38,115 @@ export const ServerEnvSchema = z.object({
       const trimmed = value?.trim()
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
     }),
+  /**
+   * The worker's reveal endpoint on the private network (#70), e.g.
+   * `http://worker.railway.internal:8081` (`http://localhost:8081` locally): the Tables screen asks
+   * it for the codes it draws. Without it (or the token) the screen shows no QR codes. Empty
+   * counts as missing.
+   */
+  WORKER_REVEAL_URL: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    })
+    .pipe(z.url({ protocol: /^https?$/ }).optional()),
+  /**
+   * The PIN pepper (#72, D122 §7): the key of `HMAC(pepper, tenant ‖ pin)`, by which a shared
+   * device finds the person a PIN names. Web app only, 32 characters or more (checked where it is
+   * used, so a bad value never takes the whole app down). Without it no PIN is made or checked.
+   * Empty counts as missing. A new pepper makes every PIN unknown: each needs "New PIN".
+   */
+  STAFF_PIN_PEPPER: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
+  /**
+   * How long a shared device keeps the person after their last write (D141 12.11, #324), in
+   * seconds. Unset means the three minutes core ships (`SHARED_DEVICE_IDLE_SECONDS`), which is
+   * what a venue runs; only the app's own tests set it, so a spec can watch a session end without
+   * waiting three minutes. Anything that is not a positive number counts as missing.
+   */
+  SHARED_DEVICE_IDLE_SECONDS: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const seconds = Number(value?.trim())
+      return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined
+    }),
+  /**
+   * The key that seals the guests' location passes (#76, D121): HMAC-SHA256, web app only, 32
+   * characters or more (checked where it is used). Without it no pass is issued, so a venue that
+   * checks location takes no additions from phones. A new key ends every pass: phones locate
+   * again. Empty counts as missing.
+   */
+  GUEST_PASS_KEY: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
+  /**
+   * Turnstile's secret key (#76, D119): siteverify at an on-the-bill Send and at a Pay (#110).
+   * Without it every Send and Pay fails the check (fail closed). Empty counts as missing.
+   */
+  TURNSTILE_SECRET_KEY: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
+  /**
+   * The public half of the worker's Web Push key pair (#83, RR-86): Tonight subscribes a staff device
+   * with it. Without it the control doesn't show. The web app never declares the private half. Whether
+   * it is a valid key is read by `webPushPublicKey`, so a bad value never takes the whole app down.
+   * Empty counts as missing.
+   */
+  VAPID_PUBLIC_KEY: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
+  /** The bearer token the reveal endpoint expects (the worker's REVEAL_SERVICE_TOKEN). */
+  REVEAL_SERVICE_TOKEN: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
 })
 
 /** The settings the server needs. */
 export type ServerEnv = z.output<typeof ServerEnvSchema>
 
 let cached: ServerEnv | undefined
+
+/** Cloudflare's published test secrets (`1x…AA` passes, `2x…AA` fails, `3x…AA` is spent). */
+export function isTurnstileTestSecret(secret: string): boolean {
+  return /^[123]x0{31}AA$/.test(secret)
+}
+
+/**
+ * The settings that may never reach the environment meaning real money: under a test secret
+ * every Send and Pay passes the human check with any token. `PAYMENTS_ENV` is what says so, as for
+ * the payment provider's key (`checkStripeKey`): `next start` alone means nothing, since local e2e
+ * and CI run it with a test secret and `PAYMENTS_ENV=test`.
+ */
+function refusedForEnvironment(env: ServerEnv, source: NodeJS.ProcessEnv): readonly string[] {
+  const environment = (source.PAYMENTS_ENV ?? '').trim().toLowerCase()
+  if (environment !== 'production') return []
+  const secret = env.TURNSTILE_SECRET_KEY
+  return secret !== undefined && isTurnstileTestSecret(secret) ? ['TURNSTILE_SECRET_KEY'] : []
+}
 
 export function serverEnv(): ServerEnv {
   if (cached) return cached
@@ -55,8 +158,20 @@ export function serverEnv(): ServerEnv {
         'fill them in (BETTER_AUTH_SECRET needs 32 or more characters).',
     )
   }
+  const refused = refusedForEnvironment(parsed.data, process.env)
+  if (refused.length > 0) {
+    throw new Error(`A test value in production for setting(s): ${refused.join(', ')}.`)
+  }
   cached = parsed.data
   return cached
+}
+
+/** The key Tonight subscribes a staff device with, or undefined: unset, or not in a key's shape. */
+export function webPushPublicKey(
+  env: Pick<ServerEnv, 'VAPID_PUBLIC_KEY'> = serverEnv(),
+): string | undefined {
+  const key = env.VAPID_PUBLIC_KEY
+  return key !== undefined && /^[A-Za-z0-9_-]{60,120}$/.test(key) ? key : undefined
 }
 
 /**

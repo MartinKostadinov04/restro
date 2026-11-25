@@ -29,8 +29,20 @@ export const GUEST_TABLE_TOKEN = 'tb_e2eGuestTable000001'
 export const GUEST_TABLE_LABEL = '12'
 export const TAG_SLUG = 'tag-fixture'
 export const TAG_PUBLIC_ID = 'tagfixture01'
-// A third published menu, for the template registry (SH-04): the tagged fixture again, but its venue
-// chose the reference template (`qr-phone`), forces the dark scheme and asks for Playfair Display.
-// Like the tagged menu it has no venue row, so its public code is a fixed one.
+// A third published menu, for the look a snapshot names (SH-04): the tagged fixture again, drawn in
+// Editorial with a forced dark scheme and Playfair Display. Like the tagged menu it has no venue
+// row, so its public code is a fixed one.
 export const LOOK_SLUG = 'look-fixture'
 export const LOOK_PUBLIC_ID = 'lookfixture1'
+// The order venue's spot for the location check (#76): the phones stand on it, or across town.
+export const ORDER_SPOT = { lat: 42.6977, lng: 23.3219 }
+
+// The Tonight screen's test (scripts/seed-tonight-e2e.ts): its own organisation and venue, an owner,
+// a waiter with a phone and a bar tablet's account (all with the demo password), and two people with
+// PINs: Maria (Staff, 1234) and Georgi (Manager, 4321). The pepper is the test servers' (the PIN
+// check uses it; playwright.config.ts gives it to them).
+export const TONIGHT_OWNER_EMAIL = 'tonight-owner@demo-club.test'
+export const TONIGHT_WAITER_EMAIL = 'tonight-waiter@demo-club.test'
+export const TONIGHT_TABLET_EMAIL = 'tonight-tablet@demo-club.test'
+export const TONIGHT_VENUE_NAME = 'Tonight Club Sofia'
+export const TONIGHT_PIN_PEPPER = 'e2e-only-pin-pepper-not-used-anywhere-else-0123456789'

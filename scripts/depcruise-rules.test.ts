@@ -65,7 +65,7 @@ const base: Files = {
   'packages/barsy/src/index.ts': 'export const barsy = 1',
   'packages/core/src/index.ts': 'export const core = 1',
   'packages/shell/src/index.ts': 'export const shell = 1',
-  'packages/faces/qr-phone/src/index.ts': 'export const face = 1',
+  'packages/faces/some-face/src/index.ts': 'export const face = 1',
   'apps/web/app/page.ts': 'export const page = 1',
   'apps/worker/src/index.ts': 'export const worker = 1',
 }
@@ -81,7 +81,7 @@ describe('allowed layout', () => {
       'packages/core/src/read.ts': "import { db } from '../../db/src/index'\nexport const c = db",
       'packages/shell/src/view.ts':
         "import { core } from '../../core/src/index'\nexport const d = core",
-      'packages/faces/qr-phone/src/view.ts':
+      'packages/faces/some-face/src/view.ts':
         "import type { shell } from '../../../shell/src/index'\nexport type E = typeof shell",
       'packages/barsy/src/client.ts': "import { barsy } from './index'\nexport const f = barsy",
       'apps/web/app/layout.ts':
@@ -116,7 +116,7 @@ describe('rule 1: shell and faces stay pure', () => {
         'packages/shell/src/e.ts':
           "import type { db } from '@restro/db'\nexport type T = typeof db",
       },
-      ['pure-layers-no-data-or-apps', 'barsy-only-from-worker', 'packages-never-import-apps'],
+      ['pure-layers-no-data-or-apps', 'connectors-only-from-worker', 'packages-never-import-apps'],
     )
     for (const file of ['a', 'b', 'c', 'd', 'e']) {
       expect(lines.some((line) => line.includes(`packages/shell/src/${file}.ts`))).toBe(true)
@@ -127,14 +127,14 @@ describe('rule 1: shell and faces stay pure', () => {
     const lines = await expectRules(
       {
         ...base,
-        'packages/faces/qr-phone/src/a.ts': "import '@restro/db'",
-        'packages/faces/qr-phone/src/b.ts': "import '@restro/barsy'",
-        'packages/faces/qr-phone/src/c.ts': "import '../../../../apps/web/app/page'",
+        'packages/faces/some-face/src/a.ts': "import '@restro/db'",
+        'packages/faces/some-face/src/b.ts': "import '@restro/barsy'",
+        'packages/faces/some-face/src/c.ts': "import '../../../../apps/web/app/page'",
       },
       [
         'faces-only-react-and-shell',
         'pure-layers-no-data-or-apps',
-        'barsy-only-from-worker',
+        'connectors-only-from-worker',
         'packages-never-import-apps',
       ],
     )
@@ -155,7 +155,7 @@ describe('rule 1: shell and faces stay pure', () => {
       {
         ...base,
         'packages/shell/src/io.ts': `import '${builtin}'`,
-        'packages/faces/qr-phone/src/io.ts': `import '${builtin}'`,
+        'packages/faces/some-face/src/io.ts': `import '${builtin}'`,
       },
       ['faces-only-react-and-shell', 'pure-layers-no-io-builtins'],
     )
@@ -181,21 +181,113 @@ describe('rule 1: shell and faces stay pure', () => {
   })
 })
 
-describe('rule 2: only core/apply imports the db write side', () => {
+describe('rule 2: only core/apply and core/service import the db write side', () => {
   it('rejects @restro/db/write from anywhere else', async () => {
     const lines = await expectRules(
       {
         ...base,
         'packages/core/src/apply/apply.ts': "import '@restro/db/write'",
+        'packages/core/src/service/apply-service.ts': "import '@restro/db/write'",
+        'packages/core/src/events/record.ts': "import '@restro/db/write'",
         'packages/core/src/other.ts': "import '@restro/db/write'",
         'packages/core/src/relative.ts': "import '../../db/src/write/index'",
         'apps/web/app/action.ts': "import '@restro/db/write'",
         'apps/worker/src/job.ts': "import '../../../packages/db/src/write/index'",
       },
-      ['db-write-only-from-core-apply'],
+      ['db-write-only-from-core-write-paths'],
     )
     expect(lines).toHaveLength(4)
     expect(lines.some((line) => line.includes('packages/core/src/apply/'))).toBe(false)
+    expect(lines.some((line) => line.includes('packages/core/src/service/'))).toBe(false)
+    expect(lines.some((line) => line.includes('packages/core/src/events/'))).toBe(false)
+  })
+})
+
+describe('the service write path is called from server code only (D122 §9)', () => {
+  const service: Files = {
+    ...base,
+    'packages/core/src/service/index.ts': 'export const applyService = 1',
+  }
+
+  it('rejects @restro/core/service from the shell, a face, a guest page, core and the admin screens', async () => {
+    const lines = await expectRules(
+      {
+        ...service,
+        'packages/shell/src/a.ts': "import '@restro/core/service'",
+        'packages/faces/some-face/src/b.ts': "import '@restro/core/service'",
+        'apps/web/app/m/page.ts': "import '@restro/core/service'",
+        'apps/web/src/guest/view.ts': "import '../../../../packages/core/src/service/index'",
+        'packages/core/src/apply/apply.ts': "import '../service/index'",
+        'apps/web/src/composer/panel.ts': "import '@restro/core/service'",
+      },
+      [
+        'core-service-only-from-service-callers',
+        'faces-only-react-and-shell',
+        'guest-page-reads-published-files-only',
+        'pure-layers-no-data-or-apps',
+      ],
+    )
+    expect(
+      lines.filter((line) => line.startsWith('core-service-only-from-service-callers')),
+    ).toHaveLength(6)
+  })
+
+  it('allows the worker, the route handlers, the server code and core/service itself', async () => {
+    await expectRules(
+      {
+        ...service,
+        'apps/worker/src/jobs/send.ts': "import '@restro/core/service'",
+        'apps/web/app/api/order/route.ts': "import '@restro/core/service'",
+        'apps/web/src/server/tonight/actions.ts':
+          "import '../../../../../packages/core/src/service/index'",
+        'packages/core/src/service/sitting.ts': "import './index'",
+      },
+      [],
+    )
+  })
+})
+
+describe('the guest-events write path is called from server code only (D142)', () => {
+  const events: Files = {
+    ...base,
+    'packages/core/src/events/index.ts': 'export const recordEvents = 1',
+  }
+
+  it('rejects @restro/core/events from the shell, a face, a guest page, core/apply and the admin screens', async () => {
+    const lines = await expectRules(
+      {
+        ...events,
+        'packages/shell/src/a.ts': "import '@restro/core/events'",
+        'packages/faces/qr-phone/src/b.ts': "import '@restro/core/events'",
+        'apps/web/app/m/page.ts': "import '@restro/core/events'",
+        'apps/web/src/guest/view.ts': "import '../../../../packages/core/src/events/index'",
+        'packages/core/src/apply/apply.ts': "import '../events/index'",
+        'apps/web/src/composer/panel.ts': "import '@restro/core/events'",
+      },
+      [
+        'core-events-only-from-event-callers',
+        'faces-only-react-and-shell',
+        'guest-page-reads-published-files-only',
+        'pure-layers-no-data-or-apps',
+      ],
+    )
+    expect(
+      lines.filter((line) => line.startsWith('core-events-only-from-event-callers')),
+    ).toHaveLength(6)
+  })
+
+  it('allows the worker, the route handlers, the server code, core/service and core/events itself', async () => {
+    await expectRules(
+      {
+        ...events,
+        'apps/worker/src/jobs/purge.ts': "import '@restro/core/events'",
+        'apps/web/app/api/guest/events/route.ts': "import '@restro/core/events'",
+        'apps/web/src/server/guest-api.ts': "import '../../../../packages/core/src/events/index'",
+        'packages/core/src/service/order.ts': "import '../events/index'",
+        'packages/core/src/events/kinds.ts': "import './index'",
+      },
+      [],
+    )
   })
 })
 
@@ -299,7 +391,7 @@ describe('rule 2c: the db read side never imports the write side', () => {
   })
 })
 
-describe('rules 3 and 4: only the worker imports barsy', () => {
+describe('rules 3 and 4: only the worker imports a connector', () => {
   it('rejects @restro/barsy from the web app, core and db', async () => {
     const lines = await expectRules(
       {
@@ -309,10 +401,116 @@ describe('rules 3 and 4: only the worker imports barsy', () => {
         'packages/core/src/barsy.ts': "import '@restro/barsy'",
         'packages/db/src/barsy.ts': "import '@restro/barsy'",
       },
-      ['barsy-only-from-worker', 'web-no-barsy'],
+      ['connectors-only-from-worker', 'web-no-connectors'],
     )
-    expect(lines.filter((line) => line.startsWith('web-no-barsy'))).toHaveLength(2)
-    expect(lines.filter((line) => line.startsWith('barsy-only-from-worker'))).toHaveLength(4)
+    expect(lines.filter((line) => line.startsWith('web-no-connectors'))).toHaveLength(2)
+    expect(lines.filter((line) => line.startsWith('connectors-only-from-worker'))).toHaveLength(4)
+  })
+
+  it('rejects the simulated POS from the web app, core, the shell and the assets store', async () => {
+    const lines = await expectRules(
+      {
+        ...base,
+        'packages/connectors/sim-pos/src/index.ts': 'export const sim = 1',
+        'apps/web/app/sim.ts': "import '@restro/sim-pos'",
+        'apps/web/src/server/relative.ts':
+          "import '../../../../packages/connectors/sim-pos/src/index'",
+        'packages/core/src/sim.ts': "import '@restro/sim-pos'",
+        'packages/shell/src/sim.ts': "import '@restro/sim-pos/testing'",
+        'packages/assets/src/sim.ts': "import '@restro/sim-pos'",
+      },
+      [
+        'assets-no-database-or-barsy',
+        'connectors-only-from-worker',
+        'pure-layers-no-data-or-apps',
+        'web-no-connectors',
+      ],
+    )
+    expect(lines.filter((line) => line.startsWith('web-no-connectors'))).toHaveLength(2)
+    expect(lines.filter((line) => line.startsWith('connectors-only-from-worker'))).toHaveLength(5)
+  })
+
+  it('allows the worker and the connector itself', async () => {
+    await expectRules(
+      {
+        ...base,
+        'packages/connectors/sim-pos/src/index.ts': 'export const sim = 1',
+        'packages/connectors/sim-pos/src/engine.ts': "import './index'",
+        'apps/worker/src/connectors.ts':
+          "import '@restro/sim-pos'\nimport '../../../packages/connectors/sim-pos/src/index'",
+      },
+      [],
+    )
+  })
+})
+
+describe('paying: the worker calls the provider, the web only through its connectors (D127)', () => {
+  const pay: Files = {
+    ...base,
+    'packages/payments/sim-pay/src/index.ts': 'export const simPay = 1',
+    'packages/core/src/service/index.ts': 'export const applyService = 1',
+    'packages/core/src/service/notices.ts': 'export const recordProviderNotice = 1',
+  }
+
+  it('rejects a payment provider package from the web app, core, the shell and the assets store', async () => {
+    const lines = await expectRules(
+      {
+        ...pay,
+        'apps/web/app/api/payments/notices/stripe/route.ts': "import '@restro/stripe'",
+        'apps/web/src/connectors/sim-pay/form.ts':
+          "import '../../../../../packages/payments/sim-pay/src/index'",
+        'packages/core/src/service/pay.ts': "import '@restro/sim-pay'",
+        'packages/shell/src/pay.ts': "import '@restro/stripe/browser'",
+        'packages/assets/src/pay.ts': "import '@restro/sim-pay'",
+      },
+      ['payments-only-from-worker'],
+    )
+    expect(lines).toHaveLength(5)
+  })
+
+  it("rejects the provider's libraries in the web app outside its connector folders", async () => {
+    const lines = await expectRules(
+      {
+        ...pay,
+        'apps/web/app/api/payments/notices/stripe/route.ts': "import 'stripe'",
+        'apps/web/src/guest/pay.tsx': "import '@stripe/stripe-js'",
+        'apps/web/src/connectors/data.ts': "import '@stripe/react-stripe-js'",
+      },
+      ['web-provider-only-through-connectors'],
+    )
+    expect(lines).toHaveLength(3)
+  })
+
+  it('lets the notice route import only the notices module of core/service', async () => {
+    const lines = await expectRules(
+      {
+        ...pay,
+        'apps/web/app/api/payments/notices/stripe/route.ts':
+          "import '@restro/core/service'\nimport '../../../../../../../packages/core/src/service/index'",
+      },
+      ['notice-route-records-only'],
+    )
+    expect(lines).toHaveLength(2)
+  })
+
+  it('allows the worker, a provider package itself, the connector folders and the notices module', async () => {
+    await expectRules(
+      {
+        ...pay,
+        'apps/worker/src/jobs/pay.ts':
+          "import '@restro/sim-pay'\nimport '../../../../packages/payments/sim-pay/src/index'",
+        'packages/payments/sim-pay/src/engine.ts': "import './index'",
+        'apps/web/src/connectors/stripe/notice.ts': "import 'stripe'",
+        'apps/web/src/connectors/stripe/form.tsx': "import '@stripe/react-stripe-js'",
+        'apps/web/app/api/payments/notices/stripe/route.ts':
+          "import '@restro/core/service/notices'\nimport '../../../../../../../packages/core/src/service/notices'\nimport '../../../../../src/connectors/stripe/notice'",
+        'apps/web/app/api/order/route.ts': "import '@restro/core/service'",
+        'packages/core/src/service/notices/record.ts': 'export const record = 1',
+        'apps/web/app/api/payments/notices/sim-pay/route.ts':
+          "import '../../../../../../../packages/core/src/service/notices/record'",
+      },
+      [],
+    )
   })
 })
 
@@ -395,7 +593,7 @@ describe('rule 6: no circular dependencies', () => {
 describe("a face's preview adapter and the shell's money arithmetic", () => {
   const faceFiles: Files = {
     ...base,
-    'packages/faces/qr-phone/src/preview/index.ts': 'export const demo = 1',
+    'packages/faces/some-face/src/preview/index.ts': 'export const demo = 1',
     'packages/shell/src/money-math.ts': 'export const addMinor = 1',
   }
 
@@ -403,12 +601,12 @@ describe("a face's preview adapter and the shell's money arithmetic", () => {
     const lines = await expectRules(
       {
         ...faceFiles,
-        'apps/web/src/guest/menu.ts': "import '@restro/qr-phone/preview'",
+        'apps/web/src/guest/menu.ts': "import '@restro/some-face/preview'",
         'apps/web/src/guest/relative.ts':
-          "import '../../../../packages/faces/qr-phone/src/preview/index'",
+          "import '../../../../packages/faces/some-face/src/preview/index'",
         'apps/web/app/m/[venue]/page.ts': "import '@restro/editorial-market/preview'",
         'apps/web/app/m/[venue]/relative.ts':
-          "import '../../../../../packages/faces/qr-phone/src/preview/index'",
+          "import '../../../../../packages/faces/some-face/src/preview/index'",
       },
       ['guest-never-imports-face-preview'],
     )
@@ -419,11 +617,11 @@ describe("a face's preview adapter and the shell's money arithmetic", () => {
     await expectRules(
       {
         ...faceFiles,
-        'apps/web/src/guest/menu.ts': "import '@restro/qr-phone'",
-        'apps/web/src/design/panel.ts': "import '@restro/qr-phone/preview'",
+        'apps/web/src/guest/menu.ts': "import '@restro/some-face'",
+        'apps/web/src/design/panel.ts': "import '@restro/some-face/preview'",
         'apps/web/src/design/relative.ts':
-          "import '../../../../packages/faces/qr-phone/src/preview/index'",
-        'packages/faces/qr-phone/src/face.ts': "import './preview/index'",
+          "import '../../../../packages/faces/some-face/src/preview/index'",
+        'packages/faces/some-face/src/face.ts': "import './preview/index'",
       },
       [],
     )
@@ -433,9 +631,9 @@ describe("a face's preview adapter and the shell's money arithmetic", () => {
     const lines = await expectRules(
       {
         ...faceFiles,
-        'packages/faces/qr-phone/src/bag.ts': "import '@restro/shell/money'",
-        'packages/faces/qr-phone/src/relative.ts': "import '../../../shell/src/money-math'",
-        'packages/faces/qr-phone/src/services/sum.test.ts': "import '@restro/shell/money'",
+        'packages/faces/some-face/src/bag.ts': "import '@restro/shell/money'",
+        'packages/faces/some-face/src/relative.ts': "import '../../../shell/src/money-math'",
+        'packages/faces/some-face/src/services/sum.test.ts': "import '@restro/shell/money'",
       },
       ['faces-money-math-only-in-preview'],
     )
@@ -446,8 +644,8 @@ describe("a face's preview adapter and the shell's money arithmetic", () => {
     await expectRules(
       {
         ...faceFiles,
-        'packages/faces/qr-phone/src/preview/demo.ts': "import '@restro/shell/money'",
-        'packages/faces/qr-phone/src/preview/relative.ts':
+        'packages/faces/some-face/src/preview/demo.ts': "import '@restro/shell/money'",
+        'packages/faces/some-face/src/preview/relative.ts':
           "import '../../../../shell/src/money-math'",
         'packages/shell/src/bag.ts': "import './money-math'",
         'apps/web/src/design/sum.ts': "import '@restro/shell/money'",
@@ -466,7 +664,7 @@ describe('packages/assets: storage only, no database or barsy', () => {
         'packages/assets/src/barsy.ts': "import '@restro/barsy'",
         'packages/assets/src/relative-db.ts': "import '../../db/src/index'",
       },
-      ['assets-no-database-or-barsy', 'barsy-only-from-worker'],
+      ['assets-no-database-or-barsy', 'connectors-only-from-worker'],
     )
   })
 
@@ -506,7 +704,7 @@ describe('the guest page reads published files only (rule 4)', () => {
       {
         ...guestBase,
         'apps/web/src/guest/menu.ts':
-          "import '@restro/shell'\nimport '@restro/qr-phone'\nimport '@restro/core'",
+          "import '@restro/shell'\nimport '@restro/some-face'\nimport '@restro/core'",
         'apps/web/src/server/token.ts': "import '@restro/assets'",
       },
       [],
@@ -518,10 +716,10 @@ describe('a face imports only react and the shell (SH-04)', () => {
   const faces: Files = {
     ...base,
     'packages/shell/testing/index.ts': 'export const testing = 1',
-    'packages/faces/qr-phone/src/model.ts': 'export const model = 1',
+    'packages/faces/some-face/src/model.ts': 'export const model = 1',
     'packages/faces/editorial-market/src/index.ts': 'export const other = 1',
   }
-  const FACE = 'packages/faces/qr-phone/src'
+  const FACE = 'packages/faces/some-face/src'
 
   it('rejects core, an icon library, another face and a Node built-in (as written and by path)', async () => {
     const lines = await expectRules(
@@ -535,7 +733,7 @@ describe('a face imports only react and the shell (SH-04)', () => {
         [`${FACE}/crypto.ts`]: "import 'node:crypto'",
         [`${FACE}/type-only.ts`]:
           "import type { Locale } from '@restro/core'\nexport type L = Locale",
-        'packages/faces/editorial-market/src/deep.ts': "import '../../qr-phone/src/model'",
+        'packages/faces/editorial-market/src/deep.ts': "import '../../some-face/src/model'",
       },
       ['faces-only-react-and-shell'],
     )
@@ -594,6 +792,101 @@ describe('a face imports only react and the shell (SH-04)', () => {
       ['faces-only-react-and-shell'],
     )
     expect(lines).toHaveLength(3)
+  })
+})
+
+describe('the connector conformance kit is for tests only (#65)', () => {
+  const kit: Files = {
+    ...base,
+    'packages/core/src/connectors/service/testing/index.ts': "import './toy-pos'",
+    'packages/core/src/connectors/service/testing/toy-pos.ts': 'export const toy = 1',
+  }
+
+  it('rejects the kit from a connector, an app and core, by name and by path', async () => {
+    const lines = await expectRules(
+      {
+        ...kit,
+        'packages/barsy/src/service/reader.ts': "import '@restro/core/connectors/testing'",
+        'apps/worker/src/sync.ts':
+          "import '../../../packages/core/src/connectors/service/testing/index'",
+        'packages/core/src/connectors/service/index.ts': "import './testing/index'",
+      },
+      ['connector-kit-only-from-tests'],
+    )
+    expect(lines).toHaveLength(3)
+  })
+
+  it('allows it in tests and test-* helpers, and inside the kit itself', async () => {
+    await expectRules(
+      {
+        ...kit,
+        'packages/barsy/src/service/conformance.test.ts':
+          "import '@restro/core/connectors/testing'",
+        'packages/barsy/src/service/test-harness.ts':
+          "import '../../../core/src/connectors/service/testing/index'",
+      },
+      [],
+    )
+  })
+
+  it('does not exempt a production file that merely has "test" in its name', async () => {
+    const lines = await expectRules(
+      {
+        ...kit,
+        'packages/barsy/src/service/contest.ts': "import '@restro/core/connectors/testing'",
+      },
+      ['connector-kit-only-from-tests'],
+    )
+    expect(lines).toHaveLength(1)
+  })
+})
+
+describe('the payment conformance suite is for tests only (#103)', () => {
+  const kit: Files = {
+    ...base,
+    'packages/core/src/connectors/payment/testing/index.ts': "import './checks'",
+    'packages/core/src/connectors/payment/testing/checks.ts': 'export const checks = 1',
+    'packages/payments/sim-pay/src/index.ts': 'export const simPay = 1',
+  }
+
+  it('rejects the suite from a provider package, an app and core, by name and by path', async () => {
+    const lines = await expectRules(
+      {
+        ...kit,
+        'packages/payments/sim-pay/src/provider.ts':
+          "import '@restro/core/connectors/payment-testing'",
+        'apps/worker/src/jobs/pay.ts':
+          "import '../../../../packages/core/src/connectors/payment/testing/index'",
+        'packages/core/src/connectors/payment/index.ts': "import './testing/index'",
+      },
+      ['payment-kit-only-from-tests'],
+    )
+    expect(lines).toHaveLength(3)
+  })
+
+  it('allows it in tests and test-* helpers, and inside the suite itself', async () => {
+    await expectRules(
+      {
+        ...kit,
+        'packages/payments/sim-pay/src/conformance.test.ts':
+          "import '@restro/core/connectors/payment-testing'",
+        'packages/payments/sim-pay/src/testing/test-harness.ts':
+          "import '../../../../core/src/connectors/payment/testing/index'",
+      },
+      [],
+    )
+  })
+
+  it('does not exempt a production file that merely has "test" in its name', async () => {
+    const lines = await expectRules(
+      {
+        ...kit,
+        'packages/payments/sim-pay/src/contest.ts':
+          "import '@restro/core/connectors/payment-testing'",
+      },
+      ['payment-kit-only-from-tests'],
+    )
+    expect(lines).toHaveLength(1)
   })
 })
 

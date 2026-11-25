@@ -122,13 +122,8 @@ function DeletedVenueItem({
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            onClick={restore}
-            data-testid="restore-venue"
-          >
+          {/* Restore is what this list is for: the one filled button, first; the erase follows it (S23). */}
+          <Button type="button" disabled={pending} onClick={restore} data-testid="restore-venue">
             {pending ? t('restoring') : t('restore')}
           </Button>
           <Button

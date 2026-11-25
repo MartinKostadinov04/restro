@@ -227,3 +227,22 @@ export function tableDisplayLabel(table: {
 export function isTableToken(value: unknown): value is string {
   return typeof value === 'string' && TABLE_TOKEN_PATTERN.test(value)
 }
+
+// --- the code's hash -----------------------------------------------------------------------------
+
+/**
+ * SHA-256 of a table code, lower-case hex: what the database looks a guest's code up by
+ * (`tables.qr_code_hash`, D122 §9) and what its published file is named after. Web Crypto,
+ * so the server and the guest page compute the same value. No slow hash or salt: a code carries
+ * at least 128 random bits, so the hash cannot be guessed back.
+ */
+export async function hashTableCode(code: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(code))
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * The request header a guest's phone sends its table code in (D121: never in an address, a query
+ * string or a log). Logs redact it.
+ */
+export const TABLE_CODE_HEADER = 'x-table-code'

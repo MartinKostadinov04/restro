@@ -1,4 +1,9 @@
-import { type CommandResult, type GuestCommand, GuestCommandSchema } from '@restro/shell'
+import {
+  type CommandResult,
+  type GuestCommand,
+  GuestCommandSchema,
+  HOST_ANSWER_TIMEOUT_MS,
+} from '@restro/shell'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { newActionId, runCommand, SERVICE_TIMEOUT_MS } from './command'
@@ -21,6 +26,14 @@ const answer = (to: GuestCommand, status: CommandResult['status'] = 'accepted'):
   status,
   message: null,
   ref: null,
+})
+
+describe('the two waits agree (DA-2)', () => {
+  it('waits longer than the host does, so the host always answers first', () => {
+    // The host gives up at `HOST_ANSWER_TIMEOUT_MS` and answers `pending` with `answer_lost`,
+    // which the screens draw as a lost answer. A face that gave up sooner would never see it.
+    expect(SERVICE_TIMEOUT_MS).toBeGreaterThan(HOST_ANSWER_TIMEOUT_MS)
+  })
 })
 
 describe('newActionId', () => {

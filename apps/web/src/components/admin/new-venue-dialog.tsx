@@ -55,6 +55,15 @@ const STARTING_LOCALES: readonly Locale[] = ['bg_BG', 'en_US']
 /** The value of the "By hand" choice; an instance's choice is its `in_` id. */
 const HAND = 'hand'
 
+/**
+ * A POS whose every venue already serves one of ours has nothing to pick in step 2: step 1 does
+ * not let it be chosen, and says why (S7). One that has reported no venue yet stays open, so
+ * step 2 can say so and point to Integrations.
+ */
+const isFull = (instance: NewVenueInstance): boolean =>
+  instance.tillVenues.length > 0 &&
+  !instance.tillVenues.some((venue) => venue.linkedVenueName === null)
+
 interface NewVenueDialogProps {
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
@@ -92,8 +101,9 @@ function NewVenueForm({ onOpenChange, onCreated }: NewVenueDialogProps) {
         if (!current) return
         if (result.ok) {
           setState({ status: 'ready', sources: result.sources })
-          // Without a POS instance there is one way to make a venue: it is already the choice.
-          if (result.sources.instances.length === 0) setChoice(HAND)
+          // Without a POS instance that can take a new venue there is one way to make a venue: it
+          // is already the choice (S7).
+          if (result.sources.instances.every(isFull)) setChoice(HAND)
         } else setState({ status: 'failed' })
       })
       .catch(() => {
@@ -248,18 +258,26 @@ function SourceStep({
       {state.status === 'ready' ? (
         <fieldset className="grid gap-2" data-testid="new-venue-sources">
           <legend className="sr-only">{t('sources.legend')}</legend>
-          {state.sources.instances.map((instance) => (
-            <Choice
-              key={instance.id}
-              group={group}
-              value={instance.id}
-              checked={choice === instance.id}
-              title={instance.name}
-              caption={t('sources.venueCount', { count: instance.tillVenues.length })}
-              testId={`new-venue-source-${instance.id}`}
-              onSelect={onChoose}
-            />
-          ))}
+          {state.sources.instances.map((instance) => {
+            const full = isFull(instance)
+            return (
+              <Choice
+                key={instance.id}
+                group={group}
+                value={instance.id}
+                checked={choice === instance.id}
+                disabled={full}
+                title={instance.name}
+                caption={
+                  full
+                    ? t('sources.noFree')
+                    : t('sources.venueCount', { count: instance.tillVenues.length })
+                }
+                testId={`new-venue-source-${instance.id}`}
+                onSelect={onChoose}
+              />
+            )
+          })}
           <Choice
             group={group}
             value={HAND}

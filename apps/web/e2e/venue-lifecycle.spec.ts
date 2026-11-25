@@ -172,9 +172,9 @@ test('the guest page and the table code work before the venue is deleted', async
   expect(hasItem(text)).toBe(true)
   const code = await request.get(`/t/${seed.token}`, { maxRedirects: 0 })
   expect(code.status()).toBe(302)
-  expect(code.headers().location).toContain(
-    `/m/${seed.barSlug}-${seed.barPublicId}?t=${seed.token}`,
-  )
+  // The table file names the organisation (the seed writes it as the worker does), so the code
+  // opens the address of D84, whether or not the worker has rewritten the file since the seed.
+  expect(code.headers().location).toContain(`/m/lifecycle-club/${seed.barSlug}#t=${seed.token}`)
 })
 
 const venueCard = (target: Page, name: string) =>
@@ -291,7 +291,7 @@ test('an admin renames but cannot delete; a member sees the name as text only', 
     await expect(admin.target.getByTestId('venue-name-input')).toBeVisible()
     await expect(admin.target.getByTestId('venue-danger-zone')).toHaveCount(0)
     await expect(admin.target.getByTestId('delete-venue-open')).toHaveCount(0)
-    // Settings has no "Deleted venues" for an admin, and the page is not there.
+    // Settings has no "Deleted venues" for an admin, and its address lands on General (S26).
     await admin.target.goto('/settings')
     // It opens General, where an admin sees the organisation's values as text (owners change them).
     await expect(admin.target).toHaveURL(/\/settings\/general$/)
@@ -300,8 +300,10 @@ test('an admin renames but cannot delete; a member sees the name as text only', 
     await expect(admin.target.getByTestId('general-slug-input')).toHaveCount(0)
     await expect(admin.target.getByTestId('settings-nav-integrations')).toBeVisible()
     await expect(admin.target.getByTestId('settings-nav-deleted-venues')).toHaveCount(0)
-    const response = await admin.target.goto('/settings/deleted-venues')
-    expect(response?.status()).toBe(404)
+    await admin.target.goto('/settings/deleted-venues')
+    await expect(admin.target).toHaveURL(/\/settings\/general$/)
+    await expect(admin.target.getByTestId('deleted-venues-list')).toHaveCount(0)
+    await expect(admin.target.getByTestId('deleted-venues-empty')).toHaveCount(0)
   } finally {
     await admin.context.close()
   }
@@ -392,7 +394,9 @@ test('Settings > Deleted venues lists it with the day it was deleted, and Restor
   await row.getByTestId('restore-venue').click()
   // Its till venue was free, so the restore linked it again (adjustments V1).
   await expect(
-    page.getByText(`${RENAMED} is back as a draft, with its till linked again`, { exact: false }),
+    page.getByText(`${RENAMED} is back as a draft, linked again to its venue in the POS`, {
+      exact: false,
+    }),
   ).toBeVisible()
   await expect(page.getByTestId('deleted-venue')).toHaveCount(0)
   await expect(page.getByTestId('deleted-venues-empty')).toBeVisible()

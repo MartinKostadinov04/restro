@@ -20,6 +20,7 @@ function setup(
     onKeep: vi.fn(async () => true),
     onOpenMedia: vi.fn(),
     onSoldOut: vi.fn(async () => true),
+    onPaymentMode: vi.fn(async () => true),
   }
   renderWithIntl(<ItemSheetDetailsTab data={data} busy={false} {...handlers} {...props} />, {
     locale,
@@ -54,7 +55,7 @@ describe('the Details tab', () => {
       el.getAttribute('data-field-key'),
     )
     expect(keys).toEqual(ITEM_GROUPS.flatMap((group) => group.keys))
-    expect(keys).toHaveLength(14)
+    expect(keys).toHaveLength(15)
     for (const name of [
       'Content',
       'Price and portion',
@@ -126,6 +127,28 @@ describe('the Details tab', () => {
     expect(within(row('abv')).queryByText(/barsy|Owned|Overridden/)).toBeNull()
   })
 
+  it('sends a member (RR-70) to no control they lack: no Structure switch, no rename, no choice', () => {
+    setup(
+      sheetData({
+        nameFromTill: true,
+        fields: {
+          visible: {
+            value: true,
+            provenance: 'till',
+            access: { kind: 'readonly', reason: 'composer_toggle' },
+          },
+          abv: { value: 30, provenance: 'overridden', conflict: true, canRevert: true },
+        },
+      }),
+      { readOnly: true },
+    )
+    expect(within(row('visible')).queryByTestId('read-only-note')).toBeNull()
+    expect(within(row('abv')).getByText(/An owner or admin chooses the right value/)).toBeTruthy()
+    const notice = screen.getByTestId('name-from-till-notice')
+    expect(notice.textContent).toContain('An owner or admin can fill in the public name')
+    expect(notice.textContent).not.toContain('type a name here')
+  })
+
   it('shows read-only reasons for the flags and sends the image to the Media tab', async () => {
     const { onOpenMedia } = setup(
       sheetData({
@@ -144,13 +167,56 @@ describe('the Details tab', () => {
         },
       }),
     )
-    expect(within(row('visible')).getByTestId('read-only-note').textContent).toMatch(/composer/)
+    expect(within(row('visible')).getByTestId('read-only-note').textContent).toMatch(/Structure/)
     expect(within(row('for_sale')).getByTestId('read-only-note').textContent).toMatch(
       /sold out tonight/i,
     )
     expect(within(row('visible')).queryByRole('button', { name: /edit/i })).toBeNull()
     await userEvent.click(within(row('image')).getByRole('button', { name: /^(edit|set) image/i }))
     expect(onOpenMedia).toHaveBeenCalledTimes(1)
+  })
+
+  it('points "For sale" at no button when the sale card has none (off sale in the POS, S3)', () => {
+    // A POS venue is markable since D147; an item the POS itself has off sale is not, because
+    // rule 5 forbids putting it back — that is the state with no button on the card.
+    setup(
+      sheetData({
+        sale: { soldOutTonight: false, offSale: 'till', canMark: true },
+        fields: {
+          for_sale: {
+            value: true,
+            provenance: 'till',
+            access: { kind: 'readonly', reason: 'sold_out_control' },
+          },
+        },
+      }),
+    )
+    expect(within(row('for_sale')).queryByTestId('read-only-note')).toBeNull()
+    expect(screen.queryByTestId('sale-mark')).toBeNull()
+    expect(screen.getByTestId('sale-note').textContent).toContain('barsy')
+  })
+
+  it('shows Yes for an item’s flags that nothing set, not "No value" (hand-made item, S16)', () => {
+    setup(
+      sheetData({
+        fields: {
+          visible: { value: null, access: { kind: 'readonly', reason: 'composer_toggle' } },
+          for_sale: { value: null, access: { kind: 'readonly', reason: 'sold_out_control' } },
+        },
+      }),
+    )
+    for (const key of ['visible', 'for_sale']) {
+      expect(row(key).textContent).toContain('Yes')
+      expect(row(key).textContent).not.toContain('No value')
+    }
+  })
+
+  it('explains a field in plain words, never by its key (S10)', async () => {
+    setup()
+    await userEvent.click(within(row('name')).getByTestId('field-help'))
+    const help = await screen.findByTestId('field-help-text')
+    expect(help.textContent).toBe('The name guests see on the menu, in each language.')
+    expect(document.body.textContent).not.toContain('Field key')
   })
 
   it("an overridden value shows barsy's value beside it and Revert", async () => {
@@ -288,5 +354,70 @@ describe('the Details tab', () => {
     const list = within(row('name')).getByTestId('locale-provenance')
     expect(within(list).getByText('From barsy')).toBeTruthy()
     expect(within(list).getByText('Owned here')).toBeTruthy()
+  })
+  describe('the payment mode row (#218)', () => {
+    const venue = (extra: Parameters<typeof sheetData>[0] = {}) =>
+      sheetData({ payFirstDefault: 'on_bill', ...extra })
+
+    it('is three radio cards, the venue’s default beside “Same as the venue”, in place of the generic editor', () => {
+      setup(venue())
+      const mode = row('payment_mode')
+      expect(within(mode).getByTestId('payment-mode-same').closest('label')?.textContent).toBe(
+        'Same as the venue (On the bill)',
+      )
+      expect(within(mode).getByTestId('payment-mode-pay_first')).toBeTruthy()
+      expect(within(mode).getByTestId('payment-mode-on_bill')).toBeTruthy()
+      expect((within(mode).getByTestId('payment-mode-same') as HTMLInputElement).checked).toBe(true)
+      expect(within(mode).queryByRole('button')).toBeNull()
+    })
+
+    it('picks the card of the saved mode', () => {
+      setup(venue({ fields: { payment_mode: { value: 'pay_first', provenance: 'owned' } } }))
+      const mode = row('payment_mode')
+      expect((within(mode).getByTestId('payment-mode-pay_first') as HTMLInputElement).checked).toBe(
+        true,
+      )
+    })
+
+    it('saves the tap at once; “Same as the venue” hands up null', async () => {
+      const handlers = setup(
+        venue({ fields: { payment_mode: { value: 'pay_first', provenance: 'owned' } } }),
+      )
+      const mode = row('payment_mode')
+      await userEvent.click(within(mode).getByTestId('payment-mode-on_bill'))
+      expect(handlers.onPaymentMode).toHaveBeenLastCalledWith('on_bill')
+      expect((within(mode).getByTestId('payment-mode-on_bill') as HTMLInputElement).checked).toBe(
+        true,
+      )
+      await userEvent.click(within(mode).getByTestId('payment-mode-same'))
+      expect(handlers.onPaymentMode).toHaveBeenLastCalledWith(null)
+    })
+
+    it('goes back to the saved card when the save is refused', async () => {
+      const onPaymentMode = vi.fn(async () => false)
+      setup(venue(), { onPaymentMode })
+      const mode = row('payment_mode')
+      await userEvent.click(within(mode).getByTestId('payment-mode-pay_first'))
+      await waitFor(() =>
+        expect((within(mode).getByTestId('payment-mode-same') as HTMLInputElement).checked).toBe(
+          true,
+        ),
+      )
+      expect((within(mode).getByTestId('payment-mode-pay_first') as HTMLInputElement).checked).toBe(
+        false,
+      )
+    })
+
+    it('keeps the generic row where pay first can’t take effect', () => {
+      setup(sheetData({ payFirstDefault: null }))
+      expect(within(row('payment_mode')).queryByTestId('payment-mode-same')).toBeNull()
+    })
+
+    it('words the venue’s default in lower case in Bulgarian', () => {
+      setup(venue(), {}, 'bg')
+      expect(
+        within(row('payment_mode')).getByTestId('payment-mode-same').closest('label')?.textContent,
+      ).toBe('Като на заведението (по сметката)')
+    })
   })
 })

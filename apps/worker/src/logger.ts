@@ -17,17 +17,27 @@ export interface LoggerOptions {
   readonly destination?: DestinationStream
 }
 
+// A table's code (#70, D122 §9) is never logged: by name, in a request's headers or its path.
 const REDACT_PATHS = [
   'password',
   'authorization',
   'connectionString',
   'databaseUrl',
   'DATABASE_URL',
+  'tableCode',
+  'tableCodes',
   '*.password',
   '*.authorization',
   '*.connectionString',
   '*.databaseUrl',
   '*.DATABASE_URL',
+  '*.tableCode',
+  '*.tableCodes',
+  'req.url',
+  'req.headers["x-table-code"]',
+  'req.headers.authorization',
+  'headers["x-table-code"]',
+  '*.headers["x-table-code"]',
 ]
 
 export async function createLogger(options: LoggerOptions): Promise<Logger> {

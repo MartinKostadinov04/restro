@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
 import {
@@ -12,16 +14,20 @@ import {
 import QRCode from 'qrcode'
 
 import { svgFromDataUri } from '../src/tables/svg-uri'
-import { runScript } from './global-setup'
+import { runScript, startScript } from './global-setup'
 import { addressOfVenue, type VenueAddress } from './menu-path'
 import { ADMIN_EMAIL, ADMIN_PASSWORD, GUEST_SLUG } from './support'
+
+/** The plain member `seed-tables-e2e.ts member` adds to the demo organisation. */
+const MEMBER_EMAIL = 'tables-member@demo-club.test'
 
 // The Tables & QR tab on a production build (briefs S3-07 and S5; D94, D95), in Bulgarian, against
 // the demo venue with eight barsy tables (scripts/seed-tables-e2e.ts):
 //
-//   1. the areas as sections, their tables as cards; "Create codes for all tables"; the code in a
-//      card IS the address <base>/t/<token> (the SVG is compared with what the `qrcode` library
-//      makes for that text, error correction M, margin 2, black on white);
+//   1. the areas as sections (an index of them at the top), their tables as cards; "Create the N
+//      missing codes" is the main action until every table has one, then "Print sheet" is; the
+//      code in a card IS the address <base>/t/<token> (the SVG is compared with what the `qrcode`
+//      library makes for that text, error correction M, margin 2, black on white);
 //   2. nothing is public until the worker has run (the web app never writes the publish store):
 //      before it, /t/<token> says "not active"; after it, it leads to the menu with "Маса 1";
 //   3. a new name reaches the guest page; an area is renamed and moved; a table is hidden (its file
@@ -29,9 +35,12 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD, GUEST_SLUG } from './support'
 //   4. a menu chosen for a table, then for an area, reaches the table files after the job (the
 //      most specific wins), and taking the choice away goes back to the venue's live menu;
 //   5. the address card only says where the codes lead; its test link is opened by the browser;
-//   6. the print sheet has six cards on an A4 page (counted on the screen and in a real PDF) and
-//      leaves a hidden table out;
-//   7. downloads, turning a code off, and the picture in both languages and themes.
+//   6. the print sheet has six cards on an A4 page (counted when printed and in a real PDF), leaves
+//      a hidden table out, is named after the venue, and fits a phone's screen;
+//   7. downloads, turning a code off, and the picture in both languages and themes;
+//   8. a plain member reads the areas and tables but is told the codes are for owners and admins
+//      (no codes, no "create", no print sheet), on the tab and on the print page (screen round
+//      11-18, S25).
 //
 // The worker does not run here: `seed-tables-e2e.ts worker` takes the queued jobs and runs the
 // worker's own `writeTableTokenFiles` for them. Screenshots go to `.local/screenshots/s5/`
@@ -68,16 +77,32 @@ const GUEST_PATH = `/m/demo-club/${GUEST_SLUG}`
 
 // --- helpers ---------------------------------------------------------------------------------
 const rows = () => page.getByTestId('table-card')
+/** A card by the till's number (the card says it only when the table is called otherwise, S14). */
 const rowOf = (number: string): Locator =>
-  rows().filter({
-    has: page.getByTestId('table-number').filter({ hasText: new RegExp(`^от barsy: ${number}$`) }),
-  })
+  page.locator(`[data-testid="table-card"][data-number="${number}"]`)
 /** The area section a locator is in. */
 const areaOfRow = (row: Locator): Locator => row.locator('xpath=ancestor::*[@data-testid="hall"]')
 const hallNames = () =>
   page
     .getByTestId('hall-name')
     .evaluateAll((all) => all.map((element) => (element as HTMLInputElement).value))
+
+/** Signs in on a fresh page; Better Auth allows a few sign-ins per 10 seconds. Fails after three. */
+async function signIn(target: Page, email: string) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await target.goto('/venues')
+    await target.getByLabel('Имейл').fill(email)
+    await target.getByLabel('Парола').fill(ADMIN_PASSWORD)
+    await target.getByRole('button', { name: 'Вход' }).click()
+    try {
+      await expect(target).toHaveURL(/\/venues$/, { timeout: 5_000 })
+      return
+    } catch {
+      await target.waitForTimeout(10_000)
+    }
+  }
+  throw new Error(`could not sign in as ${email} in three attempts`)
+}
 
 /**
  * Does something in the tab that calls a server action, and waits until the action has answered
@@ -115,6 +140,8 @@ async function addressOf(row: Locator): Promise<string> {
   return address
 }
 const tokenOf = async (row: Locator) => (await addressOf(row)).split('/').at(-1) ?? ''
+/** A code's published file and its tombstone are named after its SHA-256 (#70), never the code. */
+const hashOf = (token: string) => createHash('sha256').update(token).digest('hex')
 
 /** The SVG the row shows, from its `<img>`. */
 async function pictureOf(row: Locator): Promise<string> {
@@ -129,17 +156,69 @@ interface WorkerJob {
   result: { status: string; written?: number; removed?: number }
 }
 
+/**
+ * `seed-tables-e2e.ts serve`, started once for the spec: loading the platform's code takes several
+ * seconds, and a test that waits for the worker three or six times (this one runs on a busy CI
+ * machine, one test at a time) spent most of its 30 s on starts, not on the worker.
+ */
+interface WorkerHelper {
+  /** Asks for the `worker` report and waits for it. */
+  ask: () => Promise<WorkerJob[]>
+  stop: () => void
+}
+
+function startWorkerHelper(): WorkerHelper {
+  const child = startScript('./scripts/seed-tables-e2e.ts', 'serve')
+  let stderr = ''
+  child.stderr.on('data', (chunk) => {
+    stderr += String(chunk)
+  })
+  // The helper answers in the order it was asked.
+  const waiting: { resolve: (jobs: WorkerJob[]) => void; reject: (error: Error) => void }[] = []
+  let jobs: WorkerJob[] = []
+  let ended = false
+  createInterface({ input: child.stdout }).on('line', (line) => {
+    if (!line.startsWith('{')) return
+    const message = JSON.parse(line) as { done?: boolean; error?: string; job?: string }
+    if (message.job !== undefined) jobs.push(message as unknown as WorkerJob)
+    if (message.error !== undefined) {
+      waiting.shift()?.reject(new Error(`the worker helper failed: ${message.error}`))
+      jobs = []
+    } else if (message.done === true) {
+      waiting.shift()?.resolve(jobs)
+      jobs = []
+    }
+  })
+  child.on('exit', () => {
+    ended = true
+    for (const request of waiting.splice(0)) {
+      request.reject(new Error(`the worker helper ended: ${stderr}`))
+    }
+  })
+  return {
+    ask: () =>
+      new Promise<WorkerJob[]>((resolve, reject) => {
+        if (ended) return reject(new Error(`the worker helper ended: ${stderr}`))
+        waiting.push({ resolve, reject })
+        child.stdin.write('worker\n')
+      }),
+    stop: () => {
+      child.stdin.end()
+    },
+  }
+}
+
+let workerHelper: WorkerHelper | undefined
+
 /** Runs the worker's job for what the tab queued; returns what each job was asked to do. */
-function runWorker(): WorkerJob[] {
-  return runScript('./scripts/seed-tables-e2e.ts', 'worker')
-    .split('\n')
-    .filter((line) => line.startsWith('{') && line.includes('"job"'))
-    .map((line) => JSON.parse(line) as WorkerJob)
+async function runWorker(): Promise<WorkerJob[]> {
+  if (workerHelper === undefined) throw new Error('the worker helper is not started')
+  return workerHelper.ask()
 }
 
 /** What the published file of a code says. */
 async function fileOf(token: string) {
-  const response = await page.request.get(`/cdn/t/${token}.json`)
+  const response = await page.request.get(`/cdn/t/${hashOf(token)}.json`)
   expect(response.status()).toBe(200)
   return (await response.json()) as { table_label: string; menu_id: string | null }
 }
@@ -157,23 +236,18 @@ async function guestPhone(browserContext: BrowserContext): Promise<Page> {
 
 test.beforeAll(async ({ browser }) => {
   runScript('./scripts/seed-tables-e2e.ts', 'seed')
+  workerHelper = startWorkerHelper()
   venue = await addressOfVenue({ slug: GUEST_SLUG })
   context = await browser.newContext({ viewport: { width: 1280, height: 1100 }, locale: 'bg-BG' })
   page = await context.newPage()
-  // Better Auth allows a few sign-ins per 10 seconds, and the other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(ADMIN_EMAIL)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(page).toHaveURL(/\/venues$/, { timeout: 5_000 })
-      break
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
-  await page.getByTestId('venue-card').first().getByRole('link', { name: 'Отвори' }).click()
+  // The other specs signed in just before: `signIn` waits out Better Auth's limit.
+  await signIn(page, ADMIN_EMAIL)
+  // By name: a database seeded with `pnpm db:seed:dev` also lists a Demo Bar, and it sorts first.
+  await page
+    .getByTestId('venue-card')
+    .filter({ hasText: 'Demo Club Sofia' })
+    .getByRole('link', { name: 'Отвори' })
+    .click()
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
   origin = new URL(page.url()).origin
   venueUrl = page.url()
@@ -183,12 +257,16 @@ test.beforeAll(async ({ browser }) => {
 })
 
 test.afterAll(async () => {
+  workerHelper?.stop()
   // The second menu belongs to this spec only: the other specs see the demo venue with one menu.
   runScript('./scripts/seed-tables-e2e.ts', 'second-menu-remove')
+  // The area test's own `finally` cannot run once its page is gone (a timeout): put the areas back
+  // here, from the database, so the other specs see the demo venue as the till has it.
+  runScript('./scripts/seed-tables-e2e.ts', 'areas-restore')
   await context.close()
 })
 
-test('lists the barsy areas as sections and their tables as cards, and creates a code for every one', async () => {
+test('lists the barsy areas as sections and their tables as cards, and creates the missing codes', async () => {
   await expect(page.getByTestId('hall-name')).toHaveCount(4)
   const names = await hallNames()
   // Tables the till puts in no hall land in an area called "Tables", last (D95).
@@ -197,15 +275,27 @@ test('lists the barsy areas as sections and their tables as cards, and creates a
   await expect(rows()).toHaveCount(8)
   await expect(page.getByTestId('code-status').filter({ hasText: 'Няма код' })).toHaveCount(8)
   await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 0 с код')
-  // The name field says it is the name guests see, with the till's number beside it.
-  await expect(rowOf('5').getByLabel('Име, което виждат гостите')).toBeVisible()
-  // The hidden table is marked, and the print sheet waits for a code.
+  // The name field says it is the name guests see; until one is given it shows the till's number,
+  // which the card then does not repeat (S14).
+  await expect(rowOf('5').getByLabel('Име, което виждат гостите')).toHaveAttribute(
+    'placeholder',
+    'Като в barsy (5)',
+  )
+  await expect(rowOf('5').getByTestId('table-number')).toHaveCount(0)
+  // The hidden table is marked. Nothing to print before there is a code (R2): no link at all.
   await expect(rowOf('4').getByTestId('table-hidden')).toHaveText('Скрита')
-  await expect(page.getByTestId('print-sheet-link')).toBeDisabled()
+  await expect(page.getByTestId('print-sheet-link')).toHaveCount(0)
   // Each area and table says which menu its code opens: the venue's live one, nobody chose another.
-  await expect(page.getByTestId('venue-menu')).toContainText('Менюто на заведението на живо')
-  await expect(rowOf('5').getByTestId('route-select')).toContainText('На заведението')
+  await expect(page.getByTestId('venue-menu')).toHaveCount(0)
+  await expect(rowOf('5').getByTestId('route-select')).toContainText('Менюто на заведението')
   await expect(page.getByTestId('menu-overrides')).toHaveCount(0)
+
+  // An index of the areas at the top: one link per area, each to its section.
+  const jumps = page.getByTestId('area-index').getByTestId('area-jump')
+  await expect(jumps).toHaveCount(4)
+  const target = (await jumps.first().getAttribute('href')) ?? ''
+  expect(target).toMatch(/^#area-/)
+  await expect(page.locator(target)).toHaveAttribute('data-testid', 'hall')
 
   // The address card only says where the codes lead: this installation's address. Nothing to type.
   const card = page.getByTestId('qr-address-card')
@@ -216,17 +306,20 @@ test('lists the barsy areas as sections and their tables as cards, and creates a
   )
   await expect(page.getByTestId('open-test-link')).toBeDisabled()
 
-  // The hidden table (4) gets no code (D95): seven of the eight.
-  await act(() => page.getByTestId('create-all').click())
+  // The hidden table (4) gets no code (D95): the main action says how many are missing (R1).
+  const createAll = page.getByTestId('create-all')
+  await expect(createAll).toHaveText('Създай липсващите 7 кода')
+  await act(() => createAll.click())
   await toast('Създадени са 7 кода.')
   await expect(page.getByTestId('code-status').filter({ hasText: 'Кодът е активен' })).toHaveCount(
     7,
   )
   await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 7 с код')
-  await expect(page.getByTestId('print-sheet-link')).toHaveAttribute(
-    'href',
-    `${new URL(venueUrl).pathname}/tables/print`,
-  )
+  // Every table that can have a code has one: "create" goes, and the print sheet is the main action.
+  await expect(createAll).toHaveCount(0)
+  const print = page.getByTestId('print-sheet-link')
+  await expect(print).toHaveAttribute('href', `${new URL(venueUrl).pathname}/tables/print`)
+  await expect(print).toHaveAttribute('data-primary', 'true')
   await page.screenshot({ path: shot('tables-bg-light'), fullPage: true })
 })
 
@@ -268,7 +361,7 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
   const token = await tokenOf(rowOf('1'))
   // The web app only queues the job (it never writes the publish store); the real worker that runs
   // beside the e2e servers writes the files.
-  const jobs = runWorker()
+  const jobs = await runWorker()
   // The real worker may take quick edits as one job or several: check what the last one left.
   expect(jobs.length).toBeGreaterThanOrEqual(1)
   expect(jobs.at(-1)?.result.status).toBe('done')
@@ -276,8 +369,8 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
 
   const redirect = await page.request.get(`/t/${token}`, { maxRedirects: 0 })
   expect(redirect.status()).toBe(302)
-  expect(redirect.headers().location).toBe(`${GUEST_PATH}?t=${token}`)
-  const file = await page.request.get(`/cdn/t/${token}.json`)
+  expect(redirect.headers().location).toBe(`${GUEST_PATH}#t=${token}`)
+  const file = await page.request.get(`/cdn/t/${hashOf(token)}.json`)
   // The file also says which menu the code opens (D95): the venue's live menu, published.
   expect(await file.json()).toEqual({
     venue_public_id: venue.publicId,
@@ -289,7 +382,7 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
 
   const guest = await guestPhone(context)
   await guest.goto(`${origin}/t/${token}`)
-  await guest.waitForURL(`**${GUEST_PATH}?t=${token}`)
+  await guest.waitForURL(`**${GUEST_PATH}#t=${token}`)
   await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
   await expect(guest.getByText('Маса 1', { exact: true })).toBeVisible()
   await guest.screenshot({ path: shot('guest-table-1-bg') })
@@ -299,16 +392,16 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
 test('a name given in the tab reaches the guest page, shown as it is', async () => {
   const row = rowOf('5')
   const input = row.getByTestId('table-name')
-  await expect(input).toHaveAttribute('placeholder', '5')
+  await expect(input).toHaveAttribute('placeholder', 'Като в barsy (5)')
   await input.fill('Тераса Е5')
   await act(() => input.press('Enter'))
   await expect(input).toHaveValue('Тераса Е5')
   const token = await tokenOf(row)
 
-  const jobs = runWorker()
+  const jobs = await runWorker()
   expect(jobs.length).toBeGreaterThanOrEqual(1)
   expect(jobs.every((job) => job.retired.length === 0)).toBe(true)
-  const file = await page.request.get(`/cdn/t/${token}.json`)
+  const file = await page.request.get(`/cdn/t/${hashOf(token)}.json`)
   expect(await file.json()).toEqual({
     venue_public_id: venue.publicId,
     venue_slug: GUEST_SLUG,
@@ -325,13 +418,17 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
   // An empty name goes back to the till's number.
   await input.fill('')
   await act(() => input.press('Enter'))
-  runWorker()
-  expect(await (await page.request.get(`/cdn/t/${token}.json`)).json()).toMatchObject({
+  await runWorker()
+  expect(await (await page.request.get(`/cdn/t/${hashOf(token)}.json`)).json()).toMatchObject({
     table_label: '5',
   })
 })
 
 test('an area is renamed and moved; a table is hidden (its file goes), shown again and moved', async () => {
+  // A rename, a reload, area and table moves, a hide, five worker rounds, a print sheet in a second
+  // page: well over the default 30 s on a two-core runner that also runs `next dev`, the worker and
+  // the simulator.
+  test.setTimeout(180_000)
   await page.goto(tabUrl)
   const terrace = areaOfRow(rowOf('6'))
   const original = await terrace.getByTestId('hall-name').inputValue()
@@ -360,7 +457,7 @@ test('an area is renamed and moved; a table is hidden (its file goes), shown aga
     // A table is hidden: its card says so, its picture goes, and the job takes its file away.
     const six = rowOf('6')
     const token = await tokenOf(six)
-    runWorker()
+    await runWorker()
     expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(302)
     await menuAction(six, 'table-menu', 'toggle-hidden')
     await toast('Масата е скрита. Кодът ѝ е спрян.')
@@ -368,10 +465,10 @@ test('an area is renamed and moved; a table is hidden (its file goes), shown aga
     await expect(six.getByTestId('code-status')).toHaveText('Кодът е спрян')
     await expect(six.getByTestId('qr-thumb')).toHaveCount(0)
     await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 6 с код')
-    const hiding = runWorker().find((job) => job.retired.includes(token))
-    expect(hiding?.retired).toEqual([token])
+    const hiding = (await runWorker()).find((job) => job.retired.includes(hashOf(token)))
+    expect(hiding?.retired).toEqual([hashOf(token)])
     expect(hiding?.result.removed).toBe(1)
-    expect((await page.request.get(`/cdn/t/${token}.json`)).status()).toBe(404)
+    expect((await page.request.get(`/cdn/t/${hashOf(token)}.json`)).status()).toBe(404)
     expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(404)
 
     // The print sheet leaves a hidden table out (and its code is not drawn there).
@@ -385,17 +482,20 @@ test('an area is renamed and moved; a table is hidden (its file goes), shown aga
     await toast('Масата е показана.')
     await expect(six.getByTestId('code-status')).toHaveText('Кодът е активен')
     await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 7 с код')
-    runWorker()
+    await runWorker()
     expect(await tokenOf(six)).toBe(token)
     expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(302)
     expect(await fileOf(token)).toMatchObject({ table_label: '6' })
 
     // Within its area a table moves up and down by one place.
-    const order = () => areaOfRow(rowOf('6')).getByTestId('table-number').allTextContents()
+    const order = () =>
+      areaOfRow(rowOf('6'))
+        .getByTestId('table-card')
+        .evaluateAll((all) => all.map((card) => (card as HTMLElement).dataset.number))
     const numbers = await order()
-    expect(numbers).toEqual(['от barsy: 5', 'от barsy: 6'])
+    expect(numbers).toEqual(['5', '6'])
     await menuAction(rowOf('6'), 'table-menu', 'move-up')
-    await expect.poll(order).toEqual(['от barsy: 6', 'от barsy: 5'])
+    await expect.poll(order).toEqual(['6', '5'])
     await menuAction(rowOf('6'), 'table-menu', 'move-down')
     await expect.poll(order).toEqual(numbers)
   } finally {
@@ -423,7 +523,7 @@ test('a menu chosen for an area or a table reaches the files of the codes after 
   const one = rowOf('1')
   const hall = areaOfRow(three)
   const tokens = { one: await tokenOf(one), three: await tokenOf(three) }
-  runWorker()
+  await runWorker()
   const live = (await fileOf(tokens.three)).menu_id
   expect(live).toMatch(/^nd_/)
   expect(live).not.toBe(late)
@@ -431,7 +531,7 @@ test('a menu chosen for an area or a table reaches the files of the codes after 
   // The venue's menus are offered by name, the live one marked; the others by their own name.
   await three.getByTestId('route-select').click()
   const offered = await page.getByRole('option').allTextContents()
-  expect(offered[0]).toBe('Като на зоната')
+  expect(offered[0]).toBe('Като зоната')
   expect(offered).toContain('Late night')
   expect(offered.some((text) => text.endsWith('(на живо)'))).toBe(true)
   await page.keyboard.press('Escape')
@@ -442,7 +542,7 @@ test('a menu chosen for an area or a table reaches the files of the codes after 
   await toast('Менюто е записано.')
   await expect(three.getByTestId('menu-overrides')).toHaveText('Заменя')
   await expect(three.getByTestId('route-select')).toContainText('Late night')
-  runWorker()
+  await runWorker()
   expect((await fileOf(tokens.three)).menu_id).toBe(late)
   expect((await fileOf(tokens.one)).menu_id).toBe(live)
   await page.screenshot({ path: shot('menu-route-table-bg') })
@@ -451,24 +551,24 @@ test('a menu chosen for an area or a table reaches the files of the codes after 
   await hall.getByTestId('route-select').first().click()
   await act(() => page.getByRole('option', { name: 'Late night' }).click())
   await expect(hall.getByTestId('menu-overrides').first()).toHaveText('Заменя')
-  runWorker()
+  await runWorker()
   expect((await fileOf(tokens.one)).menu_id).toBe(late)
   expect((await fileOf(tokens.three)).menu_id).toBe(late)
   // The table's choice beats the area's: back to the venue's live menu for table 3 alone.
   await three.getByTestId('route-select').click()
   await act(() => page.getByRole('option', { name: /\(на живо\)$/ }).click())
-  runWorker()
+  await runWorker()
   expect((await fileOf(tokens.three)).menu_id).toBe(live)
   expect((await fileOf(tokens.one)).menu_id).toBe(late)
   await page.screenshot({ path: shot('menu-route-area-bg') })
 
   // Taking the choices away: every code goes back to the venue's live menu.
   await three.getByTestId('route-select').click()
-  await act(() => page.getByRole('option', { name: 'Като на зоната' }).click())
+  await act(() => page.getByRole('option', { name: 'Като зоната', exact: true }).click())
   await hall.getByTestId('route-select').first().click()
-  await act(() => page.getByRole('option', { name: 'Като на заведението' }).click())
+  await act(() => page.getByRole('option', { name: 'Менюто на заведението', exact: true }).click())
   await expect(page.getByTestId('menu-overrides')).toHaveCount(0)
-  runWorker()
+  await runWorker()
   expect((await fileOf(tokens.one)).menu_id).toBe(live)
   expect((await fileOf(tokens.three)).menu_id).toBe(live)
 })
@@ -476,7 +576,7 @@ test('a menu chosen for an area or a table reaches the files of the codes after 
 test('"New code" asks first, and the old sticker then says the code is not active', async () => {
   const row = rowOf('2')
   const oldToken = await tokenOf(row)
-  runWorker()
+  await runWorker()
   expect((await page.request.get(`/t/${oldToken}`, { maxRedirects: 0 })).status()).toBe(302)
 
   await row.getByTestId('table-menu').click()
@@ -502,11 +602,11 @@ test('"New code" asks first, and the old sticker then says the code is not activ
   expect(newToken).toMatch(TOKEN)
 
   // The job the tab queued names the old token: the worker takes its file out.
-  const jobs = runWorker()
-  const retiring = jobs.find((job) => job.retired.includes(oldToken))
-  expect(retiring?.retired).toEqual([oldToken])
+  const jobs = await runWorker()
+  const retiring = jobs.find((job) => job.retired.includes(hashOf(oldToken)))
+  expect(retiring?.retired).toEqual([hashOf(oldToken)])
   expect(retiring?.result.removed).toBe(1)
-  expect((await page.request.get(`/cdn/t/${oldToken}.json`)).status()).toBe(404)
+  expect((await page.request.get(`/cdn/t/${hashOf(oldToken)}.json`)).status()).toBe(404)
   expect((await page.request.get(`/t/${oldToken}`, { maxRedirects: 0 })).status()).toBe(404)
   expect((await page.request.get(`/t/${newToken}`, { maxRedirects: 0 })).status()).toBe(302)
 
@@ -537,9 +637,9 @@ test('the address card is read-only, and its test link is opened by the browser'
   await expect(link).toHaveAttribute('href', expected)
   await expect(link).toHaveAttribute('target', '_blank')
   await page.screenshot({ path: shot('address-card-bg') })
-  runWorker()
+  await runWorker()
   const [popup] = await Promise.all([context.waitForEvent('page'), link.click()])
-  await popup.waitForURL(`**${GUEST_PATH}?t=${token}`)
+  await popup.waitForURL(`**${GUEST_PATH}#t=${token}`)
   await popup.close()
 })
 
@@ -548,6 +648,8 @@ test('the print sheet has six cards on an A4 page, in a real PDF too, and stays 
   await sheetPage.setViewportSize({ width: 1100, height: 1300 })
   await sheetPage.goto(`${venueUrl}/tables/print`)
   await expect(sheetPage.getByTestId('print-page')).toBeVisible()
+  // The tab's title names the sheet, so "Save as PDF" offers a file named after it (R4).
+  await expect(sheetPage).toHaveTitle('QR кодове · Demo Club Sofia · Restro')
 
   const sheets = sheetPage.getByTestId('print-sheet')
   await expect(sheets).toHaveCount(2)
@@ -588,7 +690,10 @@ test('the print sheet has six cards on an A4 page, in a real PDF too, and stays 
   }
   const firstSvg = (await cards.first().getByTestId('print-qr').getAttribute('src')) ?? ''
 
-  // On the screen a sheet is an A4 page (210 × 296 mm at 96 dpi), laid out two across, three down.
+  await sheetPage.screenshot({ path: shot('print-sheet-bg'), fullPage: true })
+
+  // Printed, a sheet is an A4 page (210 × 296 mm at 96 dpi), laid out two across, three down.
+  await sheetPage.emulateMedia({ media: 'print' })
   const box = await sheets.first().boundingBox()
   expect(Math.round(box?.width ?? 0)).toBe(Math.round((210 / 25.4) * 96))
   expect(Math.round(box?.height ?? 0)).toBe(Math.round((296 / 25.4) * 96))
@@ -600,10 +705,8 @@ test('the print sheet has six cards on an A4 page, in a real PDF too, and stays 
   )
   expect(new Set(positions.map(([x]) => x)).size).toBe(2)
   expect(new Set(positions.map(([, y]) => y)).size).toBe(3)
-  await sheetPage.screenshot({ path: shot('print-sheet-bg'), fullPage: true })
 
   // A real PDF, as the browser's "Save as PDF" makes it: two A4 pages.
-  await sheetPage.emulateMedia({ media: 'print' })
   const pdf = await sheetPage.pdf({ format: 'A4', preferCSSPageSize: true, printBackground: true })
   expect(pdf.toString('latin1').match(/\/Type\s*\/Page(?![s\w])/g) ?? []).toHaveLength(2)
   writeFileSync(`${SHOTS}/s5-print-sheet.pdf`, pdf)
@@ -622,6 +725,16 @@ test('the print sheet has six cards on an A4 page, in a real PDF too, and stays 
   ).toBe('rgb(255, 255, 255)')
   expect(await cards.first().getByTestId('print-qr').getAttribute('src')).toBe(firstSvg)
   await sheetPage.screenshot({ path: shot('print-sheet-dark') })
+  await sheetPage.emulateMedia({ colorScheme: 'light' })
+
+  // On a phone the sheet is as wide as the screen and its cards stack: nothing scrolls sideways (S22).
+  await sheetPage.setViewportSize({ width: 390, height: 844 })
+  await sheetPage.reload()
+  await expect(sheetPage.getByTestId('print-page')).toBeVisible()
+  expect(
+    await sheetPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBe(true)
+  await sheetPage.screenshot({ path: shot('print-sheet-phone'), fullPage: true })
   await sheetPage.close()
 })
 
@@ -667,7 +780,7 @@ test('"Turn off code" asks first, and the sticker then says the code is not acti
   await page.goto(tabUrl)
   const row = rowOf('6')
   const token = await tokenOf(row)
-  runWorker()
+  await runWorker()
   expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(302)
 
   await row.getByTestId('table-menu').click()
@@ -681,15 +794,15 @@ test('"Turn off code" asks first, and the sticker then says the code is not acti
   await expect(row.getByTestId('code-status')).toHaveText('Няма код')
   await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 6 с код')
 
-  const jobs = runWorker()
-  expect(jobs.find((job) => job.retired.includes(token))?.retired).toEqual([token])
+  const jobs = await runWorker()
+  expect(jobs.find((job) => job.retired.includes(hashOf(token)))?.retired).toEqual([hashOf(token)])
   expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(404)
 
   // And a code can be made again, a different one.
   await row.getByTestId('table-menu').click()
   await act(() => page.getByTestId('create-code').click())
   await expect(row.getByTestId('code-status')).toHaveText('Кодът е активен')
-  runWorker()
+  await runWorker()
   await expect.poll(() => tokenOf(row)).not.toBe(token)
   const again = await tokenOf(row)
   expect((await page.request.get(`/t/${again}`, { maxRedirects: 0 })).status()).toBe(302)
@@ -700,7 +813,10 @@ test('screenshots: English, dark, and a phone', async () => {
   await page.goto(tabUrl)
   await expect(page.getByTestId('tables-summary')).toHaveText('8 tables, 7 with a code')
   await expect(page.getByText('Address in the codes')).toBeVisible()
-  await expect(page.getByTestId('table-number').filter({ hasText: 'from barsy: 5' })).toBeVisible()
+  await expect(rowOf('5').getByTestId('table-name')).toHaveAttribute(
+    'placeholder',
+    'Same as in barsy (5)',
+  )
   await page.screenshot({ path: shot('tables-en-light'), fullPage: true })
 
   await page.emulateMedia({ colorScheme: 'dark' })
@@ -723,4 +839,49 @@ test('screenshots: English, dark, and a phone', async () => {
   await page.setViewportSize({ width: 1280, height: 1100 })
   await page.reload()
   await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 7 с код')
+})
+
+test('a plain member reads the tables, is told the codes are for owners and admins, and gets none', async ({
+  browser,
+}) => {
+  runScript('./scripts/seed-tables-e2e.ts', 'member')
+  const memberContext = await browser.newContext({
+    viewport: { width: 1280, height: 1100 },
+    locale: 'bg-BG',
+  })
+  try {
+    const member = await memberContext.newPage()
+    await signIn(member, MEMBER_EMAIL)
+    await member.goto(tabUrl)
+    await expect(member.getByTestId('tables-tab')).toBeVisible()
+    // The areas and tables are there to read; the codes are not, and the tab says why (S25).
+    await expect(member.getByTestId('table-card')).toHaveCount(8)
+    await expect(member.getByTestId('tables-codes-hidden')).toHaveText(
+      'Само собственици и администратори виждат кодовете.',
+    )
+    await expect(member.getByTestId('create-all')).toHaveCount(0)
+    await expect(member.getByTestId('print-sheet-link')).toHaveCount(0)
+    await expect(member.getByTestId('qr-address-card')).toHaveCount(0)
+    await expect(member.getByTestId('qr-thumb')).toHaveCount(0)
+    await expect(member.getByTestId('route-select')).toHaveCount(0)
+    // Who cannot open the picker reads which menu, by name.
+    await expect(member.getByTestId('route-text').first()).toContainText('Менюто на заведението (')
+    // Nor can a member fetch a code's picture by its address.
+    const tableId =
+      (await member
+        .locator('[data-testid="table-card"][data-number="1"]')
+        .getAttribute('data-table-id')) ?? ''
+    expect(tableId).toMatch(/^tb_/)
+    expect((await member.request.get(`/api/tables/${tableId}/qr?format=png`)).status()).toBe(404)
+    await member.screenshot({ path: shot('tables-member-bg'), fullPage: true })
+
+    // The print page, opened by its address, says the same and prints nothing.
+    await member.goto(`${venueUrl}/tables/print`)
+    await expect(member.getByTestId('print-codes-hidden')).toHaveText(
+      'Само собственици и администратори виждат кодовете.',
+    )
+    await expect(member.getByTestId('print-card')).toHaveCount(0)
+  } finally {
+    await memberContext.close()
+  }
 })

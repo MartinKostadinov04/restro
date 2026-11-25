@@ -1,11 +1,17 @@
 // The context the guest page gives the shell (doc "The visualization shell", step 2): the language
-// (the address `?lang=`, then the browser, then the menu's default), the table token from `?t=`
-// (given on only after the published table file confirmed it, see `confirmedTable`) and the
+// (the address `?lang=`, then the browser, then the menu's default), the table code from the
+// address's fragment `#t=` (given on only after the published table file confirmed it, see
+// `confirmedTable`) and the
 // channel. The venue's clock is the shell's own default (Europe/Sofia) until the snapshot
 // carries a time zone. Ordering is off in Stage 3.
 
 import { type Locale, TABLE_TOKEN_PATTERN } from '@restro/core'
-import { type FaceManifest, imageSlotsFor, type ShellContextInput } from '@restro/shell'
+import {
+  type FaceManifest,
+  type FeatureName,
+  imageSlotsFor,
+  type ShellContextInput,
+} from '@restro/shell'
 
 /** The language of the page before the menu says otherwise: the pilot venues are Bulgarian. */
 export const FALLBACK_LOCALE: Locale = 'bg_BG'
@@ -29,11 +35,14 @@ export interface LanguageChoice {
   /** The languages the menu has; empty before it is loaded. */
   readonly available: readonly Locale[]
   readonly menuDefault: Locale | null
+  /** The language the guest picked earlier at this venue (its cookie), or null. */
+  readonly remembered?: string | null
 }
 
 /**
- * The page's language: `?lang=` if the menu has it, else the first browser language the menu has,
- * else the menu's default. Before the menu is loaded (`available` empty) the guest's own wish is
+ * The page's language: `?lang=` if the menu has it, else the guest's own earlier pick at this
+ * venue, else the venue's default language, else (the venue has none) the first browser language
+ * the menu has (P11). Before the menu is loaded (`available` empty) the guest's own wish is
  * used for the loading and error messages, and Bulgarian when there is none.
  */
 export function chooseLocale(choice: LanguageChoice): Locale {
@@ -46,11 +55,45 @@ export function chooseLocale(choice: LanguageChoice): Locale {
     const found = known(requested)
     if (found !== null) return found
   }
+  if (choice.remembered != null) {
+    const found = known(choice.remembered)
+    if (found !== null) return found
+  }
+  if (choice.menuDefault !== null) return choice.menuDefault
   for (const language of choice.browser) {
     const found = known(language)
     if (found !== null) return found
   }
-  return choice.menuDefault ?? FALLBACK_LOCALE
+  return FALLBACK_LOCALE
+}
+
+const LANGUAGE_COOKIE_PREFIX = 'restro_lang_'
+const LANGUAGE_COOKIE_SECONDS = 180 * 24 * 60 * 60
+
+/** The cookie's name: our venue id only (rule 3), never a POS id. */
+export function languageCookieName(publicId: string): string {
+  return `${LANGUAGE_COOKIE_PREFIX}${publicId}`
+}
+
+/** The guest's pick for a venue from a `document.cookie` string, or null. Value: a language code. */
+export function readLanguageCookie(cookies: string, publicId: string): string | null {
+  const name = languageCookieName(publicId)
+  for (const part of cookies.split(';')) {
+    const [key, value] = part.trim().split('=')
+    if (key === name && value !== undefined && /^[A-Za-z]{2,3}([_-][A-Za-z]{2,4})?$/.test(value)) {
+      return value
+    }
+  }
+  return null
+}
+
+/**
+ * The `document.cookie` assignment that keeps a pick for a venue: a user-interface customisation
+ * cookie (exempt from consent, WP29 Opinion 04/2012), set only when the guest picks a language,
+ * holding only that choice for 180 days, on the guest pages (`/m`) alone, `Secure` on HTTPS.
+ */
+export function languageCookie(publicId: string, locale: Locale, secure = false): string {
+  return `${languageCookieName(publicId)}=${langParam(locale)}; Path=/m; Max-Age=${LANGUAGE_COOKIE_SECONDS}; SameSite=Lax${secure ? '; Secure' : ''}`
 }
 
 /** The short form for the address: `bg_BG` is `bg`. */
@@ -58,10 +101,104 @@ export function langParam(locale: Locale): string {
   return locale.split('_')[0] ?? locale
 }
 
-/** The table token in the address (`?t=`), or null when it is missing or cannot be a token. */
-export function readTableToken(search: string): string | null {
-  const token = new URLSearchParams(search).get('t')
-  return token !== null && TABLE_TOKEN_PATTERN.test(token) ? token : null
+/**
+ * The table code in the address, or null when it is missing or cannot be a code. `/t/<code>` puts
+ * it in the fragment (`#t=`, D122): a fragment never reaches a server, a log or a Referer. A code
+ * in the query (`?t=`, links of before #70) still counts; the page moves it into the fragment
+ * (`withCodeInFragment`).
+ */
+export function readTableToken(search: string, fragment = ''): string | null {
+  for (const params of [
+    new URLSearchParams(fragment.replace(/^#/, '')),
+    new URLSearchParams(search),
+  ]) {
+    const token = params.get('t')
+    if (token !== null) return TABLE_TOKEN_PATTERN.test(token) ? token : null
+  }
+  return null
+}
+
+/**
+ * Whether the venue switched at least one table service on (ordering, the bill, paying or calling
+ * a waiter). A page asks the guest API for the table's state only then: a venue with every service
+ * off is a menu and nothing else, so it is never polled. A snapshot without `features` (published
+ * before D71) or one that has not loaded yet counts as off, as the venue's default does.
+ */
+export function hasTableService(
+  features:
+    | {
+        readonly ordering?: boolean
+        readonly bill?: boolean
+        readonly pay?: boolean
+        readonly call_waiter?: { readonly enabled?: boolean }
+      }
+    | null
+    | undefined,
+): boolean {
+  if (features === null || features === undefined) return false
+  return (
+    features.ordering === true ||
+    features.bill === true ||
+    features.pay === true ||
+    features.call_waiter?.enabled === true
+  )
+}
+
+/** The address with a table code in its query moved into the fragment, or null when it has none. */
+export function withCodeInFragment(href: string): string | null {
+  const url = new URL(href)
+  const code = url.searchParams.get('t')
+  if (code === null) return null
+  url.searchParams.delete('t')
+  const fragment = new URLSearchParams(url.hash.replace(/^#/, ''))
+  if (!fragment.has('t')) fragment.set('t', code)
+  url.hash = fragment.toString()
+  return url.toString()
+}
+
+/** What a tab keeps between reloads: its `sessionStorage`. */
+export type TabStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+
+/** The tab's storage, or null where the browser gives none (some private modes throw on access). */
+export function tabStorage(): TabStorage | null {
+  try {
+    return window.sessionStorage
+  } catch {
+    return null
+  }
+}
+
+const tableKey = (publicId: string) => `restro.table.${publicId}`
+
+/**
+ * The table code this tab kept for a venue, or null. A dish page's address (`#item-<id>`) takes
+ * the fragment, so a reload there finds no code in the address: the tab's copy keeps the table.
+ * Kept per tab (never in a shared link), checked against the published files like any code.
+ */
+export function rememberedTable(storage: TabStorage | null, publicId: string): string | null {
+  try {
+    const code = storage?.getItem(tableKey(publicId)) ?? null
+    return code !== null && TABLE_TOKEN_PATTERN.test(code) ? code : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Keeps the venue's table code for this tab, or forgets it (`code` null); `tableToKeep` says
+ * which. Without storage nothing is kept and nothing breaks.
+ */
+export function rememberTable(
+  storage: TabStorage | null,
+  publicId: string,
+  code: string | null,
+): void {
+  try {
+    if (code === null) storage?.removeItem(tableKey(publicId))
+    else storage?.setItem(tableKey(publicId), code)
+  } catch {
+    // Private mode or a full storage: the table lasts until the next reload only.
+  }
 }
 
 /** A table the published files know: the code from the address and how the table is called. */
@@ -72,11 +209,28 @@ export interface ConfirmedTable {
 
 /**
  * The table the shell may be told about (A5-F5). The code in the address is only a claim until
- * `t/<token>.json` has answered for this venue; a well-formed but unknown `?t=` is the same as no
+ * `t/<hash>.json` has answered for this venue; a well-formed but unknown code is the same as no
  * code at all. `found` is the answer to the lookup of `requested` (null while it is out, when the
  * code is unknown, belongs to another venue or could not be read); an answer for another code,
  * left over from before the address changed, counts for nothing.
  */
+/**
+ * The code the tab should hold after a load, from what the load checked and the code the tab held
+ * before it. A confirmed code is kept (a new one in the address replaces the old); an unknown one
+ * is forgotten. A file that could not be read concludes nothing, so it keeps the code only when
+ * that read was checking the very code the tab held: a different code from the address that
+ * could not be read still drops the old one, which would otherwise come back on the next reload
+ * (a dish page takes the fragment) as a table the guest never scanned.
+ */
+export function tableToKeep(
+  checked: { readonly kind: 'found' | 'unknown' | 'unreadable'; readonly token: string } | null,
+  kept: string | null,
+): string | null {
+  if (checked === null) return null
+  if (checked.kind === 'found') return checked.token
+  return checked.kind === 'unreadable' && checked.token === kept ? kept : null
+}
+
 export function confirmedTable(
   requested: string | null,
   found: ConfirmedTable | null,
@@ -93,13 +247,28 @@ export function buildContext(input: {
   readonly now: Date
   readonly tableToken: string | null
   readonly manifest: FaceManifest
+  /** The page binds the table's shared order (#75): ordering is supported for this template. */
+  readonly sharedOrder?: boolean
 }): ShellContextInput {
+  const sharedOrder = input.sharedOrder === true
+  // What the platform supports for this page is what the page binds (the table's services client)
+  // and the template draws: a template that is not bound gets no service, and a bound one gets the
+  // services it declares controls for (`manifest.features`, R15). The reference template declares
+  // only ordering, so it is offered no bill, pay or waiter control; the venue's own switches, in
+  // the snapshot, still decide for the rest.
+  const draws = (feature: FeatureName) => sharedOrder && input.manifest.features.includes(feature)
   return {
     locale: input.locale,
     now: input.now.toISOString(),
     channel: 'qr',
     tableToken: input.tableToken,
-    orderingEnabled: false,
+    orderingEnabled: sharedOrder,
+    capabilities: {
+      ordering: sharedOrder,
+      callWaiter: draws('call_waiter'),
+      bill: draws('bill'),
+      pay: draws('pay'),
+    },
     // One device pixel per CSS pixel: the face lets the browser choose among the photo files (srcset).
     images: imageSlotsFor(input.manifest, 1),
   }
