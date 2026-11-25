@@ -100,6 +100,12 @@ export interface WorkerConfig {
    * Never logged: a secret.
    */
   readonly receiptEmail?: ReceiptEmailConfig | null
+  /**
+   * The email service every other guest email goes through (#576): a reservation's news, from the
+   * venue's name. GUEST_EMAIL_FROM_ADDRESS switches them on and needs RESEND_API_KEY; null: no
+   * guest is emailed about his reservation (one warning at start). Never logged: a secret.
+   */
+  readonly guestEmail?: ReceiptEmailConfig | null
 }
 
 /** How the database is backed up (ticket #320; D103). */
@@ -112,7 +118,7 @@ export interface BackupConfig {
   readonly pgDumpPath: string | null
 }
 
-/** Where a receipt file is emailed from (#186; D127). */
+/** Where a guest email is sent from: a receipt file (#186; D127), or any other (#576). */
 export interface ReceiptEmailConfig {
   /** The email service's API key. A secret. */
   readonly apiKey: string
@@ -233,6 +239,8 @@ const BAD_HEALTHCHECKS_URL = 'must be an https:// address.'
 const BAD_RESEND_KEY = 'must be a Resend API key (it starts with re_).'
 const BAD_RECEIPT_FROM = 'must be one email address on the sending domain verified with Resend.'
 const RESEND_KEY_MISSING = 'is not set. Receipt emails (RECEIPT_FROM_ADDRESS) need it.'
+const BAD_GUEST_EMAIL_FROM = 'must be one email address on the sending domain verified with Resend.'
+const RESEND_KEY_MISSING_FOR_GUESTS = 'is not set. Guest emails (GUEST_EMAIL_FROM_ADDRESS) need it.'
 const BAD_VAPID_PUBLIC_KEY =
   'must be a base64url public key (pnpm exec web-push generate-vapid-keys).'
 const BAD_VAPID_PRIVATE_KEY = 'must be a base64url private key. It goes with VAPID_PUBLIC_KEY.'
@@ -442,6 +450,15 @@ function environmentSchema(defaultWorkerId: () => string) {
           .pipe(z.email({ error: BAD_RECEIPT_FROM }))
           .optional(),
       ),
+      GUEST_EMAIL_FROM_ADDRESS: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .max(254)
+          .pipe(z.email({ error: BAD_GUEST_EMAIL_FROM }))
+          .optional(),
+      ),
       WORKER_SEND: z.preprocess(
         unsetWhenBlank,
         z
@@ -476,6 +493,8 @@ function environmentSchema(defaultWorkerId: () => string) {
       }
       if (env.RESEND_API_KEY === undefined && env.RECEIPT_FROM_ADDRESS !== undefined) {
         issue('RESEND_API_KEY', RESEND_KEY_MISSING)
+      } else if (env.RESEND_API_KEY === undefined && env.GUEST_EMAIL_FROM_ADDRESS !== undefined) {
+        issue('RESEND_API_KEY', RESEND_KEY_MISSING_FOR_GUESTS)
       }
       if (env.BARSY_ALLOWED_HOST_SUFFIXES?.some((suffix) => !HOST_SUFFIX.test(suffix))) {
         issue('BARSY_ALLOWED_HOST_SUFFIXES', BAD_HOST_SUFFIXES)
@@ -588,6 +607,10 @@ function environmentSchema(defaultWorkerId: () => string) {
           env.RESEND_API_KEY !== undefined && env.RECEIPT_FROM_ADDRESS !== undefined
             ? { apiKey: env.RESEND_API_KEY, fromAddress: env.RECEIPT_FROM_ADDRESS }
             : null,
+        guestEmail:
+          env.RESEND_API_KEY !== undefined && env.GUEST_EMAIL_FROM_ADDRESS !== undefined
+            ? { apiKey: env.RESEND_API_KEY, fromAddress: env.GUEST_EMAIL_FROM_ADDRESS }
+            : null,
         alerts: {
           telegramToken: env.TELEGRAM_BOT_TOKEN ?? null,
           teamChatId: env.TELEGRAM_TEAM_CHAT_ID ?? null,
@@ -641,6 +664,7 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `TELEGRAM_TEAM_CHAT_ID` | the Restro team's Telegram chat; without it the team is not messaged | unset |
  * | `HEALTHCHECKS_PING_URL` | the https address pinged every minute (the outside watchdog) | unset |
  * | `RESEND_API_KEY`, `RECEIPT_FROM_ADDRESS` | the email service for the venue's electronic receipt ; RECEIPT_FROM_ADDRESS switches receipt emails on and needs the key; without it no receipt file is emailed (#186) | unset |
+ * | `GUEST_EMAIL_FROM_ADDRESS` | the address every other guest email is sent from (a reservation's news, #576), under the venue's name; switches them on and needs `RESEND_API_KEY`; without it no guest is emailed and the worker warns once | unset |
  * | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Web Push identity (all three, or none) | unset |
  */
 export function loadConfig(

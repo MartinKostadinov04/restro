@@ -50,7 +50,7 @@ import {
   type SimServer,
 } from '@restro/sim-pos'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-
+import { EmailSendError } from '../src/email/sender'
 import { readFloorOf } from '../src/jobs/floor'
 import { recoverPayments } from '../src/jobs/payment-recovery'
 import {
@@ -62,7 +62,6 @@ import {
 import { ReadingBudgets, readTableOf, TABLE_READ_MIN_GAP_MS } from '../src/jobs/readings'
 import type { JobQueue } from '../src/jobs/types'
 import { createLogger } from '../src/logger'
-import { EmailSendError } from '../src/receipts/email-sender'
 import {
   allowSlowSetup,
   createTestDatabase,
