@@ -56,6 +56,16 @@ function requested(night: string): { party_size: number; spots: number }[] {
   ).rows
 }
 
+/** The booking screen's own alert (Next's route announcer is an alert too). */
+const refusal = (page: Page) => page.locator('[data-page="booking"]').getByRole('alert')
+
+/**
+ * A phone number of its own per attempt: asking twice for the same night is answered once, so a
+ * retry with the same guest would add nothing.
+ */
+const guestPhone = () =>
+  `+359 888 ${String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')}`
+
 async function openPage(page: Page, path: string): Promise<void> {
   await page.route('https://challenges.cloudflare.com/turnstile/**', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: TURNSTILE_STUB }),
@@ -80,7 +90,7 @@ test.describe('the booking page', () => {
     await page.getByLabel('Night').selectOption(seeded.open)
     await page.getByLabel('Guests').fill('4')
     await page.getByLabel('Name').fill('Mira Ivanova')
-    await page.getByLabel('Phone').fill('+359 888 123 456')
+    await page.getByLabel('Phone').fill(guestPhone())
     await page.getByLabel('Email').fill('mira@example.com')
     await page.getByLabel('Note (optional)').fill('A birthday')
     await page.getByRole('button', { name: 'Send the request' }).click()
@@ -90,10 +100,11 @@ test.describe('the booking page', () => {
     await expect(answer).toContainText('The club will look at it and send you an email.')
     await expect(page.getByRole('button', { name: 'Send the request' })).toHaveCount(0)
 
-    // It arrived as Requested: one more for that night, the guest's number of people, no spot.
+    // It arrived as Requested: one more for that night, with no spot.
     const rows = requested(seeded.open)
     expect(rows).toHaveLength(before + 1)
-    expect(rows.at(-1)).toEqual({ party_size: 4, spots: 0 })
+    expect(rows).toContainEqual({ party_size: 4, spots: 0 })
+    expect(rows.every((row) => row.spots === 0)).toBe(true)
   })
 
   test('a closed night is marked closed and refused in words that name another way', async ({
@@ -104,14 +115,14 @@ test.describe('the booking page', () => {
     await expect(night.locator(`option[value="${seeded.closed}"]`)).toContainText('(closed)')
 
     await night.selectOption(seeded.closed)
-    await expect(page.getByRole('alert')).toHaveText(
+    await expect(refusal(page)).toHaveText(
       'The club is closed that night. Choose another night, or call the club.',
     )
     await expect(page.getByRole('button', { name: 'Send the request' })).toBeDisabled()
 
     // Another night clears it.
     await night.selectOption(seeded.open)
-    await expect(page.getByRole('alert')).toHaveCount(0)
+    await expect(refusal(page)).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Send the request' })).toBeEnabled()
   })
 })

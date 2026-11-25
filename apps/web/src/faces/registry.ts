@@ -21,12 +21,10 @@ export { DEFAULT_FACE_ID, type FaceText } from './manifests'
 export interface FaceEntry extends ManifestEntry {
   /** Imports the face's components (once; the browser keeps the result). */
   readonly load: () => Promise<ComponentType<FaceHostProps>>
-  /**
-   * Imports the face's booking page (#577), for a face that has one. A face without it leaves this
-   * out, and the booking page says online booking is not available.
-   */
-  readonly loadBooking?: () => Promise<ComponentType<BookingHostProps>>
 }
+
+/** Imports a face's booking page (#577). */
+export type BookingLoader = () => Promise<ComponentType<BookingHostProps>>
 
 /** How each template's components are imported, by the template's name. */
 const LOADERS: Readonly<Record<string, FaceEntry['load']>> = {
@@ -34,7 +32,7 @@ const LOADERS: Readonly<Record<string, FaceEntry['load']>> = {
 }
 
 /** How each template's booking page is imported, for the templates that have one (#577). */
-const BOOKING_LOADERS: Readonly<Record<string, NonNullable<FaceEntry['loadBooking']>>> = {
+const BOOKING_LOADERS: Readonly<Record<string, BookingLoader>> = {
   'editorial-market': async () => (await import('@restro/editorial-market')).EditorialMarketBooking,
 }
 
@@ -42,9 +40,17 @@ export const FACES: readonly FaceEntry[] = MANIFESTS.map((entry) => {
   const load = LOADERS[entry.id]
   if (load === undefined)
     throw new Error(`the template "${entry.id}" has no loader in the registry`)
-  const loadBooking = BOOKING_LOADERS[entry.id]
-  return loadBooking === undefined ? { ...entry, load } : { ...entry, load, loadBooking }
+  return { ...entry, load }
 })
+
+/**
+ * The face's booking page loader, or undefined for a face that has none: the booking page then
+ * says online booking is not available. Kept beside the entries, not in them, so an entry stays
+ * its manifest with its one loader.
+ */
+export function bookingLoader(id: string): BookingLoader | undefined {
+  return Object.hasOwn(BOOKING_LOADERS, id) ? BOOKING_LOADERS[id] : undefined
+}
 
 const byId = new Map(FACES.map((entry) => [entry.id, entry]))
 

@@ -22,12 +22,12 @@ import pg from 'pg'
 
 import { writeBookingFile } from '../../worker/src/publish/booking'
 import { getPool } from '../src/server/db'
+import { seedBookingSettings } from './e2e/booking-settings'
 import { DEMO_BAR_VENUE } from './lib/demo-bar'
 import { seedDemoBarTable } from './lib/seed-demo-bar-table'
 
 const TENANT_ID = `tn_${'E2eBookingClub'.padEnd(22, '0')}` as TenantId
 const ORGANIZATION_SLUG = 'booking-club'
-const SEED = ['restro', 'system', 'e2e-seed'] as const
 const NIGHTLY = { opens: '22:00', lastOrders: '04:30', closes: '05:00' }
 
 async function seed(simHost: string, on: boolean): Promise<void> {
@@ -60,13 +60,10 @@ async function seed(simHost: string, on: boolean): Promise<void> {
 
   const owner = new pg.Pool({ connectionString: process.env.DATABASE_URL_OWNER, max: 1 })
   try {
-    await owner.query(
-      `insert into restro.reservation_settings
-         (tenant_id, venue_id, turn_minutes, online, closed_dates, source, actor, job_id)
-       values ($1, $2, 120, $3::jsonb, $4::jsonb, $5, $6, $7)
-       on conflict (tenant_id, venue_id) do update
-         set online = excluded.online, closed_dates = excluded.closed_dates, updated_at = now()`,
-      [TENANT_ID, venue.id, JSON.stringify({ bookingPage: on }), JSON.stringify([closed]), ...SEED],
+    await seedBookingSettings(
+      owner,
+      { tenantId: TENANT_ID, venueId: venue.id },
+      { bookingPage: on, closedDates: [closed] },
     )
   } finally {
     await owner.end()

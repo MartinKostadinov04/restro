@@ -31,7 +31,7 @@ import {
 import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { MenuNotice, MenuSkeleton } from '@/faces/notices'
-import { faceEntry } from '@/faces/registry'
+import { bookingLoader, faceEntry } from '@/faces/registry'
 import { FONT_STACKS } from '@/fonts'
 import { CDN_BASE } from './cdn'
 import { buildContext, chooseLocale } from './context'
@@ -176,7 +176,7 @@ export function BookingPage({ address }: { readonly address: GuestAddress }) {
   // The renderer's booking page, or null for a renderer that has none.
   useEffect(() => {
     let cancelled = false
-    const load = RENDERER.loadBooking
+    const load = bookingLoader(RENDERER.id)
     if (load === undefined) {
       setBooking(null)
       return

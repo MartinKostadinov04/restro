@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import {
+  bookingPath,
   currentPath,
   LocalPublishStore,
   livePath,
@@ -284,6 +285,8 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
           livePath(scope().menuId, scope().venueId),
           venueIndexPath(publicId),
           await organizationIndex(),
+          // The venue's booking file (#577), refreshed after every publish.
+          bookingPath(scope().venueId),
         ].sort(),
       )
 
