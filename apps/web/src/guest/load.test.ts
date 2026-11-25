@@ -626,6 +626,7 @@ describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens
       index: { ...f.index, organization: ORG },
       publicId: CODE,
       canonical: { organization: ORG, venue: 'demo-club' },
+      organizationId: `tn_${'C'.repeat(22)}`,
     })
     const menu = await loadMenuAt(f.deps(), { organization: ORG, venue: 'demo-club' })
     expect(menu.index.menu_id).toBe(f.index.menu_id)

@@ -49,6 +49,7 @@ describe('proxy (the optimistic sign-in gate)', () => {
       '/cdn/m/nd_x/vn_x/current.json',
       '/m/demo-club',
       '/t/tb_0123456789ABCDEFGHIJKL',
+      '/book/night-group/club-night',
       '/cdn/anything-without-an-extension',
       '/favicon.ico',
       '/logo.png',

@@ -27,6 +27,17 @@ export function guestMenuPath(address: GuestAddressParts): string {
   return `/m/${address.organization}/${address.venue}`
 }
 
+/**
+ * The path of a venue's booking page (#577): `/book/<organisation>/<venue>`, the same two names as
+ * its menu's. Parts that are not slugs throw.
+ */
+export function guestBookingPath(address: GuestAddressParts): string {
+  if (!isOrganizationSlug(address.organization) || !isVenueSlug(address.venue)) {
+    throw new TypeError('a guest address is made of an organisation slug and a venue slug')
+  }
+  return `/book/${address.organization}/${address.venue}`
+}
+
 /** The parts of a venue its public address of before D84 is made of. */
 export interface MenuAddressParts {
   readonly slug: string

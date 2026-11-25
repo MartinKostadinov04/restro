@@ -90,9 +90,11 @@ function view(plan: Plan, canChange = true): ReservationsView {
       phoneRequired: true,
       editPastNights: false,
       privateNotesOn: true,
+      bookingPage: false,
       closedDates: [],
       spots: [],
     },
+    bookingPath: null,
     plan,
   }
 }

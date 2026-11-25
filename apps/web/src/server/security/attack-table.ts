@@ -608,6 +608,12 @@ export const ATTACKS: readonly Attack[] = [
     call: (v) =>
       reservations.removeClosedDateAction({ venueId: v.venues[0].id, date: '2030-12-24' }),
   },
+  // The online booking switch (#577): B may not open A's booking page.
+  {
+    action: 'saveOnlineBookingAction',
+    call: (v) =>
+      reservations.saveOnlineBookingAction({ venueId: v.venues[0].id, bookingPage: true }),
+  },
   {
     action: 'startPlanAction',
     call: (v) =>

@@ -1,5 +1,6 @@
-// Turnstile's server check (D119, D121; design §5; tickets #76, #110): the web's `HumanCheck` for an
-// on-the-bill Send and for a Pay (D127 §Limits); each widget names its own action. Docs: https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
+// Turnstile's server check (D119, D121; design §5; tickets #76, #110, #577): the web's `HumanCheck`
+// for an on-the-bill Send, a Pay (D127 §Limits) and a booking request; each widget names its own
+// action. Docs: https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
 //
 //   POST https://challenges.cloudflare.com/turnstile/v0/siteverify
 //        secret, response (the token, at most 2048 characters), idempotency_key
@@ -11,7 +12,11 @@
 // its own `internal-error`) is it `unavailable`, which core lets through and counts.
 
 import type { HumanCheck, HumanCheckVerdict } from '@restro/core/service'
-import { TURNSTILE_PAY_ACTION, TURNSTILE_SEND_ACTION } from '@restro/shell'
+import {
+  TURNSTILE_BOOKING_ACTION,
+  TURNSTILE_PAY_ACTION,
+  TURNSTILE_SEND_ACTION,
+} from '@restro/shell'
 import { z } from 'zod'
 
 import { isTurnstileTestSecret } from './env'
@@ -56,7 +61,12 @@ export function turnstileCheck(
     // A token of a widget run for another action is not this Send's or Pay's. Cloudflare's test
     // secrets answer the action `test` or none at all (the `1x…AA` secret for the dummy token, seen
     // 2026-10-26), which only they may.
-    const action = use === 'pay' ? TURNSTILE_PAY_ACTION : TURNSTILE_SEND_ACTION
+    const action =
+      use === 'pay'
+        ? TURNSTILE_PAY_ACTION
+        : use === 'booking'
+          ? TURNSTILE_BOOKING_ACTION
+          : TURNSTILE_SEND_ACTION
     const expected = isTurnstileTestSecret(secret) ? [undefined, 'test', action] : [action]
     return expected.includes(answer.action) ? 'passed' : 'failed'
   }

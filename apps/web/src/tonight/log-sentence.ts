@@ -118,6 +118,8 @@ const SETTINGS_SENTENCES: Readonly<Record<string, string>> = {
   private_list: 'lg_rv_set_private',
   closed_date_added: 'lg_rv_set_closed_added',
   closed_date_removed: 'lg_rv_set_closed_removed',
+  booking_page_on: 'lg_rv_set_booking_on',
+  booking_page_off: 'lg_rv_set_booking_off',
 }
 
 /** The word for each pay rule a reservation can carry (#334); no rule reads as the club's own. */
