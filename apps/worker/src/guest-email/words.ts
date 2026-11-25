@@ -1,5 +1,5 @@
 // What a guest email about his reservation says (#576; D136, D101), in his one language: the
-// venue's name, what happened, the night, the hour and the party. Plain and short: no image, no
+// venue's name, what happened, the date, the hour and the party. Plain and short: no image, no
 // link that tracks, nothing but these words; and never the word "receipt" (that email is the
 // POS's, `../email/sender.ts`). Every kind of news is one entry of `NEWS`, in both languages
 // (copy-rules.md). A new kind is its words here, its Log kind in core (`GUEST_EMAIL_LOG_KINDS`)
@@ -50,10 +50,10 @@ const NEWS: Readonly<
 }
 
 /** The labels of the reservation's lines. */
-const LABELS: Readonly<Record<GuestEmailLanguage, { night: string; hour: string; party: string }>> =
+const LABELS: Readonly<Record<GuestEmailLanguage, { date: string; hour: string; party: string }>> =
   {
-    bg: { night: 'Вечер', hour: 'Час', party: 'Гости' },
-    en: { night: 'Night', hour: 'Time', party: 'Guests' },
+    bg: { date: 'Дата', hour: 'Час', party: 'Гости' },
+    en: { date: 'Date', hour: 'Time', party: 'Guests' },
   }
 
 const WEEKDAYS: Readonly<Record<GuestEmailLanguage, readonly string[]>> = {
@@ -94,9 +94,9 @@ const MONTHS: Readonly<Record<GuestEmailLanguage, readonly string[]>> = {
 }
 
 /**
- * The night as a guest reads it: "събота, 28 ноември" / "Saturday 28 November". It is the service
- * day's own date (D45), so a party at 01:00 is on the night that began the evening before, as the
- * club counts it.
+ * The date as a guest reads it: "събота, 28 ноември" / "Saturday 28 November". It is the service
+ * day's own date (D45), so a party at 01:00 shows the evening the night began, as the club counts
+ * it (#592).
  */
 export function nightWords(serviceDate: string, language: GuestEmailLanguage): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(serviceDate)
@@ -131,7 +131,7 @@ export function guestEmailWords(
   const lines = [
     news.headline(venue),
     '',
-    `${labels.night}: ${nightWords(facts.serviceDate, language)}`,
+    `${labels.date}: ${nightWords(facts.serviceDate, language)}`,
     `${labels.hour}: ${hourWords(facts.startsAt, facts.timeZone)}`,
     ...(facts.partySize === null ? [] : [`${labels.party}: ${facts.partySize}`]),
   ]

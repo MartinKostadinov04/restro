@@ -16,7 +16,9 @@
 // 7. the handler, inside a savepoint, so a refusal rolls its writes back, except the ones it set
 //    aside for its refusal (`keepOnRefusal`: a guard trip's pause and Log entry, #78);
 // 8. the version of every table the handler touched rises once, and an order edit's answer goes
-//    into the ring.
+//    into the ring;
+// 9. for an accepted answer, the jobs it owes, which the caller queues in this same transaction
+//    (`queueJobs`, #592).
 // The answer is always accepted or refused with a code (D72). Nothing here, and nothing a handler
 // gets, can call a POS or a payment provider: the transaction holds row locks for milliseconds.
 
@@ -31,8 +33,8 @@ import {
   tableOrders,
   venueTables,
 } from '@restro/db'
-import { withTenantWrite } from '@restro/db/write'
-import { and, eq, isNull, ne, sql } from 'drizzle-orm'
+import { type WriteTx, withTenantWrite } from '@restro/db/write'
+import { and, eq, isNull, ne, type SQLChunk, sql } from 'drizzle-orm'
 
 import { lockLiveVenue } from '../apply/venue-lock'
 import { recordEvents as recordGuestEvents } from '../events'
@@ -106,6 +108,39 @@ export interface ServiceOptions {
   readonly billIdKey?: string
   /** The table's menu for a Send (`loadSendMenu`), read before the transaction (#77). */
   readonly sendMenu?: SendMenu
+  /**
+   * Queues the jobs an accepted answer owes in the command's own transaction (the outbox pattern,
+   * #592): called once the answer is accepted, before the commit, with `queue` running SQL on that
+   * same transaction, so the queue entry is saved with the write or neither is. `queue` is for a
+   * job queue's insert only (pg-boss's `send` with `{ db: queue }`), never a service row (rule 1).
+   * A throw rolls the command back and reaches the caller. Not called for a refusal or a repeat.
+   */
+  readonly queueJobs?: (result: ServiceResult, queue: QueueExecutor) => Promise<void>
+}
+
+/** Runs one parameterised statement (`$1`, `$2`…) on the command's transaction: pg-boss's `db`. */
+export interface QueueExecutor {
+  executeSql(text: string, values?: unknown[]): Promise<{ rows: unknown[] }>
+}
+
+/**
+ * The transaction as a `QueueExecutor`. Each `$n` becomes a bound parameter, the way pg-boss's own
+ * adapters read its statements; no value is ever written into the SQL text.
+ */
+function queueExecutorOf(tx: WriteTx): QueueExecutor {
+  return {
+    async executeSql(text, values = []) {
+      const chunks: SQLChunk[] = []
+      let last = 0
+      for (const match of text.matchAll(/\$(\d+)/g)) {
+        chunks.push(sql.raw(text.slice(last, match.index)), sql.param(values[Number(match[1]) - 1]))
+        last = match.index + match[0].length
+      }
+      chunks.push(sql.raw(text.slice(last)))
+      const { rows } = await tx.execute(sql.join(chunks))
+      return { rows }
+    },
+  }
 }
 
 /** What the command carries that the engine reads: its type, table and action id, when it has them. */
@@ -429,6 +464,10 @@ export async function executeCommand(
             })
             .where(eq(tableOrders.id, order.id))
         }
+      }
+      // The jobs the answer owes ride in this transaction (#592): committed with it or not at all.
+      if (result.status === 'accepted' && options.queueJobs !== undefined) {
+        await options.queueJobs(result, queueExecutorOf(tx))
       }
       return result
     })

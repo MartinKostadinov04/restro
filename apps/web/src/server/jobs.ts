@@ -13,7 +13,7 @@
 // the schedules. One small pool (max 1) of its own, created on first use and kept across Next.js
 // hot reloads.
 import { type JobPayload, type ProducedJobName, prepareJob } from '@restro/core'
-import { PgBoss } from 'pg-boss'
+import { type Db, PgBoss } from 'pg-boss'
 
 import { serverEnv } from './env'
 import { logError } from './log'
@@ -26,7 +26,13 @@ export interface JobSender {
   send(
     name: string,
     data: object,
-    options: { singletonKey: string; startAfter?: number; group?: { readonly id: string } },
+    options: {
+      singletonKey: string
+      startAfter?: number
+      group?: { readonly id: string }
+      /** The caller's transaction, when the job rides in it (`enqueueJobIn`). */
+      db?: Db
+    },
   ): Promise<string | null>
 }
 
@@ -75,6 +81,29 @@ export async function enqueueJob<N extends ProducedJobName>(
   data: JobPayload<N>,
   sender?: JobSender,
 ): Promise<string | null> {
+  return sendJob(name, data, sender, undefined)
+}
+
+/**
+ * `enqueueJob` inside the caller's transaction (the outbox pattern, #592): `db` runs the insert on
+ * that transaction (a service command's `queueJobs`, core/service), so the job is saved with the
+ * write or neither is. A failure throws, and the caller's transaction rolls back with it.
+ */
+export async function enqueueJobIn<N extends ProducedJobName>(
+  db: Db,
+  name: N,
+  data: JobPayload<N>,
+  sender?: JobSender,
+): Promise<string | null> {
+  return sendJob(name, data, sender, db)
+}
+
+async function sendJob<N extends ProducedJobName>(
+  name: N,
+  data: JobPayload<N>,
+  sender: JobSender | undefined,
+  db: Db | undefined,
+): Promise<string | null> {
   const prepared = prepareJob(name, data)
   const target: JobSender = sender ?? (await startedBoss())
   return target.send(name, prepared.data, {
@@ -83,6 +112,7 @@ export async function enqueueJob<N extends ProducedJobName>(
     ...(prepared.startAfter === undefined ? {} : { startAfter: prepared.startAfter }),
     // The route's queues run one run at a time per key, several keys at once (core/jobs.ts).
     ...(prepared.group === undefined ? {} : { group: prepared.group }),
+    ...(db === undefined ? {} : { db }),
   })
 }
 
