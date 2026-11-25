@@ -451,6 +451,44 @@ export interface TableBillView {
   readonly paidLines: readonly PaidLineView[]
 }
 
+/** One member table of a linked group's bill, under its own heading. Nothing names a person. */
+export interface GroupTableView {
+  /** The table's name. */
+  readonly label: string
+  /** The table this phone is at. */
+  readonly own: boolean
+  /**
+   * False when the table's latest reading failed or none was made yet (rule 6): its last lines
+   * are drawn marked as updating.
+   */
+  readonly complete: boolean
+  readonly totalMinor: number
+  readonly paidMinor: number
+  /** "Left to pay" at this table. */
+  readonly owedMinor: number
+  readonly parts: readonly TableBillPartView[]
+  readonly paidLines: readonly PaidLineView[]
+}
+
+/** A linked group's bill: grouped by table, one total (D139: nothing attributed to a person). */
+export interface GroupBillView {
+  /** False while a member table's bill is not known well: the total is drawn as not final. */
+  readonly complete: boolean
+  readonly totalMinor: number
+  readonly paidMinor: number
+  /** "Left to pay" for the whole party. */
+  readonly owedMinor: number
+  /**
+   * One payment may cover lines of several member tables (#542): "The whole bill" takes every
+   * member's free lines, each table's heading has a "Whole table" tick, and the lines of any
+   * tables can be paid together. False or absent: each table pays its own (the POS takes one
+   * table's payment at a time), and the pay screen says so in one line.
+   */
+  readonly paysAcross?: boolean
+  /** Every member table, this one included, in the order of their names. */
+  readonly tables: readonly GroupTableView[]
+}
+
 /**
  * The venue's legal details as the pay screen shows them (#198, D127 log 1.6): who the payment is
  * processed for, and what the two links open. Public fields only.
@@ -685,6 +723,15 @@ export interface ServiceState {
    */
   readonly tableBill?: TableBillView | null
   /**
+   * The linked group's bill where the table is in one (#319, D160 §1): every member table's lines
+   * under its own heading and one total for the party, drawn in the bill in place of this table's
+   * lines alone. It shows even while this table has no reading of its own (`tableBill` null);
+   * `tableBill` stays this table's own. Where `paysAcross` is set, Pay reads every member table
+   * (`payableBill`, #542); elsewhere each table pays its own. Absent or null where the table is in
+   * no group or the phone has no location pass.
+   */
+  readonly tableGroup?: GroupBillView | null
+  /**
    * Paying on the bill here (#114): `state` is on, paused or off (no ids), `minCardMinor` the
    * smallest card payment. `electronicReceipt` (#186) is true where the pay screen offers the
    * optional receipt email: the table's POS can issue the venue's electronic receipt.
@@ -846,6 +893,13 @@ export interface ServiceBinding {
    * while the order has lines, else the menu). Absent where the host does not poll.
    */
   readonly setScreen?: (screen: GuestScreen) => void
+  /**
+   * "Try again" on a table whose bill could not be read (#542, log 1.8): the host asks for the
+   * state now, which on the bill queues a fresh reading of every table older than core's
+   * `FRESH_READING_MS`. Nothing is shown as read until a reading says so (D72). Absent where the
+   * host does not poll: the face then draws no "Try again".
+   */
+  readonly refresh?: () => void
 }
 
 /** A state with nothing in it: no bill, no request, no payment. */

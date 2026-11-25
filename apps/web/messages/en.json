@@ -284,8 +284,7 @@
         "lapsesNote": "It is hidden from the guest menu. The mark ends by itself when the service day ends.",
         "offSaleTillNote": "{source} has taken this off sale. Put it back on sale in {source}: this page can only add to what {source} says.",
         "offSaleOtherNote": "Another setting has taken this off sale. This page cannot put it back on sale.",
-        "managersOnly": "Only an owner or admin can mark an item sold out.",
-        "tillStockNote": "Stock comes from {source}: mark it sold out there."
+        "managersOnly": "Only an owner or admin can mark an item sold out."
       },
       "conflict": "{source} and this venue disagree. Choose the right value.",
       "conflictReadOnly": "{source} and this venue disagree. An owner or admin chooses the right value.",
@@ -2602,7 +2601,17 @@
     "sh_pr_f_table": "Pay first · the table's own rule",
     "sh_pr_f_party": "Pay first · this party's rule",
     "sh_pr_f_club": "Pay first · the club's rule",
-    "sh_pr_b_party": "Everything on the bill · this party's rule"
+    "sh_pr_b_party": "Everything on the bill · this party's rule",
+    "sold_mark": "Sold out tonight",
+    "sold_back": "Back on sale",
+    "sold_mark_b": "{name} goes off the menu for the whole club until the night ends.",
+    "sold_back_b": "{name} can be ordered again by everyone in the club.",
+    "sold_is": "Sold out tonight",
+    "sold_paid": "A line already paid for is still refunded by hand.",
+    "sold_mark_t": "Sold out tonight: {name}",
+    "sold_back_t": "Back on sale: {name}",
+    "lg_sold_out": "Marked sold out tonight",
+    "lg_back_on_sale": "Put back on sale"
   },
   "reservations": {
     "title": "Reservations",
@@ -2852,9 +2861,9 @@
     "d_same_keep": "Same party — keep the order",
     "d_same_keep_b": "Their order and what their phones remember are kept.",
     "d_same_new": "Different party — start over",
-    "d_same_new_b": "Their order is emptied. A round the waiter already rang stays on the bill.",
+    "d_same_new_b": "Their order is emptied. An order the waiter already rang stays on the bill.",
     "d_bill_t": "{spot} still has an open bill. The new party's order would land on it.",
-    "d_bill_b": "Nothing here closes the bill. Seat them and their first round goes on it.",
+    "d_bill_b": "Nothing here closes the bill. Seat them and their first order goes on it.",
     "d_bill_do": "Seat them anyway",
     "d_bill_no": "Check the bill first",
     "d_free_t": "{spot} still has an open bill.",

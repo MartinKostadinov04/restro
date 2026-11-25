@@ -28,8 +28,13 @@ vi.mock('next-intl/server', async () => (await import('./attack-session')).intlM
 vi.mock('@/server/jobs', async () => (await import('./attack-session')).jobsModule)
 vi.mock('@/server/log', async () => (await import('./attack-session')).logModule)
 
-/** Every action of the composer, its tags, the item sheet, the design, the menus and the publishing. */
+/**
+ * Every action of the composer, its tags, the item sheet, the design, the menus and the
+ * publishing — and `markSoldOutAction`, which lives on the Tonight screen but writes the menu
+ * too (D147, #437): a shared tablet gets no menu change without somebody’s PIN.
+ */
 const MENU_ACTIONS: ReadonlySet<string> = new Set([
+  'markSoldOutAction',
   'placeItemAction',
   'moveSectionAction',
   'createSectionAction',

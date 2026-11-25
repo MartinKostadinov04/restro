@@ -506,23 +506,12 @@ async function resolveForVenue(
   const day = serviceDate(now, venue.timezone, venue.serviceDayEndsAt)
   const nowIso = isoInTimeZone(now, venue.timezone)
 
-  // "New" badges: recorded first-published dates; an item never published counts from now
-  // (this publish is its first), so it is new in its very first snapshot.
-  const recorded = await tx
-    .select({ nodeId: itemFirstPublished.nodeId, at: itemFirstPublished.firstPublishedAt })
-    .from(itemFirstPublished)
-    .where(and(eq(itemFirstPublished.menuId, menuId), eq(itemFirstPublished.venueId, venueId)))
-  const firstPublishedAt: Record<NodeId, string> = {}
-  for (const node of doc.nodes) if (node.type === 'item') firstPublishedAt[node.id] = nowIso
-  for (const row of recorded) firstPublishedAt[row.nodeId as NodeId] = row.at.toISOString()
-
   const resolveWith = (edition: readonly string[]) =>
     resolve(TEMPLATE, doc, {
       venueScope: `venue:${venueId}`,
       edition,
       locales,
       now: nowIso,
-      firstPublishedAt,
     })
   return {
     doc,

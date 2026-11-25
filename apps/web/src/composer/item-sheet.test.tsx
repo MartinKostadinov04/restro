@@ -130,7 +130,7 @@ describe('ItemSheet', () => {
   it('read-only for a member (RR-70): every value shows, no edit, upload or save is offered', async () => {
     A.loadItemSheetAction.mockResolvedValue(
       sheetData({
-        sale: { soldOutTonight: false, offSale: null, canMark: false, stockFromTill: false },
+        sale: { soldOutTonight: false, offSale: null, canMark: false },
         image: {
           assetId: 'as_0123456789ABCDEFGHIJKL',
           url: 'https://assets.test/photo.png',

@@ -158,10 +158,12 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D151](decisions/D151.md) | Carrying a printed receipt to the guest is not Restro's work | firm |
 | [D152](decisions/D152.md) | Restro never puts a badge on a menu item by itself | firm |
 | [D153](decisions/D153.md) | A bar tablet is paired with a one-time code, not with an account | firm; refines D141 |
+| [D154](decisions/D154.md) | A bill move between tables is the staff’s, at the POS, and a close carries our reference and nothing about the guest | §1 withdrawn by Martin 11-24; §2 firm on the lead’s side; refines D122 and D127; §1’s “settling on its own” refined by D160 |
 | [D155](decisions/D155.md) | Ordering, reservations and song requests are modules, switched on per venue | proposed, awaiting Martin |
 | [D156](decisions/D156.md) | Each module has its own Settings | proposed, awaiting Martin |
 | [D157](decisions/D157.md) | A person opens only what their role at that venue works | proposed, awaiting Martin |
 | [D158](decisions/D158.md) | Restro opens inside the venue | proposed, awaiting Martin |
+| [D160](decisions/D160.md) | A party’s tables can be paid in one payment, and guests can share a bill by amount, settling together | firm; refines D139 (13.13), D154 §1 and D127; part payment waits on Mistral |
 | [D161](decisions/D161.md) | The admin is organised around the open venue | proposed, awaiting Martin |
 
 ## Not repeated here

@@ -183,7 +183,7 @@ A drawing of one floor of a venue with its spots; a venue has one or more.
 _Avoid_: map, layout, venue map
 
 **Linked group**:
-Tables marked as one party for a stretch of a night: booked together, and reviewed and settled together. Each table keeps its own bill in the POS and its own tickets; Restro holds the pointers and shows the total grouped by table yet cumulative for the group.
+The tables one party, booked or walk-in, holds for a stretch of a night, reviewed and paid together. Each table keeps its own bill in the POS and its own tickets; Restro shows the total grouped by table yet cumulative for the group, and one payment can cover lines of several of its tables.
 _Avoid_: merged table, table combination
 
 **Open for phones**:
@@ -340,7 +340,7 @@ A payment that leaves its POS bill open with something still owed.
 _Avoid_: partial (on its own), instalment
 
 **Group payment**:
-Several guests' cards settling one bill, or one share of it, together.
+Several guests' cards settling one bill, or one share of it, together: each card is held for the amount its guest chose, and the bill closes once, with one receipt, when the amounts cover it. On the guest's screen the button reads "Split the amount".
 _Avoid_: split payment (a split moves items), split tender
 
 **Location check**:

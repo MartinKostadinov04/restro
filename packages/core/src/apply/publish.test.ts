@@ -229,7 +229,8 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
     })
     expect(body?.sections[section]?.items).toEqual([...handMade, barsyItem])
     expect(body?.items[barsyItem]).toMatchObject({ orderable: true, price: eur(1250) })
-    expect(body?.items[handMade[0]]?.badges).toEqual(['new'])
+    // Restro adds no badge of its own, not even to an item published for the first time (D152).
+    expect(body?.items[handMade[0]]?.badges).toEqual([])
     const json = JSON.stringify(body)
     expect(json).not.toContain(EXTERNAL_ID)
     expect(json).not.toContain(INTERNAL_NOTE)

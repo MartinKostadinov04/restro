@@ -267,6 +267,26 @@ describe.skipIf(!hasDatabase)('the closing hour (as the restro_app role)', () =>
       expect(await sittingState(paying as string)).toMatchObject({ end_reason: 'closing_hour' })
     })
 
+    it("keeps a table whose line a linked group's payment made at another table covers (#542)", async () => {
+      const [payer, covered, other] = await openTables(3)
+      const payment = await seedPayment(world.tables[0] as string, payer as string, 'held')
+      // The payment made at table 0 covers a line on table 1's bill.
+      await world.owner.query(
+        `insert into restro.payment_lines
+           (tenant_id, venue_id, payment_id, table_id, position, pos_line_ref, quantity,
+            pos_amount_minor, display_name, source, actor, job_id)
+         values ($1, $2, $3, $4, 1, $5, 1, 500, 'Beer', 'guest', 'guest', 'test-seed')`,
+        [world.tenantId, world.venueId, payment, world.tables[1], `line-${randomUUID()}`],
+      )
+      expect(await closeTables('2026-10-24T02:30:00Z')).toMatchObject({ details: { closed: 1 } })
+      expect((await sittingState(payer as string))?.ended_at).toBeNull()
+      expect((await sittingState(covered as string))?.ended_at).toBeNull()
+      expect((await sittingState(other as string))?.end_reason).toBe('closing_hour')
+
+      await settle(payment)
+      expect(await closeTables('2026-10-24T02:31:00Z')).toMatchObject({ details: { closed: 2 } })
+    })
+
     it('closes a table whose only payment already settled', async () => {
       const [paid] = await openTables(1)
       await settle(await seedPayment(world.tables[0] as string, paid as string, 'held'))

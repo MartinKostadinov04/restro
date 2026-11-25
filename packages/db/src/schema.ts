@@ -3076,6 +3076,12 @@ export const paymentLines = restro.table(
       .references(() => tenants.id, { onDelete: 'restrict' }),
     venueId: text('venue_id').notNull(),
     paymentId: text('payment_id').notNull(),
+    /**
+     * The table whose bill the line is on (D160 §2): the payment's own table, or another table of
+     * its linked group when one payment covers several. The worker isolates each table's lines on
+     * its own, and an undo puts a line back here.
+     */
+    tableId: text('table_id').notNull(),
     /** The line's place in the payment, from 1. */
     position: integer('position').notNull(),
     /** *Backend*: the POS line reference (rule 3); null for a pay-first line until entered. */
@@ -3114,6 +3120,7 @@ export const paymentLines = restro.table(
   (t) => [
     primaryKey({ name: 'payment_lines_pk', columns: [t.tenantId, t.paymentId, t.position] }),
     venueFk('payment_lines', t),
+    tableFk('payment_lines', t),
     foreignKey({
       name: 'payment_lines_payment_fk',
       columns: [t.tenantId, t.paymentId],
@@ -3123,6 +3130,8 @@ export const paymentLines = restro.table(
     index('payment_lines_pos_line_ref_idx')
       .on(t.venueId, t.posLineRef)
       .where(sql`${t.posLineRef} is not null`),
+    // "Being paid" and the open payments per table, for a payment that covers several tables.
+    index('payment_lines_open_table_idx').on(t.tenantId, t.tableId).where(sql`${t.open}`),
     uniqueIndex('payment_lines_open_line_unique')
       .on(t.tenantId, t.venueId, t.posLineRef)
       .where(sql`${t.open} and ${t.posLineRef} is not null`),

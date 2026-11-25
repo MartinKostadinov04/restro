@@ -184,6 +184,7 @@ export function useTableServices(
             dispatch: services.dispatch,
             location: services.location,
             setScreen: services.setScreen,
+            refresh: services.refresh,
             payForm,
             payControls: { dismiss: services.dismissPayment },
           },

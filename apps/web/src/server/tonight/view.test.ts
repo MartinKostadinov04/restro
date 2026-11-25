@@ -552,6 +552,7 @@ describe('what the actor may do', () => {
       answer: true,
       followUp: false,
       endNight: false,
+      soldOut: false,
     })
   })
 })

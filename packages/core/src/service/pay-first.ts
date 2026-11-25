@@ -45,6 +45,7 @@ import { writeOrder } from './order'
 import {
   closeAttempted,
   enterAttempted,
+  openPaymentsOn,
   quantityKey,
   signedSumMinor,
   TABLE_OPEN_PAYMENTS,
@@ -310,11 +311,9 @@ export async function preparePayFirst(
   if (addMinor(priced.totalMinor, tipMinor) < Math.max(floor, 1)) {
     return { ok: false, code: 'below_minimum' }
   }
-  const open = await stx.tx
-    .select({ id: payments.id })
-    .from(payments)
-    .where(and(eq(payments.tableId, tableId), isNull(payments.settledAt)))
-  if (open.length >= TABLE_OPEN_PAYMENTS) return { ok: false, code: 'rate_limited' }
+  // Payments made at another table of the linked group that cover this one count too (#542).
+  const open = await openPaymentsOn(stx, [tableId])
+  if ((open.get(tableId) ?? 0) >= TABLE_OPEN_PAYMENTS) return { ok: false, code: 'rate_limited' }
 
   return {
     ok: true,
@@ -380,6 +379,7 @@ export async function insertPayFirst(
         tenantId: stx.tenantId,
         venueId: stx.venueId,
         paymentId: prepared.paymentId,
+        tableId: input.tableId,
         position: index + 1,
         posLineRef: null,
         quantity: String(line.qty),

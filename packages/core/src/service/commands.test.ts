@@ -89,6 +89,10 @@ describe('the service commands', () => {
       'waiting.reorder',
     ])
     expect(quick).not.toContain('push.revoke')
+    // D147, #437: "sold out tonight" is a tap of the same shape as the ones above, but it writes
+    // the menu and takes an item off every guest’s phone. RR-83 keeps the tablet out of the menu
+    // without a PIN, and the PIN is what makes the Log name the bartender.
+    expect(quick).not.toContain('sold_out.mark')
     for (const type of quick) {
       const definition = SERVICE_COMMANDS[type as keyof typeof SERVICE_COMMANDS]
       expect(definition.origins, type).toEqual(['staff'])

@@ -1,5 +1,7 @@
-// Stock from the POS (D122 §4 Stock, D124 §6; ticket #80): what a stock pass writes, decided
-// here without a database. Stock lives in the POS: on a POS venue nobody marks sold out in Restro.
+// Stock from the POS (D122 §4 Stock; ticket #80): what a stock pass writes, decided here
+// without a database. This is the POS's own word on stock, in the `till` layer. Staff may mark
+// an item sold out for the night on any venue, a POS venue included (D147, #437), in the
+// service-edition layer; the two sit apart and neither undoes the other.
 // A pass that finds an item run out (the check of a Send's lines where the connector declares
 // "item availability", or the POS's refusal that names the item) writes a sold-out mark in the
 // POS layer (`for_sale = false`, layer `till`, the venue's scope), through apply(); a later

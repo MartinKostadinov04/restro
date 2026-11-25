@@ -152,9 +152,9 @@ describe.skipIf(!hasDatabase)('paid lines are what the POS closed (as the restro
     for (const [index, line] of lines.entries()) {
       await world.owner.query(
         `insert into restro.payment_lines
-           (tenant_id, venue_id, payment_id, position, pos_line_ref, quantity, pos_amount_minor,
-            display_name, name, source, actor, job_id)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'restro', 'system', 'test-seed')`,
+           (tenant_id, venue_id, payment_id, table_id, position, pos_line_ref, quantity,
+            pos_amount_minor, display_name, name, source, actor, job_id)
+         values ($1, $2, $3, (select p.table_id from restro.payments p where p.id = $3), $4, $5, $6, $7, $8, $9::jsonb, 'restro', 'system', 'test-seed')`,
         [
           world.tenantId,
           world.venueId,

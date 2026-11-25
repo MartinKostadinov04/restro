@@ -111,6 +111,7 @@ describe("an earlier night's question on today's end of night", () => {
         pause: false,
         lift: false,
         answer: true,
+        soldOut: true,
         followUp: true,
         endNight: false,
       },
