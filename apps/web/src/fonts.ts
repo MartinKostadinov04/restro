@@ -81,6 +81,15 @@ const FALLBACKS: Record<FontKind, string> = {
 const variableOf = (id: string) => `--font-${id}`
 
 /**
+ * A font's stack without a CSS variable, for a frame that cannot read the page's (a provider's card
+ * form, D130): the installed family of that name, then a system font of the same kind.
+ */
+export function plainFontStack(family: string): string {
+  const font = THEME_FONTS.find((entry) => entry.family === family)
+  return `"${family}", ${FALLBACKS[font?.kind ?? 'sans']}`
+}
+
+/**
  * Family name (what the snapshot's `theme.font` carries) -> the font stack a face puts in its
  * `font-family`: our own file first, then the installed family of that name, then a system font of
  * the same kind.

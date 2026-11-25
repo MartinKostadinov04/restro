@@ -312,6 +312,13 @@ describe('the sale card of the item sheet', () => {
     expect(screen.getByTestId('sale-note').textContent).toMatch(/owner or admin/)
   })
 
+  it('offers the mark on a POS venue too, where no POS reports stock (D147)', () => {
+    // D124 §6 hid the button here for want of a decision; D147 is that decision. An item the POS
+    // itself has off sale is a different state (`offSale: 'till'`), which still has no button.
+    renderWithIntl(<ItemSheetSale sale={sale()} busy={false} onChange={noop} />)
+    expect(screen.getByTestId('sale-mark')).toBeTruthy()
+  })
+
   it('disables nothing it should not: a save under way blocks the button', () => {
     renderWithIntl(<ItemSheetSale sale={sale()} busy onChange={noop} />)
     expect((screen.getByTestId('sale-mark') as HTMLButtonElement).disabled).toBe(true)

@@ -1,0 +1,107 @@
+'use server'
+
+// The reads of the payment parts of Tonight that the browser asks again (#115): the night's payments
+// ("Show all") and one payment's sheet. Read-only server actions, like night-actions.ts: each checks
+// its input with Zod, finds who is asking (`requireTenant`) and that the venue is theirs, then reads
+// as that signed-in account; the service read side checks the permission again. The answer to a
+// payment is `answerPaymentAction` (actions.ts), not here.
+import { idSchema } from '@restro/core'
+import { getTranslations } from 'next-intl/server'
+import { z } from 'zod'
+
+import { logError } from '../log'
+import { requireTenant } from '../session'
+import { identifyAtSharedDevice } from '../staff/service'
+import { getVenue } from '../venues'
+import { loadNightPayments, loadPaymentDetail } from './payment-load'
+import type { PaymentDetailView, PaymentsView } from './payment-view'
+import { answer, FAILED, type ReadAnswer, scopeOf } from './read-scope'
+import type { TonightResult } from './tables'
+
+const venueId = idSchema('vn')
+const Payment = z.strictObject({ venueId, paymentId: idSchema('py') })
+const Payments = z.strictObject({
+  venueId,
+  day: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  all: z.int().min(1).max(2000),
+})
+
+/** The night's payments, every one of them (the end of the night's "Show all {n}"). */
+export async function nightPaymentsAction(
+  input: unknown,
+): Promise<ReadAnswer<{ payments: PaymentsView }>> {
+  const parsed = Payments.safeParse(input)
+  if (!parsed.success) return FAILED
+  return answer('tonight_payments_failed', async () => {
+    const scope = await scopeOf(parsed.data.venueId)
+    if (scope === null) return FAILED
+    return loadNightPayments(scope, {
+      ...(parsed.data.day === undefined ? {} : { day: parsed.data.day }),
+      all: parsed.data.all,
+    })
+  })
+}
+
+const Evidence = Payment.extend({ pin: z.string().regex(/^\d{4}$/) })
+
+/**
+ * A dispute's evidence on a shared device (RR-58): the tablet's account can't read it, a PIN of
+ * someone who may does. Any other PIN is told a manager's is needed.
+ */
+export async function paymentEvidenceAction(
+  input: unknown,
+): Promise<
+  { readonly ok: true; readonly detail: PaymentDetailView } | Extract<TonightResult, { ok: false }>
+> {
+  const parsed = Evidence.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  try {
+    const { organization, user, sessionId } = await requireTenant()
+    const venue = await getVenue(organization.id, parsed.data.venueId)
+    if (!venue) return { ok: false, error: 'venue_missing' }
+    const identity = await identifyAtSharedDevice({
+      tenantId: organization.id,
+      venueId: venue.id,
+      userId: user.id,
+      sessionId,
+      pin: parsed.data.pin,
+    })
+    if (!identity.ok) {
+      return identity.code === 'device_waiting'
+        ? { ok: false, error: identity.code, retryAfterSeconds: identity.retryAfterSeconds }
+        : { ok: false, error: identity.code }
+    }
+    const read = await loadPaymentDetail(
+      {
+        tenantId: organization.id,
+        venue,
+        actor: { kind: 'staff', staffMemberId: identity.staffMemberId, sessionId },
+        sourceNone: (await getTranslations('tonight'))('source_none'),
+      },
+      parsed.data.paymentId,
+    )
+    if (!read.ok) return { ok: false, error: read.code }
+    if (read.detail?.evidence == null) return { ok: false, error: 'permission_denied' }
+    return { ok: true, detail: read.detail }
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('tonight_payment_evidence_failed', error)
+    return { ok: false, error: 'failed' }
+  }
+}
+
+/** One payment's sheet. */
+export async function paymentDetailAction(
+  input: unknown,
+): Promise<ReadAnswer<{ detail: PaymentDetailView | null }>> {
+  const parsed = Payment.safeParse(input)
+  if (!parsed.success) return FAILED
+  return answer('tonight_payment_failed', async () => {
+    const scope = await scopeOf(parsed.data.venueId)
+    if (scope === null) return FAILED
+    return loadPaymentDetail(scope, parsed.data.paymentId)
+  })
+}

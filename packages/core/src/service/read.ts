@@ -1,0 +1,1709 @@
+// The read side of the service path (design §2.1): `readTableState` for the guest API and
+// `readTonight` for the staff screen, both read-only on `withTenant`. Neither calls a POS.
+// - `readTableState` gives the server's view of one table: its version, its open sitting, the
+//   order, the sitting's sent orders, the leases and pauses that hold it, and its bill as the
+//   latest reading shows it (#74), with the lines being paid (#110). The guest API turns it into
+//   the phone's `TableState` (#75) and runs the forbidden-values walk (`billBackendValues`,
+//   `forbiddenPaths`); nothing here is a POS id or a provider value (rule 3).
+// - `readTonight` gives Tonight's contents, filtered by what the actor holds at the venue: alerts
+//   by their permission, waiter calls to those who answer them, the Log to `log.view`.
+
+import { createHash } from 'node:crypto'
+import {
+  alerts,
+  areas,
+  authSession,
+  authUser,
+  bars,
+  billReadings,
+  type DbPool,
+  locks,
+  logEntries,
+  pauses,
+  paymentLines,
+  paymentRefunds,
+  payments,
+  type ReadTx,
+  reservationNights,
+  sentOrders,
+  sharedDevices,
+  sittings,
+  staffMembers,
+  tableOrders,
+  venues,
+  venueTables,
+  waiterCalls,
+  withTenant,
+} from '@restro/db'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm'
+
+import { resolveRoutesIn } from '../apply/menu-routes'
+import type { AreaId, BarId, TableId } from '../ids'
+import type { LegalDetails } from '../legal-details'
+import { PAID_LINES_MAX } from '../paid-lines'
+import {
+  type PayFirstLevel,
+  payFirstLineAt,
+  payFirstRuleApplies,
+  readPayFirstSettings,
+} from '../pay-first-settings'
+import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
+import type { PayingMissing } from '../payment-connection'
+import { serviceDate, serviceDayStartsAt } from '../service-day'
+import { nextOrderChangeAt, orderFromRow } from '../table-order'
+import type { CallWaiterKind } from '../theme'
+import { PAYMENT_LINES_NOT_BACK_KIND, PAYMENT_UNCONFIRMED_KIND } from './alert-rules'
+import {
+  type BillView,
+  billBackendValues,
+  billView,
+  type LineRefundState,
+  parseStoredBills,
+} from './bill'
+import type { ServiceActor } from './context'
+import { resolveGrants } from './grants'
+import { groupPaysAcross } from './group-pay'
+import type { LeaseScope } from './leases'
+import { activePausesOfTable, pausesOfVenue } from './pause-scope'
+import {
+  menusWithPayFirstItem,
+  type PayFirstState,
+  type PayingState,
+  payFirstItems,
+  payFirstState,
+  payingOffer,
+} from './pay-first'
+import { payingPausedAt } from './paying-pause'
+import { loadPayingConnection } from './payment-connection'
+import {
+  type DisputeToDo,
+  disputesToDo,
+  type RefundFailedAfterStorno,
+  type RefundToDo,
+  refundShownMinor,
+  refundsFailedAfterStorno,
+  refundsToDo,
+} from './payment-todos'
+import type { Permission } from './permissions'
+import { type ReceiptToBring, receiptsToBring } from './receipt-rows'
+import {
+  byCodeUnits,
+  groupHasUnreadTable,
+  type LinkedGroup,
+  type LinkedTableReading,
+  linkedGroupOfTable,
+  linkedGroupReadings,
+  type MemberReading,
+} from './reservations/linked-group'
+import { payRuleAtTable, payRulesAtTables } from './reservations/pay-rule'
+import { compareSpotNames } from './reservations/plan-state'
+import { type SeatedParty, seatedPartiesAtTables } from './reservations/seated-parties'
+import { sentOrderLinesOf } from './send'
+import { withoutTipMinor } from './staff-amount'
+import { readTableCapabilities } from './table-capabilities'
+import { orderedKinds } from './waiter-call'
+
+/** The sent order states that still hold the table's attention (D116). */
+const OPEN_SENT_ORDER_STATES = [
+  'waiting',
+  'sending',
+  'checking',
+  'awaiting_approval',
+  'unconfirmed',
+]
+
+/** The table's version: the highest of its orders' versions, 0 before its first sitting. */
+async function tableVersion(tx: ReadTx, tableId: string): Promise<number> {
+  const [row] = await tx
+    .select({ version: sql<string>`coalesce(max(${tableOrders.version}), 0)::text` })
+    .from(tableOrders)
+    .where(eq(tableOrders.tableId, tableId))
+  return Number(row?.version ?? 0)
+}
+
+/** A lease as a phone or Tonight may see it: what holds it and for how long. */
+export interface LeaseView {
+  readonly scope: LeaseScope
+  readonly holder: string
+  readonly secondsLeft: number
+}
+
+/** An active pause that stops the table's ordering. */
+export interface PauseView {
+  readonly id: string
+  readonly scope: string
+  readonly cause: string
+  readonly restroStarted: boolean
+  readonly startedAt: Date
+}
+
+/** The server's view of one table. */
+export interface TableStateRead {
+  readonly unchanged: false
+  readonly version: number
+  /** The database's clock at the read: what Undo windows and idle times are measured against. */
+  readonly now: Date
+  /** When time alone next changes the order (an Undo closing, the idle time); null for never. */
+  readonly nextChangeAt: Date | null
+  readonly table: {
+    readonly id: string
+    readonly venueId: string
+    /** Our name over it, else its number. */
+    readonly label: string
+    readonly barId: string | null
+    readonly isPaymentTable: boolean
+    readonly codeGeneration: number
+  }
+  /** The open sitting, or null when the table is not open for phones. */
+  readonly sitting: { readonly id: string; readonly openedAt: Date } | null
+  /**
+   * True when the table is closed and its last sitting ended because staff moved the party to
+   * another table, within the last few hours (P22): the phone says where the bill stayed. Absent
+   * is false.
+   */
+  readonly movedAway?: boolean
+  /** The open sitting's order, or null before its first write. Lines are the guest API's shape. */
+  readonly order: {
+    readonly lines: readonly unknown[]
+    readonly earlier: readonly unknown[] | null
+    readonly earlierAt: Date | null
+    readonly idleExpiresAt: Date | null
+  } | null
+  /** The open sitting's sent orders, newest first, without their lines' backend references. */
+  readonly sentOrders: readonly {
+    readonly id: string
+    readonly kind: string
+    readonly state: string
+    readonly reason: string | null
+    readonly reference: string
+    readonly createdAt: Date
+    readonly settledAt: Date | null
+    /**
+     * A pay-first round on the POS whose payment a manager ended "No receipt" (#113, #114): the
+     * round is ordered and the card was not charged, so the phone says "Ordered, not paid".
+     */
+    readonly unpaid: boolean
+    /** What was sent: our item and option ids and the quantity, never the stored names. */
+    readonly lines: readonly {
+      readonly itemId: string
+      readonly optionIds: readonly string[]
+      readonly qty: number
+      /** The POS said this item ran out, so the order ended Not sent (#80). */
+      readonly outOfStock?: true
+    }[]
+  }[]
+  /**
+   * The open sitting's latest waiter call (#81), open or ended; null when it has none. `endedAt` is
+   * when it was handled or lapsed. Never who handled it (rule 3).
+   */
+  readonly waiterCall: {
+    readonly id: string
+    readonly state: 'open' | 'done' | 'lapsed'
+    readonly kinds: readonly CallWaiterKind[]
+    readonly calledAt: Date
+    readonly endedAt: Date | null
+  } | null
+  /** Leases held on the table or its sitting, by the database's clock. */
+  readonly leases: readonly LeaseView[]
+  /** Active pauses of the table, its bar or the venue. */
+  readonly pauses: readonly PauseView[]
+  /**
+   * Notes and options reach the POS's ticket, as the table's POS declared (#78): else the phone
+   * draws no note field and items that must have options are ordered from the waiter.
+   */
+  readonly notesAndOptions: boolean
+  /** A tip can be given when paying here: the table's POS records it on the receipt (D127). */
+  readonly tips: boolean
+  /** An email for the venue's electronic receipt can be given when paying here (D127, #186). */
+  readonly receiptEmail: boolean
+  /**
+   * Pay-first items at the table (#113, #114): whether they are offered now, and the items of the
+   * table's menu that are paid first (none where pay-first doesn't apply at the table).
+   */
+  readonly payFirst: { readonly state: PayFirstState; readonly items: ReadonlySet<string> }
+  /**
+   * Paying on the bill (#114): whether it is offered at the venue now, and the smallest card
+   * payment the venue asks (its own floor, else the platform's; minor units).
+   */
+  readonly paying: {
+    readonly state: PayingState
+    /** The provider's kind (a public word), or null while none is connected. */
+    readonly provider: string | null
+    /** The venue's legal details (#198) while paying is offered: the pay screen names them. */
+    readonly legal: LegalDetails | null
+    readonly minCardMinor: number
+  }
+  /** When the table's bill was last read, or null. */
+  readonly reading: {
+    readonly readSeq: number
+    readonly readAt: Date
+    readonly complete: boolean
+  } | null
+  /**
+   * The open sitting's bill, as the last complete reading showed it (`complete` false when a later
+   * one failed); null when the table is closed or not read since its sitting opened. Our ids and
+   * names only: the POS's references stay in the row.
+   */
+  readonly bill: BillView | null
+  /**
+   * The table's linked group (#319, D160 §1): the party's tables, this one among them, each with
+   * its bill. Null where the table is closed or in no group; then the bill reads as it always did.
+   */
+  readonly group: GroupRead | null
+  /**
+   * *Backend*: every POS reference and POS text of the stored reading, for the forbidden-values
+   * walk over what the phone is answered (rule 3). Never sent.
+   */
+  readonly backendValues: ReadonlySet<string>
+}
+
+/** One member table of a linked group, as a phone at one of them may see it. */
+export interface GroupTableRead {
+  readonly tableId: string
+  /** Our name over it, else its number. */
+  readonly label: string
+  /** The table the phone is at. */
+  readonly own: boolean
+  /** Whether its bill was read well in its sitting (rule 6): a `failed` one shows as updating. */
+  readonly reading: MemberReading
+  /** Its bill as its last complete reading in its open sitting showed it, or null. */
+  readonly bill: BillView | null
+}
+
+/** The linked group of the table a phone is at. */
+export interface GroupRead {
+  /**
+   * Changes whenever what the group's bill shows may have changed: a table joined or left, a
+   * member's version rose, or its reading state changed. Never 0 (0 is "no group" to a phone).
+   */
+  readonly key: number
+  /** A member table's bill is not known well now: the group's total is not final (log 1.8). */
+  readonly unread: boolean
+  /**
+   * One payment may cover lines of several member tables (#542): the POS moves lines to a payment
+   * table, one bill a table, and serves every member. False: each phone pays its own table.
+   */
+  readonly paysAcross: boolean
+  /** Every member, this table included, in the order of their names. */
+  readonly tables: readonly GroupTableRead[]
+}
+
+/** "Nothing changed since `since`": what most polls get. */
+export interface TableStateUnchanged {
+  readonly unchanged: true
+  readonly version: number
+  readonly now: Date
+  /** When time alone next changes the open sitting's order (an Undo closing, the idle time). */
+  readonly nextChangeAt: Date | null
+  /** Whether the table has an open sitting. */
+  readonly open: boolean
+  /**
+   * When the open sitting's bill was last read, as `TableStateRead.bill.readAt`: null when the
+   * table is closed or not read since its sitting opened. A reading that found the same bill
+   * leaves the version as it was, so a poll on the bill learns its age here (#75, D111).
+   */
+  readonly billReadAt: Date | null
+  /**
+   * The table's linked group, as far as a poll needs it: its key, to tell the phone to ask again
+   * when it moved, and when each other member's bill was last read, for a fresh reading on the
+   * bill (#319). Null where the table is closed or in no group.
+   */
+  readonly group: {
+    readonly key: number
+    readonly others: readonly { readonly tableId: string; readonly readAt: Date | null }[]
+  } | null
+}
+
+/** How long after its sitting ended a closed table still tells a phone its party was moved (P22). */
+export const MOVED_AWAY_WINDOW_MS = 60 * 60_000
+
+/**
+ * The table's newest sitting that ended after `after` and not before `notBefore` (the moved-party
+ * window's two edges): the one read of a closed table's last end. Returned unrun, so a test can
+ * ask the database how it plans it (`sittings_table_id_ended_at_idx`, #427).
+ */
+export function lastEndedSittingQuery(
+  tx: ReadTx,
+  input: { readonly tableId: string; readonly after: Date; readonly notBefore: Date },
+) {
+  return tx
+    .select({ reason: sittings.endReason, endedAt: sittings.endedAt })
+    .from(sittings)
+    .where(
+      and(
+        eq(sittings.tableId, input.tableId),
+        isNotNull(sittings.endedAt),
+        gt(sittings.endedAt, input.after),
+        gte(sittings.endedAt, input.notBefore),
+      ),
+    )
+    .orderBy(desc(sittings.endedAt))
+    .limit(1)
+}
+
+/** The database's clock, to the millisecond. */
+async function databaseNow(tx: ReadTx): Promise<Date> {
+  const clock = await tx.execute<{ ms: string }>(
+    sql`select floor(extract(epoch from now()) * 1000)::text as ms`,
+  )
+  return new Date(Number(clock.rows[0]?.ms))
+}
+
+/** When time alone next changes an order row, or null. */
+function nextChangeOf(
+  order: {
+    readonly lines: unknown
+    readonly earlier: unknown
+    readonly earlierAt: Date | null
+    readonly idleExpiresAt: Date | null
+  } | null,
+): Date | null {
+  if (order === null) return null
+  const at = nextOrderChangeAt(orderFromRow(order))
+  return at === null ? null : new Date(at)
+}
+
+/**
+ * The lines a payment still claims, at any table of the venue (*backend*: the POS's line refs):
+ * what reads `beingPaid` on a bill.
+ */
+async function linesBeingPaid(tx: ReadTx, venueId: string): Promise<Set<string>> {
+  // The lines a payment still claims read `beingPaid`, an `unconfirmed` one's too, wherever they
+  // read back (migration 0043): the same check as `pay.start`'s, so the grey and the refusal agree.
+  const greyed = await tx
+    .select({ ref: paymentLines.posLineRef })
+    .from(paymentLines)
+    .where(
+      and(
+        eq(paymentLines.venueId, venueId),
+        eq(paymentLines.open, true),
+        isNotNull(paymentLines.posLineRef),
+      ),
+    )
+  const beingPaid = new Set(greyed.flatMap((line) => (line.ref === null ? [] : [line.ref])))
+  return beingPaid
+}
+
+/** One table's bill in its open sitting, and the backend values of what was read for it. */
+interface SittingBill {
+  readonly reading: {
+    readonly readSeq: number
+    readonly readAt: Date
+    readonly complete: boolean
+  } | null
+  readonly bill: BillView | null
+  readonly backendValues: Set<string>
+}
+
+/** A table whose bill is read, with its open sitting (null when closed). */
+interface BillTable {
+  readonly tableId: string
+  readonly sitting: { readonly id: string; readonly openedAt: Date } | null
+}
+
+/**
+ * The table's bill as its open sitting shows it (null when closed or not read since the sitting
+ * opened), with the sitting's paid lines and every backend value of the stored reading and of the
+ * table's unsettled payments (rule 3).
+ */
+async function sittingBill(
+  tx: ReadTx,
+  input: BillTable & { readonly beingPaid: ReadonlySet<string> },
+): Promise<SittingBill> {
+  const bills = await sittingBills(tx, { tables: [input], beingPaid: input.beingPaid })
+  const bill = bills.get(input.tableId)
+  if (bill === undefined) throw new Error('sittingBills left out the table it was asked for')
+  return bill
+}
+
+/**
+ * `sittingBill` for several tables at once (a linked group's members, #319): the same reads, each
+ * one query for every table, keyed by table id.
+ */
+async function sittingBills(
+  tx: ReadTx,
+  input: { readonly tables: readonly BillTable[]; readonly beingPaid: ReadonlySet<string> },
+): Promise<Map<string, SittingBill>> {
+  const tableIds = input.tables.map((table) => table.tableId)
+  const sittingIds = input.tables.flatMap((table) =>
+    table.sitting === null ? [] : [table.sitting.id],
+  )
+  const readings = new Map(
+    (
+      await tx
+        .select({
+          tableId: billReadings.tableId,
+          readSeq: billReadings.readSeq,
+          readAt: billReadings.readAt,
+          complete: billReadings.complete,
+          bills: billReadings.bills,
+        })
+        .from(billReadings)
+        .where(inArray(billReadings.tableId, tableIds))
+    ).map((row) => [row.tableId, row]),
+  )
+  // The tables' payments that aren't final (#110): their provider values join the walk, so no
+  // other answer can carry them (rule 3). A settled payment's stay out of it.
+  const open = await tx
+    .select({
+      tableId: payments.tableId,
+      ref: payments.providerPaymentRef,
+      form: payments.formValues,
+    })
+    .from(payments)
+    .where(and(inArray(payments.tableId, tableIds), isNull(payments.settledAt)))
+  // The lines paid in the app in each open sitting (D127 1.2): the lines the POS closed on the
+  // captured payments, at what it closed them for (#197), oldest payment first, `PAID_LINES_MAX`
+  // a table. They name no payer: the payment's handle and provider values stay behind.
+  const ranked = tx
+    .select({
+      tableId: paymentLines.tableId,
+      name: paymentLines.name,
+      quantity: paymentLines.closedQuantity,
+      amountMinor: paymentLines.closedMinor,
+      paymentId: paymentLines.paymentId,
+      position: paymentLines.position,
+      paidRank:
+        sql<number>`row_number() over (partition by ${paymentLines.tableId} order by ${payments.settledAt} asc, ${payments.id} asc, ${paymentLines.position} asc)`.as(
+          'paid_rank',
+        ),
+    })
+    .from(paymentLines)
+    .innerJoin(
+      payments,
+      and(eq(payments.tenantId, paymentLines.tenantId), eq(payments.id, paymentLines.paymentId)),
+    )
+    // The line's table's open sitting: the payment's own sitting, or, for a line a payment of
+    // another table of its linked group paid (#542), a payment made since that sitting opened.
+    .innerJoin(
+      sittings,
+      and(
+        eq(sittings.tenantId, paymentLines.tenantId),
+        eq(sittings.tableId, paymentLines.tableId),
+        inArray(sittings.id, sittingIds),
+      ),
+    )
+    .where(
+      and(
+        inArray(paymentLines.tableId, tableIds),
+        or(
+          eq(payments.sittingId, sittings.id),
+          and(
+            ne(payments.tableId, paymentLines.tableId),
+            gte(payments.createdAt, sittings.openedAt),
+          ),
+        ),
+        eq(payments.state, 'captured'),
+        isNotNull(paymentLines.closedMinor),
+      ),
+    )
+    .as('ranked')
+  const paidRows =
+    sittingIds.length === 0
+      ? []
+      : await tx
+          .select({
+            tableId: ranked.tableId,
+            name: ranked.name,
+            quantity: ranked.quantity,
+            amountMinor: ranked.amountMinor,
+            paymentId: ranked.paymentId,
+            position: ranked.position,
+          })
+          .from(ranked)
+          .where(lte(ranked.paidRank, PAID_LINES_MAX))
+          .orderBy(asc(ranked.tableId), asc(ranked.paidRank))
+  // Restro's own refund of a paid line (148): "being sent" until the provider's list shows it
+  // (D72: no local success), then "refunded"; "did not go through" tells the guest to see the bar.
+  const refundRows =
+    paidRows.length === 0
+      ? []
+      : await tx
+          .select({
+            paymentId: paymentRefunds.paymentId,
+            position: paymentRefunds.linePosition,
+            failedAt: paymentRefunds.failedAt,
+            confirmedAt: paymentRefunds.confirmedAt,
+          })
+          .from(paymentRefunds)
+          .where(
+            and(
+              inArray(paymentRefunds.paymentId, [...new Set(paidRows.map((row) => row.paymentId))]),
+              eq(paymentRefunds.origin, 'line'),
+            ),
+          )
+          .orderBy(asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
+  const refundOf = (paymentId: string, position: number): LineRefundState | null => {
+    const rows = refundRows.filter((r) => r.paymentId === paymentId && r.position === position)
+    const live = rows.findLast((r) => r.failedAt === null)
+    if (live !== undefined) return live.confirmedAt === null ? 'sending' : 'refunded'
+    return rows.length === 0 ? null : 'failed'
+  }
+  const read = new Map<string, SittingBill>()
+  for (const table of input.tables) {
+    const reading = readings.get(table.tableId)
+    const stored = reading === undefined ? [] : parseStoredBills(reading.bills)
+    const paidLines = paidRows.flatMap((row) => {
+      if (row.tableId !== table.tableId) return []
+      if (row.quantity === null || row.amountMinor === null) return []
+      const refund = refundOf(row.paymentId, row.position)
+      return [
+        {
+          name: row.name,
+          quantity: row.quantity,
+          amountMinor: row.amountMinor,
+          ...(refund === null ? {} : { refund }),
+        },
+      ]
+    })
+    const backendValues = billBackendValues(stored)
+    for (const payment of open) {
+      if (payment.tableId !== table.tableId) continue
+      if (payment.ref !== null) backendValues.add(payment.ref)
+      for (const value of Object.values(payment.form ?? {})) {
+        if (typeof value === 'string') backendValues.add(value)
+      }
+    }
+    read.set(table.tableId, {
+      reading:
+        reading === undefined
+          ? null
+          : { readSeq: reading.readSeq, readAt: reading.readAt, complete: reading.complete },
+      bill:
+        reading === undefined || table.sitting === null || reading.readAt < table.sitting.openedAt
+          ? null
+          : billView({
+              readAt: reading.readAt,
+              complete: reading.complete,
+              bills: stored,
+              beingPaid: input.beingPaid,
+              paidLines,
+            }),
+      backendValues,
+    })
+  }
+  return read
+}
+
+/** What a poll needs of the table's linked group: its members' reading states and its key. */
+interface GroupFacts {
+  readonly group: LinkedGroup
+  readonly readings: readonly LinkedTableReading[]
+  readonly key: number
+}
+
+/**
+ * The key of a group's bill (`GroupRead.key`): a hash of every member's table, sitting, version
+ * and reading state, as a positive 31-bit whole number. Pure.
+ */
+export function groupKeyOf(
+  members: readonly {
+    readonly tableId: string
+    readonly sittingId: string
+    readonly version: number
+    readonly reading: MemberReading
+  }[],
+): number {
+  const text = members
+    .map((member) => `${member.tableId}:${member.sittingId}:${member.version}:${member.reading}`)
+    .sort()
+    .join('|')
+  return (createHash('sha256').update(text, 'utf8').digest().readUInt32BE(0) % 2_147_483_646) + 1
+}
+
+/** The table's linked group with its members' reading states and key, or null in none. */
+async function groupFacts(tx: ReadTx, tableId: string): Promise<GroupFacts | null> {
+  const group = await linkedGroupOfTable(tx, { tableId })
+  if (group === null) return null
+  const readings = await linkedGroupReadings(tx, group)
+  const versions = new Map(
+    (
+      await tx
+        .select({
+          tableId: tableOrders.tableId,
+          version: sql<string>`max(${tableOrders.version})::text`,
+        })
+        .from(tableOrders)
+        .where(
+          inArray(
+            tableOrders.tableId,
+            group.tables.map((member) => member.tableId),
+          ),
+        )
+        .groupBy(tableOrders.tableId)
+    ).map((row) => [row.tableId, Number(row.version)]),
+  )
+  const key = groupKeyOf(
+    readings.map((member) => ({
+      tableId: member.tableId,
+      sittingId: member.sittingId,
+      version: versions.get(member.tableId) ?? 0,
+      reading: member.reading,
+    })),
+  )
+  return { group, readings, key }
+}
+
+/** The group as an unchanged poll carries it. */
+function pollFacts(
+  facts: GroupFacts | null,
+  input: { readonly tableId: string },
+): TableStateUnchanged['group'] {
+  if (facts === null) return null
+  return {
+    key: facts.key,
+    others: facts.readings
+      .filter((member) => member.tableId !== input.tableId)
+      .map((member) => ({ tableId: member.tableId, readAt: member.readAt })),
+  }
+}
+
+/**
+ * The table's linked group with every member's bill (#319, D160 §1), or null in none. The phone's
+ * own bill is the one already read; each other member's backend values join `backendValues`.
+ */
+async function groupOf(
+  tx: ReadTx,
+  input: {
+    readonly tableId: string
+    readonly ownBill: BillView | null
+    readonly beingPaid: ReadonlySet<string>
+    readonly backendValues: Set<string>
+  },
+): Promise<GroupRead | null> {
+  const facts = await groupFacts(tx, input.tableId)
+  if (facts === null) return null
+  const labels = new Map(
+    (
+      await tx
+        .select({ id: venueTables.id, name: venueTables.name, number: venueTables.number })
+        .from(venueTables)
+        .where(
+          inArray(
+            venueTables.id,
+            facts.group.tables.map((member) => member.tableId),
+          ),
+        )
+    ).map((row) => [row.id, row.name ?? row.number ?? '']),
+  )
+  const opened = new Map(
+    (
+      await tx
+        .select({ id: sittings.id, openedAt: sittings.openedAt })
+        .from(sittings)
+        .where(
+          inArray(
+            sittings.id,
+            facts.group.tables.map((member) => member.sittingId),
+          ),
+        )
+    ).map((row) => [row.id, row.openedAt]),
+  )
+  const others = await sittingBills(tx, {
+    tables: facts.readings
+      .filter((member) => member.tableId !== input.tableId)
+      .map((member) => {
+        const openedAt = opened.get(member.sittingId)
+        return {
+          tableId: member.tableId,
+          sitting: openedAt === undefined ? null : { id: member.sittingId, openedAt },
+        }
+      }),
+    beingPaid: input.beingPaid,
+  })
+  const tables: GroupTableRead[] = facts.readings.map((member) => {
+    const own = member.tableId === input.tableId
+    const read = others.get(member.tableId)
+    for (const value of read?.backendValues ?? []) input.backendValues.add(value)
+    return {
+      tableId: member.tableId,
+      label: labels.get(member.tableId) ?? '',
+      own,
+      reading: member.reading,
+      bill: own ? input.ownBill : (read?.bill ?? null),
+    }
+  })
+  tables.sort((a, b) => compareSpotNames(a.label, b.label) || byCodeUnits(a.tableId, b.tableId))
+  return {
+    key: facts.key,
+    unread: groupHasUnreadTable(facts.readings),
+    paysAcross: await groupPaysAcross(
+      tx,
+      facts.group.tables.map((member) => member.tableId),
+    ),
+    tables,
+  }
+}
+
+/**
+ * Reads one table's state. With `since` equal to the table's version it answers `unchanged`
+ * after one indexed read. Null when the tenant has no such table, or it was deleted; with
+ * `tableCodeHash` (the guest API's read, D121) also when the code is no longer the table's or the
+ * table lost its guest page, checked in the same transaction.
+ */
+export async function readTableState(
+  pool: DbPool,
+  input: {
+    readonly tenantId: string
+    readonly tableId: string
+    readonly since?: number
+    readonly tableCodeHash?: string
+    /**
+     * The moment the read is made at, for the moved-party window (P22): the database's clock when
+     * left out. Tests only; production leaves it out. A wrong value here shows a guest a stale
+     * "your party moved" message, so no caller outside a test may pass one.
+     */
+    readonly now?: Date
+  },
+): Promise<TableStateRead | TableStateUnchanged | null> {
+  return withTenant(pool, input.tenantId, async (tx) => {
+    if (input.tableCodeHash !== undefined) {
+      const [page] = await tx
+        .select({ id: venueTables.id })
+        .from(venueTables)
+        .innerJoin(areas, eq(areas.id, venueTables.areaId))
+        .where(
+          and(
+            eq(venueTables.id, input.tableId),
+            eq(venueTables.qrCodeHash, input.tableCodeHash),
+            isNull(venueTables.archivedAt),
+            eq(venueTables.isPaymentTable, false),
+            eq(venueTables.hidden, false),
+            eq(areas.hidden, false),
+            isNull(areas.archivedAt),
+          ),
+        )
+      if (page === undefined) return null
+    }
+    const version = await tableVersion(tx, input.tableId)
+    if (input.since !== undefined && input.since === version) {
+      const [open] = await tx
+        .select({
+          openedAt: sittings.openedAt,
+          readAt: billReadings.readAt,
+          lines: tableOrders.lines,
+          earlier: tableOrders.earlier,
+          earlierAt: tableOrders.earlierAt,
+          idleExpiresAt: tableOrders.idleExpiresAt,
+        })
+        .from(sittings)
+        .leftJoin(tableOrders, eq(tableOrders.sittingId, sittings.id))
+        .leftJoin(billReadings, eq(billReadings.tableId, sittings.tableId))
+        .where(and(eq(sittings.tableId, input.tableId), isNull(sittings.endedAt)))
+      return {
+        unchanged: true,
+        version,
+        now: await databaseNow(tx),
+        nextChangeAt:
+          open === undefined || open.lines === null
+            ? null
+            : nextChangeOf({
+                lines: open.lines,
+                earlier: open.earlier,
+                earlierAt: open.earlierAt,
+                idleExpiresAt: open.idleExpiresAt,
+              }),
+        open: open !== undefined,
+        billReadAt:
+          open === undefined || open.readAt === null || open.readAt < open.openedAt
+            ? null
+            : open.readAt,
+        group: open === undefined ? null : pollFacts(await groupFacts(tx, input.tableId), input),
+      }
+    }
+
+    const [table] = await tx
+      .select()
+      .from(venueTables)
+      .where(and(eq(venueTables.id, input.tableId), isNull(venueTables.archivedAt)))
+    if (table === undefined) return null
+
+    const [sitting] = await tx
+      .select({ id: sittings.id, openedAt: sittings.openedAt })
+      .from(sittings)
+      .where(and(eq(sittings.tableId, table.id), isNull(sittings.endedAt)))
+    // A closed table whose last sitting ended with the party moved elsewhere (P22): the phone that
+    // was on it is told where the bill stayed. Bounded to the last 60 minutes and never past the
+    // end of the venue's service day, so a new walk-in scanning the table later does not see it. Both
+    // edges are computed from one moment (`input.now`, else the database's clock), never from a
+    // second clock in SQL; `sittings_table_id_ended_at_idx` serves the lookup (#427).
+    const at = sitting !== undefined ? null : (input.now ?? (await databaseNow(tx)))
+    const dayStart =
+      at === null
+        ? null
+        : await tx
+            .select({ timezone: venues.timezone, dayEndsAt: venues.serviceDayEndsAt })
+            .from(venues)
+            .where(eq(venues.id, table.venueId))
+            .then(([venue]) =>
+              venue === undefined ? null : serviceDayStartsAt(at, venue.timezone, venue.dayEndsAt),
+            )
+    const [lastEnd] =
+      at === null || dayStart === null
+        ? []
+        : await lastEndedSittingQuery(tx, {
+            tableId: table.id,
+            after: new Date(at.getTime() - MOVED_AWAY_WINDOW_MS),
+            notBefore: dayStart,
+          })
+    const movedAway = lastEnd?.reason === 'party_moved'
+    const [order] =
+      sitting === undefined
+        ? []
+        : await tx.select().from(tableOrders).where(eq(tableOrders.sittingId, sitting.id))
+    const sent =
+      sitting === undefined
+        ? []
+        : await tx
+            .select({
+              id: sentOrders.id,
+              kind: sentOrders.kind,
+              state: sentOrders.state,
+              reason: sentOrders.reason,
+              reference: sentOrders.reference,
+              createdAt: sentOrders.createdAt,
+              settledAt: sentOrders.settledAt,
+              lines: sentOrders.lines,
+            })
+            .from(sentOrders)
+            .where(eq(sentOrders.sittingId, sitting.id))
+            .orderBy(desc(sentOrders.createdAt))
+    const payFirstIds = sent.filter((row) => row.kind === 'pay_first').map((row) => row.id)
+    const unpaid = new Set(
+      payFirstIds.length === 0
+        ? []
+        : (
+            await tx
+              .select({ sentOrderId: payments.sentOrderId })
+              .from(payments)
+              .where(
+                and(
+                  inArray(payments.sentOrderId, payFirstIds),
+                  eq(payments.state, 'released'),
+                  eq(payments.reason, 'no_receipt'),
+                ),
+              )
+          ).flatMap((row) => (row.sentOrderId === null ? [] : [row.sentOrderId])),
+    )
+
+    const [call] =
+      sitting === undefined
+        ? []
+        : await tx
+            .select({
+              id: waiterCalls.id,
+              state: waiterCalls.state,
+              kinds: waiterCalls.kinds,
+              calledAt: waiterCalls.calledAt,
+              doneAt: waiterCalls.doneAt,
+              updatedAt: waiterCalls.updatedAt,
+            })
+            .from(waiterCalls)
+            .where(eq(waiterCalls.sittingId, sitting.id))
+            .orderBy(desc(waiterCalls.calledAt))
+            .limit(1)
+
+    const leaseKeys = [table.id, ...(sitting === undefined ? [] : [sitting.id])]
+    const leases = await tx
+      .select({
+        scope: locks.scope,
+        holder: locks.holder,
+        secondsLeft: sql<string>`ceil(extract(epoch from (${locks.deadline} - now())))::text`,
+      })
+      .from(locks)
+      .where(
+        and(
+          inArray(locks.key, leaseKeys),
+          sql`${locks.holder} is not null and ${locks.deadline} > now()`,
+        ),
+      )
+
+    const active = await tx
+      .select({
+        id: pauses.id,
+        scope: pauses.scope,
+        cause: pauses.cause,
+        restroStarted: pauses.restroStarted,
+        startedAt: pauses.startedAt,
+      })
+      .from(pauses)
+      .where(activePausesOfTable(table))
+
+    const beingPaid = await linesBeingPaid(tx, table.venueId)
+    const own = await sittingBill(tx, { tableId: table.id, sitting: sitting ?? null, beingPaid })
+    const { reading, backendValues } = own
+    // The party's other tables (#319, D160 §1): each member's bill, read as this table's is, and
+    // its backend values join the walk too, so no member's POS reference can reach a phone.
+    const group =
+      sitting === undefined
+        ? null
+        : await groupOf(tx, { tableId: table.id, ownBill: own.bill, beingPaid, backendValues })
+    const capabilities = await readTableCapabilities(tx, table.id)
+    const [venue] = await tx
+      .select({ settings: venues.settings })
+      .from(venues)
+      .where(eq(venues.id, table.venueId))
+    const payFirstSettings = readPayFirstSettings(venue?.settings ?? {})
+    // The pay rule of the party sitting here, where one is in force on this sitting (#334, D135):
+    // a level between the table's own setting and its bar's. A table with a setting of its own is
+    // untouched by it, which `payFirstRuleAt` decides and not this call.
+    const partyRule =
+      sitting === undefined
+        ? null
+        : await payRuleAtTable(tx, { tableId: table.id, sittingId: sitting.id })
+    const payFirst = payFirstRuleApplies(
+      payFirstSettings,
+      {
+        tableId: table.id as TableId,
+        barId: table.barId as BarId | null,
+        areaId: table.areaId as AreaId,
+      },
+      partyRule,
+    )
+      ? {
+          state: await payFirstState(tx, {
+            venueId: table.venueId,
+            tableId: table.id,
+            paused: active.length > 0,
+          }),
+          items: await payFirstItems(tx, {
+            venueId: table.venueId,
+            tableId: table.id,
+            itemMode: payFirstSettings.itemMode,
+          }),
+        }
+      : { state: 'off' as const, items: new Set<string>() }
+    const offer = await payingOffer(tx, { venueId: table.venueId, paused: active.length > 0 })
+    const paying = {
+      ...offer,
+      minCardMinor: smallestCardMinor(readPayingSettings(venue?.settings ?? {}), CARD_FLOOR_MINOR),
+    }
+    return {
+      unchanged: false,
+      version,
+      now: await databaseNow(tx),
+      nextChangeAt: nextChangeOf(order ?? null),
+      table: {
+        id: table.id,
+        venueId: table.venueId,
+        label: table.name ?? table.number ?? '',
+        barId: table.barId,
+        isPaymentTable: table.isPaymentTable,
+        codeGeneration: table.codeGeneration,
+      },
+      sitting: sitting ?? null,
+      ...(movedAway ? { movedAway: true } : {}),
+      order:
+        order === undefined
+          ? null
+          : {
+              lines: order.lines,
+              earlier: order.earlier,
+              earlierAt: order.earlierAt,
+              idleExpiresAt: order.idleExpiresAt,
+            },
+      sentOrders: sent.map(({ lines, ...row }) => ({
+        ...row,
+        unpaid: unpaid.has(row.id),
+        lines: sentOrderLinesOf(lines).map((line) => ({
+          itemId: line.itemId,
+          optionIds: line.optionIds,
+          qty: line.qty,
+          ...(line.outOfStock === true ? { outOfStock: true } : {}),
+        })),
+      })),
+      waiterCall:
+        call === undefined
+          ? null
+          : {
+              id: call.id,
+              state: call.state as 'open' | 'done' | 'lapsed',
+              kinds: orderedKinds(call.kinds),
+              calledAt: call.calledAt,
+              endedAt: call.state === 'open' ? null : (call.doneAt ?? call.updatedAt),
+            },
+      leases: leases.flatMap((lease) =>
+        lease.holder === null
+          ? []
+          : [
+              {
+                scope: lease.scope as LeaseScope,
+                holder: lease.holder,
+                secondsLeft: Math.max(0, Number(lease.secondsLeft)),
+              },
+            ],
+      ),
+      pauses: active,
+      notesAndOptions: capabilities.notesReachTicket,
+      tips: capabilities.recordTipOnClose,
+      receiptEmail: capabilities.electronicReceipt,
+      payFirst,
+      paying,
+      reading,
+      bill: own.bill,
+      group,
+      backendValues,
+    }
+  })
+}
+
+/** One table as Tonight lists it. */
+export interface TonightTable {
+  readonly id: string
+  readonly label: string
+  /** True when the label is only the table's number (no name of ours over it): a screen words it "Table 7". */
+  readonly numbered: boolean
+  readonly barId: string | null
+  readonly isPaymentTable: boolean
+  /** The table, or its hall, is hidden: "Open all" leaves it closed. */
+  readonly hidden: boolean
+  /** The open sitting, or null: the table is open for phones exactly while it has one. */
+  readonly sitting: {
+    readonly id: string
+    readonly openedAt: Date
+    readonly openedHow: string
+  } | null
+  /**
+   * The pay rule that holds at this table while its sitting is open, and the level that decided it
+   * (#334; D122 §5, D135): the table's own setting, else the rule the party sitting there carries,
+   * else its bar's, its hall's or the house's. Null while the table is closed — a rule is about a
+   * sitting, and there is none.
+   */
+  readonly payRule: { readonly payFirst: boolean; readonly level: PayFirstLevel } | null
+  /**
+   * The parties seated at this table now, by name and number of guests (walk P20, #419). Empty for
+   * a table nobody is seated at, and **empty for an actor without `reservations.tonight`**: the
+   * name on a booking is the booking book's, so a role that does not work tonight's reservations
+   * sees the table and no name.
+   */
+  readonly parties: readonly SeatedParty[]
+}
+
+/** An active pause as Tonight lists it: where it applies and who started it. */
+export interface TonightPause extends PauseView {
+  /** Our id of what is paused: a venue, bar, table or the POS connection. */
+  readonly targetId: string
+  /** Who started a staff pause: a staff member's name, or null when no person is named. */
+  readonly startedBy: string | null
+  /**
+   * A table paused by the cap per sent order (D118): the refused sent order's total and the cap,
+   * in minor units, from the trip's `guard.tripped` Log entry (S10). Absent for any other pause,
+   * and where the entry is not found.
+   */
+  readonly cap?: { readonly totalMinor: number; readonly capMinor: number }
+}
+
+/** The Log reason of a trip of the cap per sent order (`send-guards.ts`). */
+const CAP_TRIP = 'order_cap'
+
+/** What Tonight shows the actor. Parts the actor may not see are left out, not emptied. */
+export interface Tonight {
+  readonly serviceDate: string
+  /** What the actor holds here; the screen hides what the server would refuse anyway. */
+  readonly permissions: readonly Permission[]
+  /**
+   * True when the actor is a shared device's own account: it reads Tonight with what Staff hold,
+   * and a person's PIN names who answers (D122 §7).
+   */
+  readonly device: boolean
+  /** The venue's bars, by name; a table's `barId` is one of them. */
+  readonly bars: readonly { readonly id: string; readonly name: string }[]
+  readonly tables: readonly TonightTable[]
+  /** Tonight's sent orders, newest first. */
+  readonly sentOrders: readonly {
+    readonly id: string
+    readonly tableId: string
+    readonly kind: string
+    readonly state: string
+    readonly reason: string | null
+    readonly reference: string
+    readonly totalMinor: number
+    readonly createdAt: Date
+    readonly settledAt: Date | null
+  }[]
+  /**
+   * Open alerts the actor may answer (or that need no permission). A shared device also sees the
+   * money alerts and the managers' to-dos, answered with a manager's PIN (plan §5), but never a tip.
+   */
+  readonly alerts: readonly {
+    readonly id: string
+    readonly kind: string
+    readonly subjectId: string
+    readonly permission: string | null
+    readonly raisedAt: Date
+    /** The service day it was raised on: a payment question may outlive its night (#162). */
+    readonly serviceDate: string
+    readonly details: Record<string, unknown>
+  }[]
+  /**
+   * Why card payments in the app are stopped at the venue, or null while they flow (or were never
+   * offered): the provider's breaker (`paused`), access to the account lost (`lost`) or the account
+   * unable to take card payments (`restricted`). Every role that sees Tonight reads it (#115).
+   */
+  readonly paying: 'paused' | 'lost' | 'restricted' | null
+  /**
+   * The first thing the Paying setup still misses, while the account is connected but card payments
+   * are not on yet (RR-O1); null once they are on, and while there is no connected account.
+   */
+  readonly payingSetup: PayingMissing | null
+  /** The venue's payment provider (its kind), for the words that name it; null with no account. */
+  readonly payingProvider: string | null
+  /**
+   * When Restro found an Unconfirmed sent order on the bill by itself (#135, the Log's
+   * `sent_order.landed_late`). It changes nothing: staff still answer (D116).
+   */
+  readonly landedLate: readonly { readonly sentOrderId: string; readonly at: Date }[]
+  /**
+   * Paper receipts of tonight's card payments still to be brought (#200), for those who mark them
+   * Brought (`alerts.answer`); null otherwise.
+   */
+  readonly receipts: readonly ReceiptToBring[] | null
+  /**
+   * Refunds the venue made in its provider's dashboard that still wait for a storno (#222), the
+   * ones that did not go through after their storno was made (tonight's only), and the disputes
+   * still open: for managers and owners (`money.follow_up`) and a shared device, null otherwise.
+   */
+  readonly refunds?: {
+    readonly storno: readonly RefundToDo[]
+    readonly failed: readonly RefundFailedAfterStorno[]
+    readonly disputes: readonly DisputeToDo[]
+  } | null
+  /** Open waiter calls, for those who answer them (`alerts.answer`); null otherwise. */
+  readonly waiterCalls:
+    | readonly {
+        readonly id: string
+        readonly tableId: string
+        readonly kinds: readonly CallWaiterKind[]
+        readonly calledAt: Date
+      }[]
+    | null
+  readonly pauses: readonly TonightPause[]
+  /**
+   * Tonight's end, once it has run (#332; D138): when, whether an admin ended it before the
+   * closing hour, and the bills still open at that moment — the closing hour's warning, which the
+   * screen shows as one row. Null while the night is going on.
+   */
+  readonly nightEnd?: {
+    readonly at: Date
+    readonly early: boolean
+    readonly openBills: number | null
+  } | null
+  /** Tonight's Log, newest first, for `log.view`; null otherwise. */
+  readonly log:
+    | readonly {
+        readonly seq: number
+        readonly at: Date
+        readonly kind: string
+        readonly tableId: string | null
+        readonly sentOrderId: string | null
+        readonly fromState: string | null
+        readonly toState: string | null
+        readonly reason: string | null
+        readonly actor: string
+        readonly via: string | null
+      }[]
+    | null
+}
+
+/** Why Tonight was refused. */
+export type TonightRefusal =
+  | 'origin_not_allowed'
+  | 'permission_denied'
+  | 'pin_required'
+  | 'actor_unknown'
+  | 'venue_missing'
+  | 'venue_archived'
+
+/** The payment questions every role that sees Tonight reads, though only a manager answers. */
+const PAYMENT_QUESTION_KINDS: readonly string[] = [
+  PAYMENT_UNCONFIRMED_KIND,
+  PAYMENT_LINES_NOT_BACK_KIND,
+]
+
+/**
+ * An alert's details without the tips: Staff, and so a shared device, never see them. A payment
+ * alert's `amountMinor` is the charge with the tip in it, so the tip comes off it too (#220):
+ * the total would give the tip away next to the bill. Whoever may confirm the alert's answer also
+ * gets `chargeMinor`, the true charge, for the confirmation.
+ */
+function withoutTips(
+  details: Record<string, unknown>,
+  mayConfirm: boolean,
+): Record<string, unknown> {
+  const { amountMinor, tipMinor } = details
+  const kept = Object.fromEntries(Object.entries(details).filter(([key]) => !key.startsWith('tip')))
+  if (typeof amountMinor !== 'number' || typeof tipMinor !== 'number') return kept
+  // Whoever confirms the answer (a manager's PIN on the shared device, or the right on a phone) is
+  // told the true charge in the confirmation, as the guest's card will bear it (Martin 10-29); the
+  // row itself stays without the tip.
+  return {
+    ...kept,
+    amountMinor: withoutTipMinor(amountMinor, tipMinor),
+    ...(mayConfirm ? { chargeMinor: amountMinor } : {}),
+  }
+}
+
+/** How many Log entries Tonight shows at once. */
+export const TONIGHT_LOG_LIMIT = 200
+
+/**
+ * Reads Tonight for a staff actor (a signed-in account, a PIN's person or Restro's admin team).
+ * Refused for anyone else, and for an actor who holds no permission at the venue.
+ */
+export async function readTonight(
+  pool: DbPool,
+  input: {
+    readonly tenantId: string
+    readonly venueId: string
+    readonly actor: ServiceActor
+    readonly now?: Date
+  },
+): Promise<
+  | { readonly ok: true; readonly tonight: Tonight }
+  | { readonly ok: false; readonly code: TonightRefusal }
+> {
+  const { actor } = input
+  if (actor.kind !== 'user' && actor.kind !== 'staff' && actor.kind !== 'operator') {
+    return { ok: false, code: 'origin_not_allowed' }
+  }
+  return withTenant(pool, input.tenantId, async (tx) => {
+    const [venue] = await tx.select().from(venues).where(eq(venues.id, input.venueId))
+    if (venue === undefined) return { ok: false, code: 'venue_missing' } as const
+    if (venue.archivedAt !== null) return { ok: false, code: 'venue_archived' } as const
+
+    // Reading is a quick answer: a shared device's own account sees Tonight without a PIN.
+    const grants = await resolveGrants(tx, input.tenantId, venue.id, actor, { quick: true })
+    if (!grants.ok) return { ok: false, code: grants.code } as const
+    if (grants.permissions.size === 0) return { ok: false, code: 'permission_denied' } as const
+    const held = grants.permissions
+
+    const day = serviceDate(input.now ?? new Date(), venue.timezone, venue.serviceDayEndsAt)
+
+    const tables = await tx
+      .select({
+        id: venueTables.id,
+        name: venueTables.name,
+        number: venueTables.number,
+        barId: venueTables.barId,
+        areaId: venueTables.areaId,
+        isPaymentTable: venueTables.isPaymentTable,
+        hidden: venueTables.hidden,
+        areaHidden: areas.hidden,
+        sittingId: sittings.id,
+        openedAt: sittings.openedAt,
+        openedHow: sittings.openedHow,
+      })
+      .from(venueTables)
+      .innerJoin(areas, eq(areas.id, venueTables.areaId))
+      .leftJoin(sittings, and(eq(sittings.tableId, venueTables.id), isNull(sittings.endedAt)))
+      .where(and(eq(venueTables.venueId, venue.id), isNull(venueTables.archivedAt)))
+      .orderBy(venueTables.sortKey, venueTables.id)
+
+    // Which pay rule holds at each open table, so the sitting's own line can say it and why
+    // (#334): the venue's four levels plus the rule a party seated there carries, resolved by the
+    // one function that resolves them (`payFirstRuleAt`). One read for the whole floor.
+    const tonightPayFirst = readPayFirstSettings(venue.settings ?? {})
+    const tonightPartyRules = await payRulesAtTables(tx, { venueId: venue.id })
+    // Who is seated at each table: only for whoever works tonight's reservations.
+    const tonightParties = held.has('reservations.tonight')
+      ? await seatedPartiesAtTables(tx, { venueId: venue.id })
+      : new Map<string, SeatedParty[]>()
+    // Menus holding an orderable item paid first: an item's own mode makes the line true too.
+    const payFirstMenus = await menusWithPayFirstItem(tx, {
+      venueId: venue.id,
+      itemMode: tonightPayFirst.itemMode,
+    })
+    const tableMenus = (await resolveRoutesIn(tx, venue.id)).tables
+
+    const sent = await tx
+      .select({
+        id: sentOrders.id,
+        tableId: sentOrders.tableId,
+        kind: sentOrders.kind,
+        state: sentOrders.state,
+        reason: sentOrders.reason,
+        reference: sentOrders.reference,
+        totalMinor: sentOrders.totalMinor,
+        createdAt: sentOrders.createdAt,
+        settledAt: sentOrders.settledAt,
+      })
+      .from(sentOrders)
+      .where(
+        and(
+          eq(sentOrders.venueId, venue.id),
+          or(eq(sentOrders.serviceDate, day), inArray(sentOrders.state, OPEN_SENT_ORDER_STATES)),
+        ),
+      )
+      .orderBy(desc(sentOrders.createdAt))
+
+    const audiences = actor.kind === 'operator' ? ['venue', 'restro'] : ['venue']
+    const openAlerts = await tx
+      .select({
+        id: alerts.id,
+        kind: alerts.kind,
+        subjectId: alerts.subjectId,
+        permission: alerts.permission,
+        raisedAt: alerts.raisedAt,
+        serviceDate: alerts.serviceDate,
+        details: alerts.details,
+      })
+      .from(alerts)
+      .where(
+        and(
+          eq(alerts.venueId, venue.id),
+          isNull(alerts.doneAt),
+          inArray(alerts.audience, audiences),
+        ),
+      )
+      .orderBy(alerts.raisedAt)
+
+    // The Log is read here for one fact only, whatever the actor's `log.view`: the time of a late
+    // landing, which the Unconfirmed row shows.
+    const unconfirmedIds = openAlerts.flatMap((alert) =>
+      alert.kind === 'order_unconfirmed' && typeof alert.details.sentOrderId === 'string'
+        ? [alert.details.sentOrderId]
+        : [],
+    )
+    const landed =
+      unconfirmedIds.length === 0
+        ? []
+        : await tx
+            .select({ sentOrderId: logEntries.sentOrderId, at: logEntries.at })
+            .from(logEntries)
+            .where(
+              and(
+                eq(logEntries.venueId, venue.id),
+                eq(logEntries.kind, 'sent_order.landed_late'),
+                inArray(logEntries.sentOrderId, unconfirmedIds),
+              ),
+            )
+            .orderBy(logEntries.at)
+
+    const calls = held.has('alerts.answer')
+      ? await tx
+          .select({
+            id: waiterCalls.id,
+            tableId: waiterCalls.tableId,
+            kinds: waiterCalls.kinds,
+            calledAt: waiterCalls.calledAt,
+          })
+          .from(waiterCalls)
+          .where(and(eq(waiterCalls.venueId, venue.id), eq(waiterCalls.state, 'open')))
+          .orderBy(waiterCalls.calledAt)
+      : null
+
+    // The row's amount is the charge: with its tip only for those who read the whole night (#220).
+    const receipts = held.has('alerts.answer')
+      ? await receiptsToBring(
+          tx,
+          venue.id,
+          day,
+          held.has('night.view_full') && grants.device !== true,
+        )
+      : null
+
+    // The storno and dispute to-dos: managers and owners, and the shared tablet (a manager's PIN
+    // answers there); never a staff member's own phone (screen 1, Q7). Amounts of a payment come
+    // without the tip for those who read no tips (#220).
+    const followsUp = held.has('money.follow_up') || grants.device === true
+    const refundTodos = followsUp
+      ? await (async () => {
+          const reads = await Promise.all([
+            refundsToDo(tx, venue.id),
+            refundsFailedAfterStorno(
+              tx,
+              venue.id,
+              new Date((input.now ?? new Date()).getTime() - 3 * 24 * 60 * 60 * 1000),
+            ),
+            disputesToDo(tx, venue.id),
+          ])
+          const readsTips = held.has('night.view_full') && grants.device !== true
+          // The rows show at most the payment less its tip to those who read no tips; the true
+          // amount stays in `chargeMinor`, for a manager's PIN to confirm (Martin 10-29).
+          const shown = <
+            T extends { amountMinor: number; capturedMinor: number; tipMinor: number },
+          >(
+            row: T,
+          ): T =>
+            readsTips
+              ? row
+              : {
+                  ...row,
+                  amountMinor: refundShownMinor(row.amountMinor, row.capturedMinor, row.tipMinor),
+                  tipMinor: 0,
+                }
+          return {
+            storno: reads[0].map(shown),
+            // A refund that failed after its storno stays for three days, whatever the night.
+            failed: reads[1].map(shown),
+            disputes: readsTips
+              ? reads[2]
+              : reads[2].map((row) => ({
+                  ...row,
+                  amountMinor: withoutTipMinor(row.amountMinor, row.tipMinor),
+                  tipMinor: 0,
+                })),
+          }
+        })()
+      : null
+
+    const active = await tx
+      .select({
+        id: pauses.id,
+        scope: pauses.scope,
+        cause: pauses.cause,
+        restroStarted: pauses.restroStarted,
+        startedAt: pauses.startedAt,
+        targetId: pauses.targetId,
+        actor: pauses.actor,
+      })
+      .from(pauses)
+      .where(and(pausesOfVenue(venue.id), isNull(pauses.liftedAt)))
+      .orderBy(pauses.startedAt)
+
+    // The cap a guard pause tripped on (S10). `tripGuard` writes the pause and its trip's Log entry
+    // in one transaction, so both carry that transaction's time: the entry of this pause is the
+    // `order_cap` trip at the pause's own start. Nothing is named when no entry matches exactly
+    // (the Log keeps one trip a minute, so a later pause can have none of its own), nor when a trip
+    // of another guard came after it: the amount would no longer be the reason.
+    const guardPauses = active.filter(
+      (pause) => pause.scope === 'table' && pause.cause === 'guard_tripped',
+    )
+    const capOf = new Map<string, { totalMinor: number; capMinor: number }>()
+    if (guardPauses.length > 0) {
+      const earliest = new Date(Math.min(...guardPauses.map((pause) => pause.startedAt.getTime())))
+      const trips = await tx
+        .select({
+          tableId: logEntries.tableId,
+          at: logEntries.at,
+          reason: logEntries.reason,
+          details: logEntries.details,
+        })
+        .from(logEntries)
+        .where(
+          and(
+            eq(logEntries.venueId, venue.id),
+            eq(logEntries.kind, 'guard.tripped'),
+            inArray(
+              logEntries.tableId,
+              guardPauses.map((pause) => pause.targetId),
+            ),
+            gte(logEntries.at, earliest),
+          ),
+        )
+      for (const pause of guardPauses) {
+        const since = trips.filter(
+          (entry) =>
+            entry.tableId === pause.targetId && entry.at.getTime() >= pause.startedAt.getTime(),
+        )
+        if (since.some((entry) => entry.reason !== CAP_TRIP)) continue
+        const trip = since.find((entry) => entry.at.getTime() === pause.startedAt.getTime())
+        const totalMinor = trip?.details.totalMinor
+        const capMinor = trip?.details.capMinor
+        if (typeof totalMinor === 'number' && typeof capMinor === 'number') {
+          capOf.set(pause.id, { totalMinor, capMinor })
+        }
+      }
+    }
+
+    const venueBars = await tx
+      .select({ id: bars.id, name: bars.name })
+      .from(bars)
+      .where(and(eq(bars.venueId, venue.id), isNull(bars.archivedAt)))
+      .orderBy(bars.name, bars.id)
+
+    // A staff pause names the person who started it: a PIN's staff member, the staff member the
+    // signed-in account is linked to, or the account itself (an owner on their own phone, RR-77).
+    // A shared device's account is not named: the tablet is no person.
+    const starters = [...new Set(active.filter((p) => !p.restroStarted).map((p) => p.actor))]
+    const memberIds = starters.flatMap((a) => (a.startsWith('staff:') ? [a.slice(6)] : []))
+    const accountIds = starters.flatMap((a) => (a.startsWith('user:') ? [a.slice(5)] : []))
+    const named = new Map<string, string>()
+    if (memberIds.length > 0 || accountIds.length > 0) {
+      const people = await tx
+        .select({
+          id: staffMembers.id,
+          userId: staffMembers.userId,
+          name: staffMembers.displayName,
+        })
+        .from(staffMembers)
+        .where(
+          or(
+            memberIds.length > 0 ? inArray(staffMembers.id, memberIds) : undefined,
+            accountIds.length > 0 ? inArray(staffMembers.userId, accountIds) : undefined,
+          ),
+        )
+      for (const person of people) {
+        named.set(`staff:${person.id}`, person.name)
+        if (person.userId !== null) named.set(`user:${person.userId}`, person.name)
+      }
+      const bare = accountIds.filter((id) => !named.has(`user:${id}`))
+      if (bare.length > 0) {
+        const accounts = await tx
+          .select({ id: authUser.id, name: authUser.name, device: sharedDevices.id })
+          .from(authUser)
+          .leftJoin(authSession, eq(authSession.userId, authUser.id))
+          .leftJoin(
+            sharedDevices,
+            and(
+              eq(sharedDevices.sessionId, authSession.id),
+              eq(sharedDevices.venueId, venue.id),
+              isNull(sharedDevices.revokedAt),
+            ),
+          )
+          .where(inArray(authUser.id, bare))
+        const devices = new Set(accounts.flatMap((a) => (a.device === null ? [] : [a.id])))
+        for (const account of accounts) {
+          if (!devices.has(account.id)) named.set(`user:${account.id}`, account.name)
+        }
+      }
+    }
+
+    const log = held.has('log.view')
+      ? await tx
+          .select({
+            seq: logEntries.seq,
+            at: logEntries.at,
+            kind: logEntries.kind,
+            tableId: logEntries.tableId,
+            sentOrderId: logEntries.sentOrderId,
+            fromState: logEntries.fromState,
+            toState: logEntries.toState,
+            reason: logEntries.reason,
+            actor: logEntries.actor,
+            via: logEntries.via,
+          })
+          .from(logEntries)
+          .where(and(eq(logEntries.venueId, venue.id), eq(logEntries.serviceDate, day)))
+          .orderBy(desc(logEntries.seq))
+          .limit(TONIGHT_LOG_LIMIT)
+      : null
+
+    // Why paying is stopped, for every role (the guest's phone already says "Ask your waiter").
+    const connection = await loadPayingConnection(tx, venue.id)
+    const paying: Tonight['paying'] =
+      connection.state === 'lost_access'
+        ? connection.checks.lostReason === 'account_restricted'
+          ? 'restricted'
+          : 'lost'
+        : connection.state === 'connected' && (await payingPausedAt(tx, venue.id))
+          ? 'paused'
+          : null
+
+    const tonight: Tonight = {
+      serviceDate: day,
+      permissions: [...held],
+      device: grants.device === true,
+      bars: venueBars,
+      tables: tables.map((row) => ({
+        id: row.id,
+        label: row.name ?? row.number ?? '',
+        numbered: row.name === null && row.number !== null,
+        barId: row.barId,
+        isPaymentTable: row.isPaymentTable,
+        hidden: row.hidden || row.areaHidden,
+        sitting:
+          row.sittingId === null || row.openedAt === null || row.openedHow === null
+            ? null
+            : { id: row.sittingId, openedAt: row.openedAt, openedHow: row.openedHow },
+        payRule:
+          row.sittingId === null
+            ? null
+            : (() => {
+                // Display only: nothing is hidden by it (`payFirstLineAt`).
+                const menuId = tableMenus.get(row.id as TableId) ?? null
+                return payFirstLineAt(
+                  tonightPayFirst,
+                  {
+                    tableId: row.id as TableId,
+                    barId: row.barId as BarId | null,
+                    areaId: row.areaId as AreaId,
+                  },
+                  tonightPartyRules.get(row.id) ?? null,
+                  menuId !== null && payFirstMenus.has(menuId),
+                )
+              })(),
+        parties: row.sittingId === null ? [] : (tonightParties.get(row.id) ?? []),
+      })),
+      sentOrders: sent,
+      alerts: openAlerts
+        .filter(
+          (alert) =>
+            alert.permission === null ||
+            held.has(alert.permission as Permission) ||
+            (grants.device === true && alert.permission === 'money.follow_up') ||
+            // A waiter sees that a payment waits on a manager, with no way to answer (#115 P4).
+            PAYMENT_QUESTION_KINDS.includes(alert.kind),
+        )
+        .map((alert) =>
+          // A tip is for those who answer the alert and read the whole night: not a shared device,
+          // not a waiter who only sees that a payment question waits (#115), not a role without
+          // `night.view_full` (#220).
+          grants.device === true ||
+          !held.has('night.view_full') ||
+          (alert.permission !== null && !held.has(alert.permission as Permission))
+            ? {
+                ...alert,
+                details: withoutTips(
+                  alert.details,
+                  grants.device === true ||
+                    (alert.permission !== null && held.has(alert.permission as Permission)),
+                ),
+              }
+            : alert,
+        ),
+      landedLate: landed.flatMap((row) =>
+        row.sentOrderId === null ? [] : [{ sentOrderId: row.sentOrderId, at: row.at }],
+      ),
+      receipts,
+      refunds: refundTodos,
+      waiterCalls:
+        calls === null ? null : calls.map((call) => ({ ...call, kinds: orderedKinds(call.kinds) })),
+      paying,
+      payingSetup:
+        connection.state === 'connected' && !connection.readiness.on
+          ? (connection.readiness.missing[0] ?? null)
+          : null,
+      payingProvider: connection.providerKind,
+      pauses: active.map(({ actor: starter, ...pause }) => {
+        const cap = capOf.get(pause.id)
+        return {
+          ...pause,
+          startedBy: pause.restroStarted ? null : (named.get(starter) ?? null),
+          ...(cap === undefined ? {} : { cap }),
+        }
+      }),
+      log,
+      nightEnd: await (async () => {
+        const [record] = await tx
+          .select({
+            at: reservationNights.closedAt,
+            early: reservationNights.closedEarly,
+            openBills: reservationNights.openBillsAtClose,
+          })
+          .from(reservationNights)
+          .where(
+            and(eq(reservationNights.venueId, venue.id), eq(reservationNights.serviceDate, day)),
+          )
+        return record?.at == null
+          ? null
+          : { at: record.at, early: record.early, openBills: record.openBills }
+      })(),
+    }
+    return { ok: true, tonight } as const
+  })
+}

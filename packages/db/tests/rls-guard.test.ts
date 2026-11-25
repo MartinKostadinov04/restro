@@ -4,8 +4,11 @@
 //   security and policies that all test app.tenant_id, for reading and for writing;
 // - a table without tenant_id must be declared `system` in src/table-access.ts, and every
 //   table there must exist (so a new table cannot dodge the check by not having tenant_id);
-// - no view in `restro` runs with its owner's rights (security_invoker), no materialized view
-//   and no SECURITY DEFINER function exists there: each would read past row-level security.
+// - no view in `restro` runs with its owner's rights (security_invoker) and no materialized view
+//   exists there: each would read past row-level security;
+// - the one SECURITY DEFINER function, D121's guest lookup by table-code hash, is pinned exactly
+//   (body, search path, return columns, its only caller restro_app): any other, or any change to
+//   it, fails here first.
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -28,6 +31,21 @@ interface PolicyRow {
   using: string | null
   check: string | null
 }
+
+interface DefinerRow {
+  signature: string
+  language: string
+  volatility: string
+  config: string[] | null
+  result: string
+  body: string
+  ownerBypassesRls: boolean
+  callers: string[]
+}
+
+/** Migration 0029's lookup body, whitespace collapsed. Changing it is a guardrail change (D67). */
+const GUEST_LOOKUP_BODY =
+  "SELECT t.tenant_id, t.venue_id, t.id, t.code_generation, CASE WHEN v.archived_at IS NOT NULL OR v.unpublished_at IS NOT NULL THEN 'venue_not_live' WHEN t.hidden OR a.hidden OR a.archived_at IS NOT NULL THEN 'hidden' ELSE 'live' END FROM restro.tables AS t JOIN restro.areas AS a ON a.tenant_id = t.tenant_id AND a.id = t.area_id JOIN restro.venues AS v ON v.tenant_id = t.tenant_id AND v.id = t.venue_id WHERE t.qr_code_hash = code_hash AND t.archived_at IS NULL AND NOT t.is_payment_table"
 
 describe.skipIf(!hasDatabase)('row-level security guard', () => {
   const access: Record<string, TableAccess> = TABLE_ACCESS
@@ -143,7 +161,7 @@ describe.skipIf(!hasDatabase)('row-level security guard', () => {
     expect(failures).toEqual([])
   })
 
-  it('no view, materialized view or SECURITY DEFINER function can read past RLS', async () => {
+  it('no view or materialized view can read past RLS', async () => {
     const { rows } = await owner.query<{ problem: string }>(
       `select 'view ' || c.relname || ' is not security_invoker' as problem
        from pg_class c
@@ -152,13 +170,45 @@ describe.skipIf(!hasDatabase)('row-level security guard', () => {
                           or 'security_invoker=on' = any(c.reloptions), false)
        union all
        select 'materialized view ' || c.relname from pg_class c
-       where c.relnamespace = $1::regnamespace and c.relkind = 'm'
-       union all
-       select 'function ' || p.proname || ' is SECURITY DEFINER' from pg_proc p
-       where p.pronamespace = $1::regnamespace and p.prosecdef`,
+       where c.relnamespace = $1::regnamespace and c.relkind = 'm'`,
       [APP_SCHEMA],
     )
     expect(rows.map((row) => row.problem)).toEqual([])
+  })
+
+  it('the only SECURITY DEFINER function is the pinned guest lookup (D121)', async () => {
+    const { rows } = await owner.query<DefinerRow>(
+      `select p.oid::regprocedure::text as signature, l.lanname as language,
+              p.provolatile as volatility, p.proconfig as config,
+              pg_get_function_result(p.oid) as result,
+              btrim(regexp_replace(p.prosrc, '\\s+', ' ', 'g')) as body,
+              o.rolsuper or o.rolbypassrls as "ownerBypassesRls",
+              coalesce((select array_agg(g.rolname::text order by g.rolname)
+                        from aclexplode(p.proacl) a
+                        left join pg_roles g on g.oid = a.grantee
+                        where a.grantee <> p.proowner and a.privilege_type = 'EXECUTE'),
+                       array['PUBLIC (default)']) as callers
+       from pg_proc p
+       join pg_language l on l.oid = p.prolang
+       join pg_roles o on o.oid = p.proowner
+       where p.pronamespace = $1::regnamespace and p.prosecdef`,
+      [APP_SCHEMA],
+    )
+    expect(rows).toEqual([
+      {
+        signature: 'restro.guest_table_by_code_hash(text)',
+        language: 'sql',
+        volatility: 's',
+        config: ['search_path=pg_catalog, restro'],
+        result:
+          'TABLE(tenant_id text, venue_id text, table_id text, code_generation integer, state text)',
+        body: GUEST_LOOKUP_BODY,
+        // It reads `tables` across tenants: an owner held to RLS would find nothing (on Supabase
+        // the owner is `postgres`, which has BYPASSRLS).
+        ownerBypassesRls: true,
+        callers: ['restro_app'],
+      },
+    ])
   })
 
   it('catches a tenant table created without FORCE RLS (self-test on a scratch table)', async () => {

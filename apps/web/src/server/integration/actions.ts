@@ -17,10 +17,12 @@ import { z } from 'zod'
 
 import { getPool } from '../db'
 import { serverEnv } from '../env'
+import { signInTooOld } from '../fresh-sign-in'
 import { enqueueJob } from '../jobs'
 import { logError } from '../log'
 import { canManageIntegration } from '../roles'
 import { requireTenant } from '../session'
+import { onSharedDevice } from '../staff/shared-device'
 import { getVenue } from '../venues'
 import {
   addInstance,
@@ -65,6 +67,8 @@ const VenueSource = z.strictObject({ venueId, settings: Settings })
 
 const INVALID: IntegrationActionResult = { ok: false, error: 'invalid' }
 const NOT_FOUND: IntegrationActionResult = { ok: false, error: 'not_found' }
+const NOT_ALLOWED: IntegrationActionResult = { ok: false, error: 'not_allowed' }
+const FRESH = { fresh: true } as const
 
 const services = (): IntegrationServices => ({
   sealPublicKey: serverEnv().SEAL_PUBLIC_KEY,
@@ -81,9 +85,14 @@ function revalidateOrganisation(): void {
 /** Runs one organisation-wide action for the signed-in person's organisation. */
 async function performOrganisation(
   run: (scope: IntegrationScope, services: IntegrationServices) => Promise<IntegrationActionResult>,
+  { fresh = false }: { readonly fresh?: boolean } = {},
 ): Promise<IntegrationActionResult> {
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId, signedInAt } = await requireTenant()
+    // A shared tablet works Tonight; a POS needs the person's own sign-in (RR-84).
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) return NOT_ALLOWED
+    // The systems list and an instance's credentials ask for the password after 15 min (D122 §7).
+    if (fresh && signInTooOld(signedInAt)) return { ok: false, error: 'sign_in_again' }
     const scope: IntegrationScope = {
       pool: getPool(),
       tenantId: organization.id,
@@ -106,7 +115,8 @@ async function performVenue(
   run: (scope: VenueScope, services: IntegrationServices) => Promise<IntegrationActionResult>,
 ): Promise<IntegrationActionResult> {
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) return NOT_ALLOWED
     const found = await getVenue(organization.id, venue)
     if (!found) return NOT_FOUND
     const scope: VenueScope = {
@@ -134,21 +144,21 @@ async function performVenue(
 export async function saveSystemsAction(input: unknown): Promise<IntegrationActionResult> {
   const parsed = Systems.safeParse(input)
   if (!parsed.success) return INVALID
-  return performOrganisation((scope) => saveSystems(scope, parsed.data.systems))
+  return performOrganisation((scope) => saveSystems(scope, parsed.data.systems), FRESH)
 }
 
 /** "Add {source}": a new instance with its sealed credentials; queues the connection check. */
 export async function addInstanceAction(input: unknown): Promise<IntegrationActionResult> {
   const parsed = NewInstance.safeParse(input)
   if (!parsed.success) return INVALID
-  return performOrganisation((scope, deps) => addInstance(scope, deps, parsed.data))
+  return performOrganisation((scope, deps) => addInstance(scope, deps, parsed.data), FRESH)
 }
 
 /** Seals and stores the address and API user of an instance, and queues the connection check. */
 export async function saveConnectionAction(input: unknown): Promise<IntegrationActionResult> {
   const parsed = Connect.safeParse(input)
   if (!parsed.success) return INVALID
-  return performOrganisation((scope, deps) => saveConnection(scope, deps, parsed.data))
+  return performOrganisation((scope, deps) => saveConnection(scope, deps, parsed.data), FRESH)
 }
 
 /** Renames an instance. */
@@ -162,7 +172,7 @@ export async function renameInstanceAction(input: unknown): Promise<IntegrationA
 export async function removeInstanceAction(input: unknown): Promise<IntegrationActionResult> {
   const parsed = InstanceOnly.safeParse(input)
   if (!parsed.success) return INVALID
-  return performOrganisation((scope) => removeInstance(scope, parsed.data))
+  return performOrganisation((scope) => removeInstance(scope, parsed.data), FRESH)
 }
 
 /** Queues the connection check of an instance again. */

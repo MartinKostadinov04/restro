@@ -1,6 +1,8 @@
 // Integration tests of the sync's side-table writers: barsy venues, places (rule 6 for absence),
 // job runs (refused writes are recorded, summaries are scrubbed) and the per-venue sync state in
 // the integration's config. As the restro_app role, on a real Postgres.
+import { generateKeyPairSync } from 'node:crypto'
+
 import { barsyVenues, createPool, type DbPool, jobRuns, places, withTenant } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
 import type pg from 'pg'
@@ -15,6 +17,9 @@ import { createIntegration, updateIntegration } from './sources'
 import { readCachedTree, readSyncState, storeCachedTree, updateSyncState } from './sync-config'
 import { issueAllTableTokens } from './tables'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
+
+/** The worker's public seal key, for the table codes these tests issue (#70). */
+const { publicKey } = generateKeyPairSync('x25519')
 
 describe.skipIf(!hasDatabase)('sync writers (as the restro_app role)', () => {
   const tenant = newId('tn')
@@ -204,7 +209,9 @@ describe.skipIf(!hasDatabase)('sync writers (as the restro_app role)', () => {
         expect(await mapBarsyVenue(app, tenant, integrationId, BID, heldVenue)).toMatchObject({
           ok: true,
         })
-        expect(await issueAllTableTokens(app, tenant, heldVenue)).toMatchObject({ issued: 10 })
+        expect(await issueAllTableTokens(app, tenant, heldVenue, publicKey)).toMatchObject({
+          issued: 10,
+        })
 
         const empty = await upsertPlaces(app, tenant, integrationId, BID, [], { pagesOk: [true] })
         expect(empty).toMatchObject({
@@ -230,7 +237,7 @@ describe.skipIf(!hasDatabase)('sync writers (as the restro_app role)', () => {
         const coded = await owner.query(
           `select count(*)::int as n from restro.tables t
              join restro.places p on p.table_id = t.id
-            where p.integration_id = $1 and p.bid = $2 and t.qr_token is not null
+            where p.integration_id = $1 and p.bid = $2 and t.qr_code_hash is not null
               and t.archived_at is null`,
           [integrationId, BID],
         )

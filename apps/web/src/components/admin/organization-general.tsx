@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label'
 import { suggestSlug } from '@/lib/slug'
 import { updateOrganizationAction } from '@/server/organization-actions'
 import type { UpdateOrganizationError } from '@/server/organization-actions-result'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 /** The same limit as the action (core's `MAX_ORGANIZATION_NAME_LENGTH`; core's writers are server-only). */
 const MAX_NAME_LENGTH = 200
@@ -46,6 +47,9 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
   const [slugError, setSlugError] = useState<UpdateOrganizationError | null>(null)
   const [namePending, startName] = useTransition()
   const [slugPending, startSlug] = useTransition()
+  // One per form: a pending name change and a pending address change are retried apart.
+  const againName = useSignInAgain(() => submitName())
+  const againSlug = useSignInAgain(() => submitSlug())
 
   const trimmedName = nameValue.trim()
   const nameValid = trimmedName !== '' && [...trimmedName].length <= MAX_NAME_LENGTH
@@ -60,8 +64,8 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
     ? guestMenuPath({ organization: shownSlug, venue: EXAMPLE_VENUE })
     : `/m/${shownSlug}/${EXAMPLE_VENUE}`
 
-  function submitName(event: FormEvent) {
-    event.preventDefault()
+  function submitName(event?: FormEvent) {
+    event?.preventDefault()
     if (!canEdit || !nameValid || !nameDirty || namePending) return
     setNameError(null)
     startName(async () => {
@@ -73,13 +77,17 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
         setNameValue(result.name)
         toast.success(t('name.saved'))
       } else {
+        if (result.error === 'sign_in_again') {
+          againName.ask()
+          return
+        }
         setNameError(result.error)
       }
     })
   }
 
-  function submitSlug(event: FormEvent) {
-    event.preventDefault()
+  function submitSlug(event?: FormEvent) {
+    event?.preventDefault()
     if (!canEdit || !slugValid || !slugDirty || slugPending) return
     setSlugError(null)
     startSlug(async () => {
@@ -92,6 +100,10 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
         if (result.filesQueued) toast.success(t('address.saved'))
         else toast.warning(t('address.savedLate'))
       } else {
+        if (result.error === 'sign_in_again') {
+          againSlug.ask()
+          return
+        }
         setSlugError(result.error)
       }
     })
@@ -99,6 +111,8 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
 
   return (
     <div className="grid gap-8" data-testid="organization-general">
+      {againName.dialog}
+      {againSlug.dialog}
       <form onSubmit={submitName} noValidate data-testid="general-name-form">
         <FormSection
           title={t('name.title')}

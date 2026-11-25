@@ -62,7 +62,10 @@ export function snapshotPath(
   return text === '' ? '(root)' : text
 }
 
-/** Strict parse of a snapshot; throws `SnapshotError('invalid_snapshot')` with safe paths. */
+/**
+ * Parse of a snapshot (strict, except the `design` block, which is read as the option list is now:
+ * see `MenuSnapshotSchema`); throws `SnapshotError('invalid_snapshot')` with safe paths.
+ */
 export function parseSnapshot(
   snapshot: unknown,
   refused?: { has(value: string): boolean },

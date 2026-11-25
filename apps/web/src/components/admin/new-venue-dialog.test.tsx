@@ -114,7 +114,7 @@ describe('step 1: the source', () => {
     expect((screen.getByTestId('new-venue-source-hand') as HTMLInputElement).checked).toBe(true)
     expect(next().disabled).toBe(false)
     const hint = screen.getByTestId('new-venue-no-instances')
-    expect(hint.textContent).toContain('No point-of-sale system is connected yet.')
+    expect(hint.textContent).toContain('No POS is connected yet.')
     expect(within(hint).getByRole('link').getAttribute('href')).toBe('/settings/integrations')
   })
 
@@ -202,7 +202,7 @@ describe('step 2, from a POS: nothing is typed', () => {
     for (const [error, text] of [
       ['not_allowed', 'Only an owner or admin can create a venue.'],
       ['invalid', 'Check the name, the address and the languages, then try again.'],
-      ['failed', 'Something went wrong. The venue was not created, try again.'],
+      ['failed', "Restro couldn't create the venue. Nothing changed; try again."],
     ] as const) {
       vi.mocked(createVenueAction).mockResolvedValue({ ok: false, error })
       const { user } = dialog()
@@ -218,36 +218,67 @@ describe('step 2, from a POS: nothing is typed', () => {
     await user.click(tillVenue(11))
     await user.click(submit())
     expect((await screen.findByTestId('new-venue-error')).textContent).toContain(
-      'Something went wrong',
+      'Nothing changed; try again',
     )
   })
 
-  it('says so when the instance reports no venue, and when all of them are linked', async () => {
+  it('says so in step 2 when the instance reports no venue yet', async () => {
     const { user } = dialog()
     await goOn(user, VARNA)
     expect(screen.getByTestId('new-venue-no-till-venues').textContent).toContain(
       'Till Varna has not reported any venues yet.',
     )
-    cleanup()
+  })
 
+  const FULL = {
+    id: SOFIA,
+    name: 'Till Sofia',
+    tillVenues: [{ bid: 1, name: 'Only one', linkedVenueName: 'Mine' }],
+  }
+
+  it('cannot be chosen from a POS whose every venue is linked, and says why in step 1 (S7)', async () => {
     vi.mocked(loadNewVenueSourcesAction).mockResolvedValue({
       ok: true,
       sources: {
         organizationSlug: 'night-group',
-        instances: [
-          {
-            id: SOFIA,
-            name: 'Till Sofia',
-            tillVenues: [{ bid: 1, name: 'Only one', linkedVenueName: 'Mine' }],
-          },
-        ],
+        instances: [FULL, { id: VARNA, name: 'Till Varna', tillVenues: [] }],
       },
     })
-    const second = dialog()
-    await goOn(second.user, SOFIA)
-    expect(screen.getByTestId('new-venue-all-linked').textContent).toBe(
-      'Every venue in Till Sofia is linked to a venue already.',
-    )
+    const { user } = dialog()
+    await screen.findByTestId('new-venue-sources')
+    const full = screen.getByTestId(`new-venue-source-${SOFIA}`) as HTMLInputElement
+    expect(full.disabled).toBe(true)
+    expect(full.closest('label')?.textContent).toContain('No free venues')
+    await user.click(full)
+    expect(full.checked).toBe(false)
+    // One that has reported nothing yet stays open: step 2 says so.
+    const empty = screen.getByTestId(`new-venue-source-${VARNA}`) as HTMLInputElement
+    expect(empty.disabled).toBe(false)
+    expect(empty.closest('label')?.textContent).toContain('0 venues')
+    // With a POS still open, nothing is chosen for the person.
+    expect(next().disabled).toBe(true)
+  })
+
+  it('has By hand chosen when every POS is full (S7)', async () => {
+    vi.mocked(loadNewVenueSourcesAction).mockResolvedValue({
+      ok: true,
+      sources: { organizationSlug: 'night-group', instances: [FULL] },
+    })
+    dialog()
+    await screen.findByTestId('new-venue-sources')
+    expect((screen.getByTestId('new-venue-source-hand') as HTMLInputElement).checked).toBe(true)
+    expect(next().disabled).toBe(false)
+  })
+
+  it('says “No free venues” in Bulgarian (S7)', async () => {
+    vi.mocked(loadNewVenueSourcesAction).mockResolvedValue({
+      ok: true,
+      sources: { organizationSlug: 'night-group', instances: [FULL] },
+    })
+    dialog('bg')
+    const radio = (await screen.findByTestId(`new-venue-source-${SOFIA}`)) as HTMLInputElement
+    expect(radio.disabled).toBe(true)
+    expect(radio.closest('label')?.textContent).toContain('Няма свободни заведения')
   })
 
   it('goes back to step 1 with the choice kept', async () => {
@@ -457,7 +488,7 @@ describe('creating by hand', () => {
     for (const [error, text] of [
       ['not_allowed', 'Only an owner or admin can create a venue.'],
       ['invalid', 'Check the name, the address and the languages, then try again.'],
-      ['failed', 'Something went wrong. The venue was not created, try again.'],
+      ['failed', "Restro couldn't create the venue. Nothing changed; try again."],
     ] as const) {
       vi.mocked(createVenueAction).mockResolvedValue({ ok: false, error })
       const { user } = dialog()
@@ -472,7 +503,7 @@ describe('creating by hand', () => {
     const { user, onCreated } = dialog()
     await fill(user)
     expect((await screen.findByTestId('new-venue-error')).textContent).toContain(
-      'Something went wrong',
+      'Nothing changed; try again',
     )
     expect(onCreated).not.toHaveBeenCalled()
   })

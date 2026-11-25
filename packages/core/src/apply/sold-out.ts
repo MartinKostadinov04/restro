@@ -15,8 +15,15 @@
 // never a write, and `validateWrite` refuses a `true` on an edition layer anyway (`less_cautious`).
 // Clearing our mark can only reveal the layers below, so an item barsy has off sale (the barsy
 // layer says `false`, and `all_true` lets any `false` win) stays off sale whatever is sent here.
+//
+// Every venue marks, a POS venue included (D147, which is the decision D124 §6 was waiting for).
+// Marking sold out is the cautious direction, so rule 5 allows it wherever the menu comes from:
+// at 01:00 the bartender holding the empty bottle is the one who knows, and no POS reports it.
+// Where a connector does report stock, the POS's own word marks an item run out by itself, in
+// the `till` layer (`stock.ts`, #80); that mark and this one sit in different layers and neither
+// undoes the other.
 
-import { type DbPool, nodes } from '@restro/db'
+import { type DbPool, fieldValues, nodes } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
 import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
@@ -133,6 +140,33 @@ async function currentServiceDay(tx: WriteTx, venueId: string, now: Date): Promi
   }
   const { venue } = locked
   return serviceDate(now, venue.timezone, venue.serviceDayEndsAt)
+}
+
+/**
+ * Which of these items carry tonight's mark (`for_sale = false` in the service edition of
+ * `day`), for a screen that offers the tap on a few items it already has in front of it. A
+ * read of the mark alone, not of where the item stands on sale: an item the POS has off sale
+ * is not in here, and no mark of ours may put it back (rule 5).
+ */
+export async function soldOutTonightOf(
+  tx: Pick<WriteTx, 'select'>,
+  input: { readonly itemIds: readonly string[]; readonly day: string },
+): Promise<ReadonlySet<string>> {
+  const ids = [...new Set(input.itemIds)]
+  if (ids.length === 0) return new Set()
+  const rows = await tx
+    .select({ nodeId: fieldValues.nodeId, value: fieldValues.value })
+    .from(fieldValues)
+    .where(
+      and(
+        inArray(fieldValues.nodeId, ids),
+        eq(fieldValues.fieldKey, 'for_sale'),
+        eq(fieldValues.layer, serviceEditionLayer(input.day)),
+        eq(fieldValues.scope, 'master'),
+        eq(fieldValues.valid, true),
+      ),
+    )
+  return new Set(rows.filter((row) => row.value === false).map((row) => row.nodeId))
 }
 
 async function assertActiveItems(tx: WriteTx, ids: readonly string[]): Promise<void> {

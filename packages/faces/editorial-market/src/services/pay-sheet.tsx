@@ -1,72 +1,380 @@
-// The pay sheet (`#pay`). The amounts are the host's: the guest picks how much of the table to pay
-// (the whole table, an equal share, only their own), a tip and a promo code, each change sends
-// `pay.quote`, and the sheet draws `state.quote` (subtotal, tip, VAT, total, and the only methods
-// allowed). It computes nothing itself.
+// The pay sheet (`#pay`), D127 "The guest's bill screen and paying from it" (#45, #114). The amounts
+// are the host's: the bill's lines (`state.tableBill`) are the POS's own, the guest ticks lines (or
+// "The whole bill"), may add a tip (5, 10, 15 % or an amount, none selected, only where the POS
+// records one), and Pay sends `pay.start` with each ticked line as the phone saw it. The sheet adds
+// up only the preview of the choice (`choosePay`, from the shell); the hold is priced by the server.
 //
-// Paying sends `pay.start` with the quote's id. The sheet says "Paid" only after the host accepted
-// the payment AND its state holds a receipt that was not there before. A rejection, an error or a
-// timeout never says paid: a rejection says the payment did not go through, and no answer says
-// the outcome is unknown and offers the same attempt again (same `actionId`, so it cannot charge
-// twice). Every await is in a try/catch, so the "processing" screen always clears.
+// What follows is this phone's payment (`state.payment`), worded by the shell's `payScreen`:
+// "Preparing your bill…", the lines, tip and total with the card form in the slot the page fills
+// (`binding.payForm`; the face never loads a provider library, D72), "Processing your payment…",
+// "Paid" with the payment number, "The venue is checking the payment", or what ended with nothing
+// charged. "Paid" is only a `captured` payment: a refusal, an error or a timeout never says it.
+// The look is the template agent's, later (D122); this is the functional screen.
+//
+// A table of a linked group (#542, D160): where the venue's POS moves lines to a payment table, one
+// payment covers lines of any member tables (`payableBill`). Each table's lines sit under its own
+// heading with a "Whole table" tick, and "The whole bill" ticks every member's free lines. A member
+// table whose bill can't be read now shows its lines unticked, a plain line, "Try again" and "Call
+// a waiter", and "The whole bill" waits for it (log 1.8). Where the POS takes one table's payment at
+// a time, the phone pays its own table and the sheet says so in one line.
 
 import {
-  PAY_METHODS,
-  PAY_SCOPES,
-  type PayMethod,
-  type PayScope,
-  parseMinor,
-  SERVICE_LIMITS,
-  type ViewText,
+  type ConfirmationView,
+  choosePay,
+  confirmationOf,
+  endText,
+  freeLines,
+  type GroupTableView,
+  type Locale,
+  lineNameText,
+  NO_TIP,
+  offersPay,
+  offersReceiptEmail,
+  type PayBlock,
+  type PayFormSlot,
+  type PayingStrings,
+  type PayingView,
+  type PaymentView,
+  type PayScreen,
+  type Picks,
+  type PreparedConfirmation,
+  paidReceiptText,
+  payAcross,
+  payableBill,
+  payBlock,
+  payFormLocale,
+  payScreen,
+  paySignedMoney,
+  payStartCommand,
+  pickTable,
+  pickWhole,
+  prepareConfirmation,
+  reconcilePicks,
+  refusalText,
+  type ServiceStrings,
+  sameAmountAgo,
+  saveConfirmation,
+  type TableBillLineView,
+  type TableBillPartView,
+  type TableBillView,
+  type TipChoice,
+  tablePicked,
+  togglePick,
 } from '@restro/shell'
-import { useEffect, useRef, useState } from 'react'
-
-import { Text } from '../parts'
-import { type Choice, ChoiceGroup } from './choice'
-import { newActionId, type Outcome } from './command'
-import { StatePanel, Stepper } from './parts'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { Photo } from '../parts'
+import { useWaiterCall } from './call-sheet'
+import { newActionId } from './command'
+import { StatePanel } from './parts'
 import { useServicesRequired } from './provider'
+import { TipRow } from './tip-row'
 
-/** The guest's tip choice: the host's own default until they pick one. */
-type Tip =
-  | { readonly kind: 'host' }
-  | { readonly kind: 'none' }
-  | { readonly kind: 'percent'; readonly percent: number }
-  | { readonly kind: 'custom' }
+/** Puts the page's card form into the slot; the face loads no provider library. */
+function FormSlot({
+  slot,
+  label,
+  locale,
+  failedText,
+}: {
+  readonly slot: PayFormSlot
+  readonly label: string
+  readonly locale: Locale
+  readonly failedText: string
+}) {
+  const holder = useRef<HTMLDivElement>(null)
+  const handle = useRef<ReturnType<PayFormSlot['mount']> | null>(null)
+  const props = {
+    label,
+    buttonClass: 'ro-primary is-wide',
+    locale: payFormLocale(locale),
+    failedText,
+  }
+  const latest = useRef(props)
+  latest.current = props
+  useEffect(() => {
+    const element = holder.current
+    if (element === null) return
+    handle.current = slot.mount(element, latest.current)
+    return () => {
+      handle.current?.unmount()
+      handle.current = null
+    }
+  }, [slot])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the form takes the new label and words
+  useEffect(() => {
+    handle.current?.update(latest.current)
+  }, [label, failedText])
+  return <div data-slot="pay.form" data-design-part="pay.methods" ref={holder} />
+}
 
-/** A tip button: none, a percentage the host offers (`p10`) or the custom amount. */
-type TipKey = 'none' | 'custom' | `p${number}`
+/** The Payment confirmation's id: the button that opens it names it in `aria-controls`. */
+const CONFIRMATION_ID = 'ro-pay-confirmation'
 
-/** Where paying stands. */
-type Step =
-  | { readonly name: 'choose' }
-  | { readonly name: 'processing'; readonly method: PayMethod }
-  /** The host accepted the payment. It is paid once the host's state has the receipt. */
-  | { readonly name: 'accepted'; readonly method: PayMethod }
-  /** The host has the payment and has not decided. */
-  | { readonly name: 'received'; readonly method: PayMethod }
-  /** The host said no. */
-  | { readonly name: 'failed'; readonly method: PayMethod; readonly message: ViewText | null }
-  /** No usable answer (an error or a timeout): the payment may or may not have gone through. */
-  | { readonly name: 'unknown'; readonly method: PayMethod }
+/** "×2" for a line of more than one. */
+const mark = (quantity: string) => (quantity === '1' ? '' : ` ×${quantity}`)
+
+/** Why Pay is greyed, in the guest's words; `bad_email` says it at the field itself. */
+function payBlockText(
+  block: PayBlock | null,
+  said: {
+    readonly words: ServiceStrings
+    readonly w: PayingStrings
+    /** The venue's smallest card payment as text, for `below_minimum`. */
+    readonly minCard: string
+  },
+): string | null {
+  const { words, w } = said
+  switch (block) {
+    case null:
+      return null
+    case 'offline':
+      return words.offline
+    case 'ordering_paused':
+      return words.orderingPaused
+    case 'cards_paused':
+      return w.cardsPaused
+    case 'not_up_to_date':
+      return w.notUpToDate
+    case 'nothing_picked':
+      return w.nothingPicked
+    // The POS's discount is as big as the ticked lines: there is nothing a card can be charged.
+    case 'nothing_owed':
+      return w.nothingOwed
+    case 'below_minimum':
+      return w.belowMinimum(said.minCard)
+    case 'tip_too_big':
+      return w.tipTooBig
+    case 'bad_email':
+      return w.emailInvalid
+  }
+}
+
+/**
+ * Who processes the payment and for which legal entity, with the links to the legal details and
+ * the privacy notice (#198, D127 1.6): drawn wherever the guest can enter a card, so the choosing
+ * screen and the card screen both carry it.
+ */
+function LegalBlock({ paying, w }: { readonly paying: PayingView; readonly w: PayingStrings }) {
+  // Without the legal details the line would name the wrong entity (the venue's trade name): the
+  // host sends them whenever paying is offered, so nothing is drawn only where it is not.
+  const { legal, processor } = paying
+  if (legal === null) return null
+  return (
+    <>
+      {processor === null ? null : (
+        <p className="ro-allergy">{w.legalProcessor(processor, legal.name)}</p>
+      )}
+      <div className="ro-allergy" data-slot="pay.legal">
+        <details>
+          <summary>{w.legalDetailsLink}</summary>
+          <p>{legal.name}</p>
+          <p>{w.legalEik(legal.eik)}</p>
+          <p>{legal.address}</p>
+        </details>
+        <a href={legal.privacyUrl} target="_blank" rel="noopener noreferrer">
+          {w.legalPrivacyLink}
+        </a>
+      </div>
+    </>
+  )
+}
+
+/**
+ * The lines paid in the app in this sitting (D127 1.2): greyed under "Paid in the app", on every
+ * phone at the table, with no payer named. They stay until the sitting ends.
+ */
+export function PaidInApp({
+  lines,
+  money,
+}: {
+  readonly lines: TableBillView['paidLines']
+  readonly money: (minor: number) => string
+}) {
+  const { words, locale } = useServicesRequired()
+  if (lines.length === 0) return null
+  return (
+    <section data-slot="bill.paid">
+      <h4 className="ro-h">{words.paying.paidInApp}</h4>
+      <ul className="ro-lines">
+        {lines.map((line, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a paid line has no id of its own (rule 3)
+          <li key={index} data-paid-in-app="">
+            {lineNameText(line.name, locale, words.otherItem)}
+            {mark(line.quantity)} · {money(line.amountMinor)}
+            {line.refund === undefined ? null : (
+              <>
+                {' · '}
+                {line.refund === 'sending'
+                  ? words.paying.paidRefundSending
+                  : line.refund === 'refunded'
+                    ? words.paying.paidRefunded
+                    : words.paying.paidRefundFailed}
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/**
+ * The Payment confirmation (D127 1.4): Restro's own page with the venue, the time, the lines, the
+ * tip, the total, "Paid by card" and the payment number, and Save. It saves an image on the phone
+ * and leaves no link; it is not a receipt and does not look like one.
+ */
+export function Confirmation({
+  view,
+  id,
+  closeLabel,
+  failedText,
+  onClose,
+}: {
+  readonly view: ConfirmationView
+  readonly id: string
+  /** "Back" (the guide's `same_no`), pending Martin's word for closing the page. */
+  readonly closeLabel: string
+  readonly failedText: string
+  readonly onClose: () => void
+}) {
+  const { assetBase, locale, view: menu } = useServicesRequired()
+  // The Receipt page's Venue block (D130): the venue's logo with the name small under it. A venue
+  // without a logo keeps the name.
+  const logo = menu.design.receipt?.venue_block === 'logo' ? menu.theme.logo : null
+  const [saving, setSaving] = useState(false)
+  const [failed, setFailed] = useState(false)
+  // The image is drawn as the page opens, so the Save tap has it ready (a share sheet needs the tap).
+  const [prepared] = useState<PreparedConfirmation>(() => prepareConfirmation(view))
+  const heading = useRef<HTMLHeadingElement>(null)
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    heading.current?.focus({ preventScroll: false })
+    return () => {
+      alive.current = false
+    }
+  }, [])
+  async function save() {
+    setSaving(true)
+    setFailed(false)
+    try {
+      await saveConfirmation(prepared)
+    } catch {
+      // No success is shown for a save that failed: one line, and the guest taps Save again.
+      if (alive.current) setFailed(true)
+    }
+    if (alive.current) setSaving(false)
+  }
+  return (
+    <article className="ro-confirm" id={id} data-slot="pay.confirmation" data-design-part="receipt">
+      <button
+        type="button"
+        className="ro-ghost"
+        data-slot="pay.confirmation.close"
+        onClick={onClose}
+      >
+        {closeLabel}
+      </button>
+      <h3 className="ro-h" tabIndex={-1} ref={heading}>
+        {view.title}
+      </h3>
+      {view.venue === null ? null : (
+        <>
+          {logo === null ? null : (
+            <Photo
+              image={logo}
+              assetBase={assetBase}
+              page={locale}
+              sizes="144px"
+              className="ro-confirm-logo"
+              loading="eager"
+            />
+          )}
+          <p
+            data-slot="pay.confirmation.venue"
+            data-design-part="receipt.venue"
+            className={logo === null ? undefined : 'is-under-logo'}
+          >
+            {view.venue}
+          </p>
+        </>
+      )}
+      {view.when === null ? null : <p data-slot="pay.confirmation.when">{view.when}</p>}
+      <ul className="ro-lines">
+        {view.lines.map((line, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a payment's lines have no id of their own
+          <li key={index}>
+            {line.text} · {line.amount}
+          </li>
+        ))}
+      </ul>
+      {view.tip === null ? null : (
+        <div className="ro-sum">
+          <span>{view.tip.label}</span>
+          <b>{view.tip.amount}</b>
+        </div>
+      )}
+      <div className="ro-sum is-big">
+        <span>{view.total.label}</span>
+        <b>{view.total.amount}</b>
+      </div>
+      <p>{view.paidBy}</p>
+      <p>
+        {view.number.label}: <b className="ro-pay-number">{view.number.value}</b>
+      </p>
+      <p className="ro-confirm-note" data-slot="pay.confirmation.note">
+        {view.note}
+      </p>
+      <button
+        type="button"
+        className="ro-primary is-wide"
+        data-design-part="button"
+        data-slot="pay.confirmation.save"
+        disabled={saving}
+        onClick={() => void save()}
+      >
+        <span>{view.saveLabel}</span>
+      </button>
+      {failed ? (
+        <p className="ro-notice is-bad" role="alert" data-slot="pay.confirmation.failed">
+          {failedText}
+        </p>
+      ) : null}
+    </article>
+  )
+}
 
 export function PaySheet() {
   const o = useServicesRequired()
-  const { words, state, locale, run } = o
-  const quote = state.quote
-  const owes = state.bill !== null && state.bill.total.minor > 0
+  const { words, state, locale, run, binding } = o
+  const w = words.paying
+  // This table's bill, or every member table's where one payment covers the group (#542).
+  const { tableBill, tableGroup } = state
+  const bill = useMemo(() => payableBill({ tableBill, tableGroup }), [tableBill, tableGroup])
+  const across = payAcross(state)
+  // A member table whose bill can't be read now: its lines and "The whole bill" wait (log 1.8).
+  const unread = across?.tables.some((table) => !table.complete) === true
+  // A group whose POS takes one table's payment at a time: this phone pays its own table.
+  const oneAtATime = tableGroup != null && across === null
+  const paying = state.paying ?? null
+  const payment = state.payment ?? null
+  const tipsOffered = state.ordering?.tips === true
+  const receiptEmailOffered = offersReceiptEmail(paying)
+  // Every amount here is the POS's or the server's, and a line of the POS's may be negative (a
+  // waiter's discount, #293 DA-8): one signed format, so a discount shows as "-4,00 EUR" and the
+  // whole menu is never replaced by the load-failure notice.
+  const money = useMemo(
+    () => (minor: number) => paySignedMoney(minor, bill?.currency ?? 'EUR', locale),
+    [bill?.currency, locale],
+  )
 
-  const [scope, setScope] = useState<PayScope>('full')
-  const [people, setPeople] = useState<number>(SERVICE_LIMITS.peopleMin)
-  const [tip, setTip] = useState<Tip>({ kind: 'host' })
-  const [custom, setCustom] = useState('')
-  const [promoText, setPromoText] = useState('')
-  const [promo, setPromo] = useState<string | null>(null)
-  const [quoting, setQuoting] = useState<'idle' | 'loading' | 'failed'>('idle')
-  const [requote, setRequote] = useState(0)
-  const [step, setStep] = useState<Step>({ name: 'choose' })
-  const attempt = useRef<{ readonly key: string; readonly actionId: string } | null>(null)
-  const quoteIds = useRef(new Map<string, string>())
-  const receiptBefore = useRef<string | null>(null)
+  const [picks, setPicks] = useState<Picks>(new Map())
+  const [tip, setTip] = useState<TipChoice>(NO_TIP)
+  const [other, setOther] = useState('')
+  const [receiptEmail, setReceiptEmail] = useState('')
+  const [asking, setAsking] = useState<number | null>(null)
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   const alive = useRef(true)
   useEffect(() => {
     alive.current = true
@@ -74,366 +382,598 @@ export function PaySheet() {
       alive.current = false
     }
   }, [])
-
-  // What the quote is asked for. A tip the guest typed that is not an amount asks for the host's own.
-  const params = {
-    scope,
-    people: scope === 'split' ? people : null,
-    tipPercent: tip.kind === 'percent' ? tip.percent : tip.kind === 'none' ? 0 : null,
-    tipMinor: tip.kind === 'custom' ? parseMinor(custom) : null,
-    promo,
-  }
-  const paramsKey = JSON.stringify(params)
-  const latest = useRef(params)
-  latest.current = params
-  const customTip = tip.kind === 'custom'
-
-  // Ask the host for a quote on arrival and whenever the guest changes the scope, the people, the
-  // tip or the promo code. The same question keeps its `actionId`, so a repeat is not a new one.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `paramsKey` stands for the params the effect reads through `latest`; `requote` only re-runs it
+  // A fresh bill clears only the ticks of lines that changed or went; a friend's round clears none.
+  // Not while this phone has a payment: the server marks that payment's own lines `beingPaid`,
+  // which would empty the ticks "Pay again" goes back to (D127 2.1).
   useEffect(() => {
-    if (!owes) return
-    let current = true
-    const ask = async () => {
-      const actionId = quoteIds.current.get(paramsKey) ?? newActionId()
-      quoteIds.current.set(paramsKey, actionId)
-      setQuoting('loading')
-      let outcome: Outcome = { ok: false }
-      try {
-        outcome = await run({ kind: 'pay.quote', actionId, ...latest.current })
-      } catch {
-        outcome = { ok: false }
-      }
-      if (current)
-        setQuoting(outcome.ok && outcome.result.status !== 'rejected' ? 'idle' : 'failed')
-    }
-    // A tip being typed waits for a pause; everything else is a tap.
-    if (!customTip) {
-      void ask()
-      return () => {
-        current = false
-      }
-    }
-    const timer = window.setTimeout(ask, 500)
-    return () => {
-      current = false
-      window.clearTimeout(timer)
-    }
-  }, [paramsKey, owes, requote, customTip, run])
+    if (bill !== null && payment === null) setPicks((current) => reconcilePicks(current, bill))
+  }, [bill, payment])
+  // Opened from the bill's "Pay N" (lane 3 S14): every free line is ticked; a line another phone is
+  // paying stays unticked, so Pay can read less than the bill's button. The armed tap is taken only
+  // when the ticks are set, so a bill that arrives a moment later still gets them; a reloaded `#pay`
+  // or the header's Pay ticks nothing.
+  const offered = offersPay(state)
+  useEffect(() => {
+    if (bill === null || payment !== null || !offered || freeLines(bill).length === 0) return
+    // While a member table is unread the whole bill can't be ticked: the tap is taken, none ticked.
+    if (o.takeWholeBill() && !unread) setPicks(pickWhole(new Map(), bill))
+  }, [bill, payment, offered, unread, o.takeWholeBill])
 
-  async function pay(method: PayMethod) {
-    if (quote === null || step.name === 'processing') return
-    const key = `${quote.id}|${method}`
-    // The same quote and method again (a retry) is the same payment; anything else is a new one.
-    const retry = attempt.current?.key === key
-    const actionId = retry && attempt.current !== null ? attempt.current.actionId : newActionId()
-    attempt.current = { key, actionId }
-    // The receipt that counts is one the host issues after this payment began: a retry of the same
-    // payment keeps the point it began at.
-    if (!retry) receiptBefore.current = state.receipt?.id ?? null
-    setStep({ name: 'processing', method })
-    let outcome: Outcome = { ok: false }
-    try {
-      outcome = await run({ kind: 'pay.start', actionId, quoteId: quote.id, method })
-    } catch {
-      outcome = { ok: false }
-    }
-    if (!alive.current) return
+  const nameOf = (line: TableBillLineView) => lineNameText(line.name, locale, words.otherItem)
+
+  /** Sends a pay command; a refusal is worded by code, a lost answer is not a success. */
+  async function send(command: Parameters<typeof run>[0]) {
+    setRefusal(null)
+    const outcome = await run(command)
+    if (!alive.current) return null
     if (!outcome.ok) {
-      setStep({ name: 'unknown', method })
-    } else if (outcome.result.status === 'accepted') {
-      setStep({ name: 'accepted', method })
-    } else if (outcome.result.status === 'rejected') {
-      attempt.current = null // a definite no: the next try is a new payment
-      setStep({ name: 'failed', method, message: outcome.result.message })
-    } else {
-      setStep({ name: 'received', method })
+      setRefusal(words.refusedOther)
+      return null
+    }
+    const { result } = outcome
+    if (result.status === 'rejected') {
+      setRefusal(
+        refusalText(words, result.code, {
+          command: command.kind,
+          minCard: paying === null ? null : money(paying.minCardMinor),
+        }),
+      )
+    }
+    return result
+  }
+
+  async function start() {
+    if (bill === null) return
+    setBusy(true)
+    setAsking(null)
+    try {
+      await send(
+        payStartCommand(newActionId(), picks, tip, tipsOffered, receiptEmail, receiptEmailOffered),
+      )
+    } finally {
+      if (alive.current) setBusy(false)
     }
   }
 
-  // The receipt the host issued for this payment: one that was not in its state before.
-  const receipt =
-    state.receipt !== null && state.receipt.id !== receiptBefore.current ? state.receipt : null
-
-  if (step.name === 'processing') {
+  if (payment !== null) return <PaymentScreen payment={payment} money={money} />
+  // Without a location pass there is no bill and no order: why, and the way to allow it.
+  if (state.location?.state === 'needed') {
     return (
-      <StatePanel tone="wait" title={words.processing}>
-        {quote === null ? null : <b>{quote.total.text}</b>}
-      </StatePanel>
+      <div className="ro-sheet" data-slot="bill.hidden">
+        <h3 className="ro-h">{w.locationTitle}</h3>
+        <p>{w.locationBody}</p>
+        {binding.location === undefined ? null : (
+          <button
+            type="button"
+            className="ro-primary is-wide"
+            data-design-part="button"
+            onClick={() => binding.location?.reopen()}
+          >
+            <span>{w.allowLocation}</span>
+          </button>
+        )}
+        <CallWaiter />
+      </div>
     )
   }
-  if (step.name === 'accepted' && receipt !== null) {
+  const offline = state.offline === true
+  // Offline with no bill yet: the offline line, never "Nothing to pay yet" (D72, D121).
+  if (bill === null && offline) {
     return (
-      <StatePanel tone="ok" title={words.success} hint={words.successHint}>
+      <div className="ro-sheet" data-slot="pay.offline">
+        <p className="ro-notice">{words.offline}</p>
+      </div>
+    )
+  }
+  const hasLines = bill?.parts.some((part) => part.lines.length > 0) === true
+  // Nothing on the bill and nothing paid (lane 3 S1): say so and lead back to the menu, never a
+  // form with a dead "Pay 0,00". Only on a complete reading while online: a failed or offline
+  // reading keeps the form with its own not-up-to-date or offline line (D72, D121).
+  if (
+    bill === null ||
+    paying === null ||
+    (bill.complete && !offline && !hasLines && bill.paidLines.length === 0)
+  ) {
+    return (
+      <div className="ro-sheet" data-slot="pay.empty">
+        <p className="ro-empty">{words.nothingToPay}</p>
         <button
           type="button"
           className="ro-primary is-wide"
-          data-slot="pay.receipt_open"
-          onClick={(event) => o.openSheet('receipt', event.currentTarget)}
+          data-design-part="button"
+          onClick={o.closeSheet}
         >
-          <span>{words.viewReceipt}</span>
+          <span>{words.done}</span>
         </button>
-        <button type="button" className="ro-ghost" onClick={o.closeSheet}>
-          {words.done}
-        </button>
-      </StatePanel>
+      </div>
     )
   }
-  if (step.name === 'accepted' || step.name === 'received') {
-    const method = step.method
+
+  const totals = choosePay(picks, tip, tipsOffered)
+  const block = payBlock(
+    paying,
+    bill,
+    picks,
+    tip,
+    tipsOffered,
+    receiptEmail,
+    offline,
+    // D120: while ordering is paused Pay is greyed, with the pause's own line.
+    state.ordering?.state === 'paused',
+  )
+  const blockWords = payBlockText(block, {
+    words,
+    w,
+    minCard: money(paying.minCardMinor),
+  })
+  const free = freeLines(bill)
+  // Everything is paid: nothing is free to pay and the sitting has paid lines, so the choosing, the
+  // totals and Pay go, and the bill shows what was paid (D127 1.2).
+  const settled = free.length === 0 && bill.paidLines.length > 0
+  const everything = free.length > 0 && free.every((line) => picks.has(line.id))
+  const lineItem = (part: TableBillPartView, line: TableBillLineView, tickable: boolean) => {
+    const greyed = part.beingPaid || line.beingPaid
+    const label = `${nameOf(line)}${mark(line.quantity)} · ${money(line.amountMinor)}`
     return (
-      <StatePanel tone="wait" title={words.processing} hint={words.payReceived}>
-        {step.name === 'received' ? (
-          <button type="button" className="ro-ghost" onClick={() => pay(method)}>
-            {words.retry}
+      <li key={line.id} data-being-paid={greyed ? '' : undefined}>
+        {paying.state === 'off' || greyed || !tickable ? (
+          <span>
+            {label}
+            {greyed ? ` · ${w.beingPaid}` : ''}
+          </span>
+        ) : (
+          <label>
+            <input
+              type="checkbox"
+              checked={picks.has(line.id)}
+              onChange={() => setPicks(togglePick(picks, bill, line.id))}
+            />{' '}
+            {label}
+          </label>
+        )}
+      </li>
+    )
+  }
+  /** One member table under its own heading (#542): "Whole table", its lines, or why they wait. */
+  const memberTable = (table: GroupTableView, index: number) => {
+    const lines = table.parts.flatMap((part) => part.lines.map((line) => ({ part, line })))
+    const pickable = table.complete && offersPay(state) && !settled
+    const hasFree = lines.some(({ part, line }) => !part.beingPaid && !line.beingPaid)
+    return (
+      <section
+        // biome-ignore lint/suspicious/noArrayIndexKey: a member table carries no id (rule 3)
+        key={index}
+        className="ro-round"
+        data-slot="pay.group.table"
+        data-own={table.own ? '' : undefined}
+        data-updating={table.complete ? undefined : ''}
+      >
+        <header>
+          <span>{o.guest.table(table.label)}</span>
+          {table.own ? <em>{w.yourTable}</em> : null}
+        </header>
+        {pickable && hasFree ? (
+          <button
+            type="button"
+            className="ro-ghost"
+            data-slot="pay.group.whole_table"
+            data-design-part="pay.scope"
+            aria-pressed={tablePicked(picks, bill, table)}
+            onClick={() => setPicks(pickTable(picks, bill, table))}
+          >
+            {w.wholeTable}
           </button>
         ) : null}
-      </StatePanel>
+        {lines.length === 0 ? null : (
+          <ul className="ro-lines">
+            {lines.map(({ part, line }) => lineItem(part, line, table.complete))}
+          </ul>
+        )}
+        {table.complete ? null : (
+          <div data-slot="pay.group.not_read">
+            <p className="ro-notice" role="status">
+              {w.tableNotRead}
+            </p>
+            {binding.refresh === undefined ? null : (
+              <button
+                type="button"
+                className="ro-ghost"
+                data-slot="pay.group.retry"
+                onClick={() => binding.refresh?.()}
+              >
+                {words.retry}
+              </button>
+            )}
+            <CallWaiter />
+          </div>
+        )}
+      </section>
     )
   }
-  if (step.name === 'failed') {
-    const method = step.method
-    return (
-      <StatePanel
-        tone="bad"
-        title={words.failure}
-        hint={
-          step.message === null ? words.failureHint : <Text value={step.message} page={locale} />
-        }
-      >
-        <button type="button" className="ro-primary is-wide" onClick={() => pay(method)}>
-          <span>{words.retry}</span>
-        </button>
-        <button type="button" className="ro-ghost" onClick={() => setStep({ name: 'choose' })}>
-          {words.payWith}
-        </button>
-      </StatePanel>
-    )
-  }
-  if (step.name === 'unknown') {
-    const method = step.method
-    return (
-      <StatePanel tone="bad" title={words.payUnknown} hint={words.payUnknownHint}>
-        <button type="button" className="ro-primary is-wide" onClick={() => pay(method)}>
-          <span>{words.retry}</span>
-        </button>
-        <button type="button" className="ro-ghost" onClick={() => setStep({ name: 'choose' })}>
-          {words.payWith}
-        </button>
-      </StatePanel>
-    )
-  }
-
-  if (!owes) return <p className="ro-empty">{words.nothingToPay}</p>
-
-  // The quote answers what the guest asked for; if the host answered something else, nothing is payable.
-  const matches =
-    quote !== null && quote.scope === scope && (scope !== 'split' || quote.people === people)
-  const canPay = quote !== null && matches && quoting === 'idle'
-  const tips = (quote?.tipOptions ?? []).filter(
-    (option) =>
-      Number.isInteger(option.percent) &&
-      option.percent > 0 &&
-      option.percent <= SERVICE_LIMITS.tipPercentMax,
-  )
-  // The tip buttons: none, the host's percentages, a custom amount.
-  const tipChoices: Choice<TipKey>[] = [
-    { key: 'none', label: words.noTip },
-    ...tips.map((option) => ({ key: `p${option.percent}` as const, label: `${option.percent}%` })),
-    { key: 'custom', label: words.custom },
-  ]
-  // Which one is on: the guest's pick, else the one whose amount is the host's own default.
-  const hostTip = (): TipKey | null => {
-    if (quote === null) return null
-    if (quote.tip.minor === 0) return 'none'
-    const same = tips.find((option) => option.amount.minor === quote.tip.minor)
-    return same === undefined ? null : `p${same.percent}`
-  }
-  const tipChoice: TipKey | null =
-    tip.kind === 'host'
-      ? hostTip()
-      : tip.kind === 'percent'
-        ? `p${tip.percent}`
-        : tip.kind === 'none'
-          ? 'none'
-          : 'custom'
-  const chooseTip = (key: TipKey) => {
-    if (key === 'none') setTip({ kind: 'none' })
-    else if (key === 'custom') setTip({ kind: 'custom' })
-    else setTip({ kind: 'percent', percent: Number(key.slice(1)) })
-  }
-  const methods = (quote?.methods ?? []).filter((method) => PAY_METHODS.includes(method))
-  // The host takes promo codes when its quote has a promo slot, whether or not a code was tried.
-  const promoSlot = quote === null ? null : quote.promo
 
   return (
-    <div className="ro-sheet" aria-busy={quoting === 'loading'}>
-      <h3 className="ro-h">{words.whatToPay}</h3>
-      <ChoiceGroup
-        label={words.whatToPay}
-        className="ro-scope"
-        value={scope}
-        onChoose={setScope}
-        choices={PAY_SCOPES.map((option) => ({
-          key: option,
-          label: <span>{words.scopes[option]}</span>,
-        }))}
-      />
-      {scope === 'split' ? (
-        <div className="ro-row">
-          <span>{words.people}</span>
-          <Stepper
-            value={people}
-            min={SERVICE_LIMITS.peopleMin}
-            max={SERVICE_LIMITS.peopleMax}
-            onChange={setPeople}
-            label={words.people}
-            words={words}
-          />
-        </div>
+    <div className="ro-sheet" data-slot="pay.choose" data-design-part="pay">
+      {settled ? null : <h3 className="ro-h">{w.pickTitle}</h3>}
+      {paying.state === 'off' && !settled ? <p className="ro-notice">{w.askWaiterToPay}</p> : null}
+      {oneAtATime && !settled ? (
+        <p className="ro-allergy" data-slot="pay.one_table">
+          {w.oneTableAtATime}
+        </p>
       ) : null}
+      {offersPay(state) && !settled ? (
+        <button
+          type="button"
+          className="ro-ghost"
+          data-slot="pay.whole"
+          data-design-part="pay.scope"
+          aria-pressed={everything}
+          // A member table that can't be read now holds back the whole bill (log 1.8).
+          disabled={unread}
+          onClick={() => setPicks(pickWhole(picks, bill))}
+        >
+          {w.wholeBill}
+        </button>
+      ) : null}
+      {across !== null ? (
+        across.tables.map(memberTable)
+      ) : hasLines ? (
+        <ul className="ro-lines">
+          {bill.parts.flatMap((part) => part.lines.map((line) => lineItem(part, line, true)))}
+        </ul>
+      ) : null}
+      {settled ? null : (
+        <p className="ro-sum">
+          <span>{w.leftToPay}</span>
+          <b>{money(bill.owedMinor)}</b>
+        </p>
+      )}
 
-      {tips.length > 0 ? (
+      {paying.state === 'off' || settled ? null : (
         <>
-          <h3 className="ro-h">{words.tip}</h3>
-          <ChoiceGroup
-            label={words.tip}
-            className="ro-tips"
-            value={tipChoice}
-            onChoose={chooseTip}
-            choices={tipChoices}
-          />
-          {tip.kind === 'custom' ? (
+          {tipsOffered ? (
+            <TipRow
+              tip={tip}
+              other={other}
+              totals={totals}
+              money={money}
+              onTip={setTip}
+              onOther={setOther}
+            />
+          ) : null}
+          {receiptEmailOffered ? (
             <label className="ro-input">
-              <span className="rm-sr">{words.customTip}</span>
+              <span>{w.receiptEmail}</span>
               <input
-                inputMode="decimal"
-                value={custom}
-                placeholder="0,00"
-                aria-invalid={custom.trim() !== '' && parseMinor(custom) === null}
-                onChange={(event) => setCustom(event.target.value)}
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={receiptEmail}
+                maxLength={254}
+                data-slot="pay.receipt.email"
+                aria-invalid={block === 'bad_email'}
+                aria-describedby={block === 'bad_email' ? 'ro-receipt-email-help' : undefined}
+                onChange={(event) => setReceiptEmail(event.target.value)}
               />
             </label>
           ) : null}
-        </>
-      ) : null}
-
-      {promoSlot === null ? null : (
-        <details className="ro-acc" open={promoSlot.code !== '' ? true : undefined}>
-          <summary>{words.promo}</summary>
-          <div className="ro-promo">
-            <input
-              value={promoText}
-              maxLength={SERVICE_LIMITS.promo}
-              aria-label={words.promo}
-              onChange={(event) => setPromoText(event.target.value)}
-            />
+          <div className="ro-sum">
+            <span>{w.yourItems}</span>
+            <b>{money(totals.itemsMinor)}</b>
+          </div>
+          {tipsOffered ? (
+            <div className="ro-sum">
+              <span>{w.tip}</span>
+              <b>{money(totals.tipMinor)}</b>
+            </div>
+          ) : null}
+          <div className="ro-sum is-big">
+            <span>{w.total}</span>
+            <b>{money(totals.totalMinor)}</b>
+          </div>
+          <p className="ro-allergy">{w.legalPrices}</p>
+          <LegalBlock paying={paying} w={w} />
+          {asking === null ? (
             <button
               type="button"
-              className="ro-ghost"
-              onClick={() => setPromo(promoText.trim() === '' ? null : promoText.trim())}
+              className="ro-primary is-wide"
+              data-design-part="button"
+              data-slot="pay.start"
+              disabled={block !== null || busy}
+              onClick={() => {
+                const ago = sameAmountAgo(paying.recent, totals.totalMinor)
+                if (ago !== null) setAsking(ago)
+                else void start()
+              }}
             >
-              {words.apply}
+              <span>{w.payX(money(totals.totalMinor))}</span>
             </button>
-          </div>
-          {promoSlot.code === '' ? null : (
-            <p className="ro-notice" role="status" data-accepted={promoSlot.accepted}>
-              {promoSlot.accepted ? words.promoAccepted : words.promoRejected}
-              {promoSlot.message === null ? null : (
-                <>
-                  {' '}
-                  <Text value={promoSlot.message} page={locale} />
-                </>
-              )}
-            </p>
-          )}
-        </details>
-      )}
-
-      <p className="ro-allergy">{words.allergyNote}</p>
-
-      {quote === null ? (
-        quoting === 'failed' ? (
-          <div className="ro-notice is-bad" role="alert">
-            <span>{words.quoteFailed}</span>
-            <button type="button" className="ro-ghost" onClick={() => setRequote((n) => n + 1)}>
-              {words.retry}
-            </button>
-          </div>
-        ) : (
-          <p className="ro-notice" role="status">
-            {words.updatingQuote}
-          </p>
-        )
-      ) : (
-        <>
-          <div className="ro-sum">
-            <span>{words.subtotal}</span>
-            <b>{quote.subtotal.text}</b>
-          </div>
-          {tips.length > 0 ? (
-            <div className="ro-sum">
-              <span>{words.tip}</span>
-              <b>{quote.tip.text}</b>
-            </div>
-          ) : null}
-          {quote.vat.map((line) => (
-            <div className="ro-sum is-small" key={line.rate}>
-              <span>{words.vatIncluded(line.rate)}</span>
-              <b>{line.amount.text}</b>
-            </div>
-          ))}
-          <div className="ro-sum is-big">
-            <span>
-              {words.total}
-              {scope === 'split' ? ` (${words.perPerson})` : ''}
-            </span>
-            <b key={quote.total.minor}>{quote.total.text}</b>
-          </div>
-          {quoting === 'failed' ? (
-            <div className="ro-notice is-bad" role="alert">
-              <span>{words.quoteFailed}</span>
-              <button type="button" className="ro-ghost" onClick={() => setRequote((n) => n + 1)}>
-                {words.retry}
-              </button>
-            </div>
-          ) : quoting === 'loading' ? (
-            <p className="ro-notice" role="status">
-              {words.updatingQuote}
-            </p>
-          ) : !matches ? (
-            // The host has answered but its state still shows another quote: nothing is payable yet.
-            <div className="ro-notice" role="status">
-              <span>{words.updatingQuote}</span>
-              <button type="button" className="ro-ghost" onClick={() => setRequote((n) => n + 1)}>
-                {words.retry}
-              </button>
-            </div>
-          ) : null}
-          <div className="ro-methods">
-            <h3 className="rm-sr">{words.payWith}</h3>
-            {methods.map((method) => (
+          ) : (
+            <div className="ro-notice" role="alertdialog" data-slot="pay.same">
+              <span>{w.sameQuestion(asking)}</span>
               <button
                 type="button"
-                key={method}
-                className={
-                  method === 'apple'
-                    ? 'ro-pay is-apple'
-                    : method === 'waiter'
-                      ? 'ro-ghost'
-                      : 'ro-pay'
-                }
-                data-slot="pay.method"
-                data-method={method}
-                disabled={!canPay}
-                onClick={() => pay(method)}
+                className="ro-primary"
+                data-design-part="button"
+                onClick={() => void start()}
               >
-                {words.methods[method]}
+                {w.sameYes}
               </button>
-            ))}
-          </div>
+              <button type="button" className="ro-ghost" onClick={() => setAsking(null)}>
+                {w.sameNo}
+              </button>
+            </div>
+          )}
+          {blockWords === null ? null : (
+            <p
+              className="ro-notice"
+              role="status"
+              id="ro-receipt-email-help"
+              data-slot="pay.blocked"
+            >
+              {blockWords}
+            </p>
+          )}
         </>
+      )}
+      <PaidInApp lines={bill.paidLines} money={money} />
+      {refusal === null ? null : (
+        <p className="ro-notice is-bad" role="alert">
+          {refusal}
+        </p>
       )}
     </div>
   )
+}
+
+/**
+ * One screen of a payment. The screen changes under the guest's finger (the button they pressed is
+ * gone), so each new screen takes the focus itself, which keeps it inside the sheet and lets a
+ * screen reader read what the screen says.
+ */
+function Screen({
+  kind,
+  end,
+  children,
+}: {
+  readonly kind: string
+  readonly end?: string
+  readonly children: ReactNode
+}) {
+  const root = useRef<HTMLDivElement>(null)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the screen is a new one when its kind or end changes
+  useEffect(() => {
+    root.current?.focus({ preventScroll: true })
+  }, [kind, end])
+  return (
+    <div
+      className="ro-sheet"
+      ref={root}
+      tabIndex={-1}
+      data-pay-screen={kind}
+      {...(end === undefined ? {} : { 'data-pay-end': end })}
+    >
+      {children}
+    </div>
+  )
+}
+
+/**
+ * Call a waiter: the way on from every failure screen of paying (D127), where the venue takes
+ * calls. It shows what became of its own call (D72, DA-5): pending, then the host's word, and an
+ * answer that was lost is never success (D120). The button stays out of reach once the call may be
+ * with the staff; a refusal leaves it as it was, so the guest can ask again.
+ */
+export function CallWaiter() {
+  const o = useServicesRequired()
+  const { busy, notice, call } = useWaiterCall()
+  if (o.features.callWaiter === null) return null
+  return (
+    <>
+      <button
+        type="button"
+        className="ro-ghost"
+        data-slot="pay.call"
+        disabled={busy}
+        onClick={() => void call()}
+      >
+        {o.words.paying.callWaiter}
+      </button>
+      {notice}
+    </>
+  )
+}
+
+/** This phone's payment, from "Preparing your bill…" to its end. */
+export function PaymentScreen({
+  payment,
+  money,
+}: {
+  readonly payment: PaymentView
+  readonly money: (minor: number) => string
+}) {
+  const o = useServicesRequired()
+  const { words, run, binding } = o
+  const w = words.paying
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const toggle = useRef<HTMLButtonElement>(null)
+  const wasOpen = useRef(false)
+  // Closing the confirmation brings the focus back to the button that opened it.
+  useEffect(() => {
+    if (!confirming && wasOpen.current) toggle.current?.focus()
+    wasOpen.current = confirming
+  }, [confirming])
+  const screen: PayScreen = payScreen(payment)
+  const dismiss = () => binding.payControls?.dismiss()
+  const confirmation = confirmationOf({
+    payment,
+    venueName: o.state.paying?.venueName ?? null,
+    locale: o.locale,
+    words: w,
+    otherItem: words.otherItem,
+  })
+  const call = <CallWaiter />
+  const back = (
+    <button type="button" className="ro-ghost" data-slot="pay.back" onClick={dismiss}>
+      {w.backToBill}
+    </button>
+  )
+  const priced = (
+    <>
+      <ul className="ro-lines" data-slot="pay.lines">
+        {payment.lines.map((line, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a payment's lines have no id of their own
+          <li key={index}>
+            {lineNameText(line.name, o.locale, words.otherItem)}
+            {mark(line.quantity)} · {money(line.amountMinor)}
+          </li>
+        ))}
+      </ul>
+      {/* The Tip row only where a tip can be set, or one was (lane 3 S14): never a dead "Tip 0,00". */}
+      {o.state.ordering?.tips === true || payment.tipMinor > 0 ? (
+        <div className="ro-sum">
+          <span>{w.tip}</span>
+          <b>{money(payment.tipMinor)}</b>
+        </div>
+      ) : null}
+      {payment.amountMinor === null ? null : (
+        <div className="ro-sum is-big">
+          <span>{w.total}</span>
+          <b>{money(payment.amountMinor)}</b>
+        </div>
+      )}
+    </>
+  )
+  switch (screen.kind) {
+    case 'preparing':
+    case 'card':
+      return (
+        <Screen kind={screen.kind}>
+          {screen.kind === 'preparing' ? (
+            <StatePanel tone="wait" title={w.preparing} />
+          ) : (
+            <>
+              {priced}
+              <p className="ro-allergy">{w.legalPrices}</p>
+              {o.state.paying == null ? null : <LegalBlock paying={o.state.paying} w={w} />}
+              {binding.payForm === undefined || payment.amountMinor === null ? null : (
+                <FormSlot
+                  slot={binding.payForm}
+                  label={w.confirmX(money(payment.amountMinor))}
+                  locale={o.locale}
+                  failedText={w.cardFormFailed}
+                />
+              )}
+            </>
+          )}
+          <button
+            type="button"
+            className="ro-ghost"
+            data-slot="pay.later"
+            onClick={async () => {
+              setRefusal(null)
+              const outcome = await run({ kind: 'pay.cancel', actionId: newActionId() })
+              if (!outcome.ok) setRefusal(words.refusedOther)
+              else if (outcome.result.status === 'accepted') dismiss()
+              else {
+                // After the hold there is no cancel (`too_late`): the screen follows the payment.
+                setRefusal(refusalText(words, outcome.result.code, { command: 'pay.cancel' }))
+              }
+            }}
+          >
+            {w.payLater}
+          </button>
+          {call}
+          {refusal === null ? null : (
+            <p className="ro-notice is-bad" role="alert">
+              {refusal}
+            </p>
+          )}
+        </Screen>
+      )
+    case 'waiting':
+      return (
+        <Screen kind="waiting">
+          <StatePanel tone="wait" title={w.waiting} />
+        </Screen>
+      )
+    case 'paid':
+      return (
+        <Screen kind="paid">
+          <StatePanel tone="ok" title={w.paid}>
+            {confirming && confirmation !== null ? (
+              <Confirmation
+                view={confirmation}
+                id={CONFIRMATION_ID}
+                closeLabel={w.sameNo}
+                failedText={w.confirmSaveFailed}
+                onClose={() => setConfirming(false)}
+              />
+            ) : (
+              <>
+                <p>{w.paidNumber}</p>
+                <p className="ro-pay-number" data-slot="pay.number">
+                  {payment.number}
+                </p>
+                {o.tableLabel === null || o.tableLabel.trim() === '' ? null : (
+                  <p data-slot="pay.table">{o.guest.table(o.tableLabel)}</p>
+                )}
+                {priced}
+                <p data-slot="pay.receipt.line">{paidReceiptText(payment, w)}</p>
+              </>
+            )}
+            {confirmation === null || confirming ? null : (
+              <button
+                type="button"
+                className="ro-ghost"
+                data-slot="pay.confirmation.toggle"
+                ref={toggle}
+                aria-expanded={false}
+                aria-controls={CONFIRMATION_ID}
+                onClick={() => setConfirming(true)}
+              >
+                {w.confirmTitle}
+              </button>
+            )}
+            {back}
+          </StatePanel>
+        </Screen>
+      )
+    case 'checking':
+      return (
+        <Screen kind="checking">
+          <StatePanel tone="plain" title={w.checkingTitle} hint={w.checkingBody}>
+            {call}
+            {back}
+          </StatePanel>
+        </Screen>
+      )
+    case 'ended':
+      return (
+        <Screen kind="ended" end={screen.end}>
+          <StatePanel
+            tone="bad"
+            title={endText(
+              w,
+              screen.end,
+              o.state.paying == null ? null : money(o.state.paying.minCardMinor),
+            )}
+          >
+            {screen.again ? (
+              <button
+                type="button"
+                className="ro-primary is-wide"
+                data-design-part="button"
+                data-slot="pay.again"
+                onClick={dismiss}
+              >
+                <span>{w.payAgain}</span>
+              </button>
+            ) : null}
+            {call}
+            {back}
+          </StatePanel>
+        </Screen>
+      )
+  }
 }

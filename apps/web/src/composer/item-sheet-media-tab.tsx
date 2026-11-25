@@ -35,6 +35,8 @@ export interface ItemSheetMediaTabProps {
   data: ItemSheetData
   /** True while a save is under way. */
   busy: boolean
+  /** The person may not change the menu (RR-70): the photo is shown, no upload, remove or details. */
+  readOnly?: boolean
   /** Attaches an uploaded asset, keeping the alt text; resolves true when it was attached. */
   onAttach: (assetId: string) => Promise<boolean>
   /** Saves the alt text and focal point of the current picture. */
@@ -132,6 +134,7 @@ function Preview({
 export function ItemSheetMediaTab({
   data,
   busy,
+  readOnly = false,
   onAttach,
   onSaveDetails,
   onRemove,
@@ -259,40 +262,42 @@ export function ItemSheetMediaTab({
           </p>
         )}
 
-        <label
-          htmlFor={fileId}
-          data-testid="photo-drop"
-          data-dragging={dragging}
-          onDragOver={(event) => {
-            event.preventDefault()
-            setDragging(true)
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
-          className={cn(
-            'flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed p-5 text-center text-sm transition-colors focus-within:ring-[3px] focus-within:ring-ring/50',
-            dragging ? 'border-primary bg-primary/5' : 'bg-muted/30 hover:bg-muted/50',
-            (uploading || busy) && 'pointer-events-none opacity-60',
-          )}
-        >
-          <UploadIcon className="size-5 text-muted-foreground" aria-hidden />
-          <span className="font-medium">{image ? t('replace') : t('upload')}</span>
-          <span className="text-xs text-muted-foreground">{t('limits')}</span>
-          <input
-            ref={input}
-            id={fileId}
-            type="file"
-            accept={IMAGE_ACCEPT}
-            data-testid="photo-input"
-            className="sr-only"
-            disabled={uploading || busy}
-            onChange={(event) => {
-              void send(event.target.files?.[0])
-              // The same file can be chosen again after an error.
-              event.target.value = ''
+        {readOnly ? null : (
+          <label
+            htmlFor={fileId}
+            data-testid="photo-drop"
+            data-dragging={dragging}
+            onDragOver={(event) => {
+              event.preventDefault()
+              setDragging(true)
             }}
-          />
-        </label>
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            className={cn(
+              'flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed p-5 text-center text-sm transition-colors focus-within:ring-[3px] focus-within:ring-ring/50',
+              dragging ? 'border-primary bg-primary/5' : 'bg-muted/30 hover:bg-muted/50',
+              (uploading || busy) && 'pointer-events-none opacity-60',
+            )}
+          >
+            <UploadIcon className="size-5 text-muted-foreground" aria-hidden />
+            <span className="font-medium">{image ? t('replace') : t('upload')}</span>
+            <span className="text-xs text-muted-foreground">{t('limits')}</span>
+            <input
+              ref={input}
+              id={fileId}
+              type="file"
+              accept={IMAGE_ACCEPT}
+              data-testid="photo-input"
+              className="sr-only"
+              disabled={uploading || busy}
+              onChange={(event) => {
+                void send(event.target.files?.[0])
+                // The same file can be chosen again after an error.
+                event.target.value = ''
+              }}
+            />
+          </label>
+        )}
 
         {uploading ? (
           <div className="grid gap-1" role="status" aria-live="polite">
@@ -313,7 +318,7 @@ export function ItemSheetMediaTab({
           </p>
         ) : null}
 
-        {image?.canRemove ? (
+        {image?.canRemove && !readOnly ? (
           <Button
             type="button"
             variant="outline"
@@ -328,7 +333,7 @@ export function ItemSheetMediaTab({
         ) : null}
       </section>
 
-      {image ? (
+      {image && !readOnly ? (
         <section
           aria-label={t('detailsTitle')}
           className="grid gap-3 rounded-lg border bg-card p-4"

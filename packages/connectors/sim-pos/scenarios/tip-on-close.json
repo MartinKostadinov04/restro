@@ -1,0 +1,20 @@
+{
+  "name": "tip-on-close",
+  "extends": "demo-bar",
+  "description": "A guest pays with a tip: the POS takes a tip as one row of its Tip article (2999) on the same bill (tipAsLine, Q41), so the tip lands on the bill and its receipt (D127). Table 7 is open with the 46.00 EUR bill, no faults.",
+  "switches": { "tipAsLine": true },
+  "bills": [
+    {
+      "table": "up 7",
+      "by": "maria",
+      "minutesAgo": 75,
+      "rows": [
+        { "article": "2001", "quantity": "1" },
+        { "article": "2002", "quantity": "1" },
+        { "article": "2003", "quantity": "1" },
+        { "article": "2102", "quantity": "2" },
+        { "article": "2202", "quantity": "2" }
+      ]
+    }
+  ]
+}

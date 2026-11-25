@@ -42,6 +42,8 @@ const UI: { readonly [K in IntegrationKind]: ConnectorUi } = {
     VenueSourcePart: ({ data, ...rest }) =>
       data.kind === 'barsy' ? <BarsyVenuePart {...rest} data={data} /> : null,
   },
+  // The simulated POS (#71) has no screen of its own: the platform's cards say everything.
+  sim: { InstanceSettingsCard: null, VenueSourcePart: null },
 }
 
 /** The screens a connector supplies, or null for a kind this build does not know. */

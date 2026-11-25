@@ -999,6 +999,7 @@ export async function syncPlaces(target: {
         })
         await env.enqueue(JOB_NAMES.publishTableTokens, tokens.data, {
           singletonKey: tokens.singletonKey,
+          ...(tokens.group === undefined ? {} : { group: tokens.group }),
         })
       } catch (error) {
         // The places are stored; only the files are late. Say so, apart from a places failure.

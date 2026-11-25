@@ -1,6 +1,7 @@
+import { THEME_FONTS } from '@restro/shell'
 import { describe, expect, it } from 'vitest'
 
-import { EDITORIAL_CSS } from './css'
+import { EDITORIAL_CSS, NAME_FIT } from './css'
 
 /** The CSS colour names (CSS Color Module Level 4), apart from `transparent` and `currentColor`. */
 const NAMED_COLOURS = `
@@ -163,12 +164,76 @@ describe('the audit of the stylesheet (SH-07)', () => {
     expect(EDITORIAL_CSS).not.toContain('.rm-chevron')
   })
 
-  it('fades the photo of a sold-out item and keeps its words at full strength', () => {
-    expect(EDITORIAL_CSS).not.toMatch(/\.rm-item\[data-state="(sold_out|unavailable)"\]\s*(,|\{)/)
-    expect(declarationsFor('.rm-item[data-state="sold_out"] .rm-photo')).toContain('opacity')
-    expect(declarationsFor('.rm-item[data-state="sold_out"] .rm-item-open')).toContain(
-      'color: var(--rm-muted)',
+  it('keeps the arrow with the end of the name, outside the text, and nudges it with a transform on a real hover (S11)', () => {
+    // Out of the text's flow, from an empty span after the last letter, into room every line keeps.
+    expect(declarationsFor('.rm-item-arrow')).toMatch(/position:\s*relative/)
+    const arrow = declarationsFor('.rm-item-arrow::after')
+    expect(arrow).toMatch(/position:\s*absolute/)
+    expect(arrow).toMatch(/left:\s*8px/)
+    expect(arrow).toMatch(/transition:\s*transform/)
+    expect(declarationsFor('.rm-item-open')).toContain('padding-right: calc(12px + 1em)')
+    expect(EDITORIAL_CSS).not.toContain('.rm-item-open::after')
+    // Two columns draw no arrow, and keep no room for one.
+    expect(
+      declarationsFor('.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open'),
+    ).toContain('padding-right: 0')
+    // The nudge only where a pointer can hover: a tap on a phone leaves no sticky hover behind.
+    expect(EDITORIAL_CSS).toMatch(
+      /@media \(hover: hover\) and \(pointer: fine\) \{\s*\.rm-item:hover \.rm-item-arrow::after \{\s*transform: translateX\(4px\);/,
     )
+  })
+
+  it('keeps a name’s words whole: its size steps down to fit the longest one, never under 12 px (S7)', () => {
+    // Every item is a size container; a name's size is its place's own, or less when its line
+    // (the item less what stands beside the name, less the arrow's 12 px + 1 em) is too narrow.
+    expect(declarationsFor('.rm-item')).toContain('container-type: inline-size')
+    const name = declarationsFor('.rm-item :is(h3, h4)')
+    expect(name).toContain('font-size: clamp(12px, var(--rm-name-fits), var(--rm-name-size))')
+    expect(name).toContain(
+      '--rm-name-fits: calc((100cqi - var(--rm-name-inset) - 12px) / (var(--rm-name-fit) + 1))',
+    )
+    // A break only at the line's end, never a hyphenated one: the name's narrowest is its longest word.
+    expect(name).toContain('overflow-wrap: break-word')
+    expect(EDITORIAL_CSS).not.toMatch(/hyphens:\s*auto/)
+    // Two columns keep no arrow room, and put the price under the name.
+    expect(
+      declarationsFor('.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item :is(h3, h4)'),
+    ).toContain('--rm-name-fits: calc((100cqi - var(--rm-name-inset)) / var(--rm-name-fit))')
+    expect(
+      declarationsFor(
+        '.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-copy > [data-slot="item.name"]',
+      ),
+    ).toContain('flex-basis: 100%')
+    // Every font has its width, as written and wider in capitals, and the root starts at the widest.
+    for (const font of THEME_FONTS) {
+      const fit = NAME_FIT[font.id]
+      expect(fit.capitals, font.id).toBeGreaterThan(fit.written)
+      expect(declarationsFor(`.rm[data-heading-font="${font.id}"]`)).toContain(
+        `--rm-name-fit: ${fit.written}`,
+      )
+      expect(
+        declarationsFor(`.rm[data-items-name-case="capitals"][data-heading-font="${font.id}"]`),
+      ).toContain(`--rm-name-fit: ${fit.capitals}`)
+    }
+    const widest = Math.max(...THEME_FONTS.map((font) => NAME_FIT[font.id].capitals))
+    expect(declarationsFor('.rm')).toContain(`--rm-name-fit: ${widest}`)
+  })
+
+  it('darkens the menu behind a sheet or a dish on both screens: the dark set’s page colour (R3)', () => {
+    for (const selector of ['.rm-overlay', '.rm-overlay:has(.is-detail)']) {
+      const scrims = declarationsFor(selector)
+        .split(/\n/)
+        .filter((line) => /background:\s*color-mix/.test(line))
+      expect(scrims.length, selector).toBeGreaterThan(0)
+      for (const scrim of scrims) {
+        expect(scrim, selector).toContain('var(--rm-d-background)')
+        expect(scrim, selector).not.toContain('var(--rm-text)')
+      }
+    }
+  })
+
+  it('has no look for a sold-out or unavailable item, which is not on the menu (D131)', () => {
+    expect(EDITORIAL_CSS).not.toMatch(/data-state="(sold_out|unavailable)"/)
   })
 
   it('keeps the section titles and the items apart, the items being h3 or h4', () => {

@@ -214,7 +214,8 @@ test('before the first publish: the bar counts the whole menu; no versions; the 
   await expect(bar.count()).toHaveText('5')
   await expect(bar.reason()).toHaveText('Not published yet: guests see nothing until you publish.')
   await expect(page.getByTestId('guest-link')).toBeDisabled()
-  await expect(page.getByTestId('guest-link-hint')).toHaveText('Nothing is published yet.')
+  // The reason line says it; the guest link's hint does not repeat it (S5).
+  await expect(page.getByTestId('guest-link-hint')).toHaveCount(0)
   expect(await snapshotRows()).toEqual([])
   // The guest page has nothing to show yet.
   const guest = await page.context().newPage()
@@ -258,6 +259,8 @@ test('Publish: the confirmation lists the whole menu, then "Version 1 is live" a
   ])
   await guest.waitForLoadState()
   expect(new URL(guest.url()).pathname).toBe(GUEST_ADDRESS)
+  // The venue's own language opens first (P11); the checks below read the English menu.
+  await guest.goto(`${GUEST_ADDRESS}?lang=en`)
   await expect(guest.getByRole('heading', { level: 1 })).toHaveText('Publish Club')
   await expect(guest.locator('[data-slot="item.name"]')).toHaveText([
     'Negroni',
@@ -283,7 +286,10 @@ test('a price changes behind the page: the bar counts 1 change, the confirmation
   await bar.button().click()
   const dialog = page.getByTestId('publish-confirm-dialog')
   await expect(dialog.getByTestId('changes-count')).toHaveText('1 change waiting')
-  await expect(dialog.getByTestId('change-summary')).toHaveText('1 with a new price')
+  // Said once: the count above, then the named list under its heading (S6).
+  await expect(
+    dialog.getByTestId('change-list-prices').getByRole('heading', { name: 'New price' }),
+  ).toBeVisible()
   await expect(dialog.getByTestId('change-list-prices')).toContainText(
     `Negroni: ${PRICE_BEFORE} → ${PRICE_AFTER}`,
   )
@@ -311,7 +317,7 @@ test('a price changes behind the page: the bar counts 1 change, the confirmation
   )
   await page.keyboard.press('Escape')
   await expect(preview).toHaveCount(0)
-  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await dialog.getByRole('button', { name: 'Don’t publish' }).click()
   await expect(dialog).toHaveCount(0)
 
   // Nothing was published by looking: the guest page keeps the old price, no new row.
@@ -414,7 +420,7 @@ test('Return to version 1 in Settings › Versioning: the pause warning, the old
   expect(await pauseFlag()).toBe(true)
 
   // The warning heads every tab.
-  await open(page, '?tab=composer')
+  await open(page, '?tab=studio')
   await expect(page.getByTestId('paused-banner')).toBeVisible()
   await page.screenshot({ path: shotPath('en-light-desktop-paused'), fullPage: true })
   await shoot(browser, 'bg-light-desktop-paused', { locale: 'bg', scheme: 'light' })
@@ -477,7 +483,7 @@ test('Settings › Publish: the Automation settings save the sync mode and "publ
 }) => {
   await open(page, AUTOMATION)
   const form = page.getByTestId('automation-form')
-  await expect(form).toContainText('Reading the menu from barsy')
+  await expect(form).toContainText('Sync from barsy')
   // D96: the "new items from the till" rule is gone.
   await expect(form).not.toContainText('New items')
   await expect(page.getByTestId('automation-zone')).toHaveText('Europe/Sofia')
@@ -519,6 +525,43 @@ test('Settings › Publish: the Automation settings save the sync mode and "publ
   await page.getByTestId('automation-save').click()
   await expect(page.getByTestId('automation-saved')).toBeVisible()
   expect(await settings()).toMatchObject({ sync: { mode: 'auto' }, after: 'auto' })
+})
+
+test('Settings › Publish: Save is pressable while the time is still being typed (#428)', async () => {
+  await open(page, AUTOMATION)
+  const time = page.getByTestId('automation-time')
+  const stored = async () =>
+    (
+      await db.query<{ time: string }>(
+        `select settings #>> '{sync,full_pull_time}' as time from restro.venues where id = $1`,
+        [venueId],
+      )
+    ).rows[0]?.time
+  const before = await time.inputValue()
+  const typed = before === '06:30' ? '07:45' : '06:30'
+
+  // Typed, never left: the field has not committed, and Save is there to press all the same.
+  await time.fill(typed)
+  await expect(page.getByTestId('automation-save')).toBeEnabled()
+  await page.getByTestId('automation-save').click()
+  await expect(page.getByTestId('automation-saved')).toBeVisible()
+  expect(await stored()).toBe(typed)
+
+  // A value that is not a time blocks the save and takes the focus.
+  await time.fill('99:99')
+  // Leaving the field shows its error line, which moves Save down: let that settle first.
+  await time.blur()
+  await expect(time).toHaveAttribute('aria-invalid', 'true')
+  await page.getByTestId('automation-save').click()
+  await expect(time).toBeFocused()
+  await expect(page.getByTestId('automation-saved')).toHaveCount(0)
+  expect(await stored()).toBe(typed)
+
+  // Back as it was, for the steps below and the next run.
+  await time.fill(before)
+  await page.getByTestId('automation-save').click()
+  await expect(page.getByTestId('automation-saved')).toBeVisible()
+  expect(await stored()).toBe(before)
 })
 
 test('a held publish (V11) under the header: it names what it would hide, and Reject turns it down', async ({
@@ -590,9 +633,12 @@ test('a plain member sees the page and can change nothing', async ({ browser }) 
   await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: new URL(page.url()).origin }])
   const member = await context.newPage()
   await open(member)
-  await expect(member.getByTestId('publish-button')).toBeDisabled()
+  // Never a greyed Publish for a role that may not publish (RR-90): it is not drawn, nor a sentence
+  // on why. Where the venue stands is still said (S27).
+  await expect(member.getByTestId('publish-button')).toHaveCount(0)
+  await expect(member.getByText('Only an owner or admin can publish.')).toHaveCount(0)
   await expect(member.getByTestId('publish-block-reason')).toHaveText(
-    'Only an owner or admin can publish.',
+    /Up to date|waiting|Nothing is published yet|Publishing. It usually takes/,
   )
   // The guest page is anyone's to open.
   await expect(member.getByTestId('guest-link')).toHaveAttribute('href', GUEST_ADDRESS)
@@ -603,6 +649,12 @@ test('a plain member sees the page and can change nothing', async ({ browser }) 
   await open(member, AUTOMATION)
   await expect(member.getByTestId('automation-form')).toBeVisible()
   await expect(member.getByTestId('automation-save')).toHaveCount(0)
+  await expect(member.getByTestId('automation-readonly')).toHaveText(
+    'Only owners and admins can change this.',
+  )
+  // A section the member may not open lands on General, never on a 404 (S26).
+  await open(member, '?tab=settings&section=staff')
+  await expect(member).toHaveURL(/[?&]section=general(?:&|$)/)
   await context.close()
 })
 

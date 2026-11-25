@@ -37,7 +37,7 @@ function Count({ value }: { value: number }) {
 
 function SectionNode({ id, index }: { id: NodeId; index: number }) {
   const t = useTranslations('composer')
-  const { view, selection, expanded, select, toggleExpanded, overTarget } = useComposer()
+  const { view, selection, expanded, select, toggleExpanded, overTarget, canEdit } = useComposer()
   const section = view.sections[id]
   if (!section) return null
   const title = sectionTitle(view, id, t('untitledSection'))
@@ -46,7 +46,8 @@ function SectionNode({ id, index }: { id: NodeId; index: number }) {
   const selected = selection === id
 
   return (
-    <Draggable draggableId={`section:${id}`} index={index}>
+    // A member changes nothing (RR-70): no handle, no drag, no "…" menu.
+    <Draggable draggableId={`section:${id}`} index={index} isDragDisabled={!canEdit}>
       {(drag, snapshot) => (
         <li
           ref={drag.innerRef}
@@ -72,15 +73,17 @@ function SectionNode({ id, index }: { id: NodeId; index: number }) {
                     'bg-accent ring-2 ring-ring',
                 )}
               >
-                {/* A div, not a button: the library does not start a drag from an interactive element. */}
-                {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: the handle props add role="button" and tabIndex */}
-                <div
-                  {...drag.dragHandleProps}
-                  aria-label={t('actions.dragSection', { name: title })}
-                  className="flex size-7 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
-                >
-                  <GripVerticalIcon className="size-4" aria-hidden />
-                </div>
+                {canEdit ? (
+                  // A div, not a button: the library does not start a drag from an interactive element.
+                  // biome-ignore lint/a11y/useAriaPropsSupportedByRole: the handle props add role="button" and tabIndex
+                  <div
+                    {...drag.dragHandleProps}
+                    aria-label={t('actions.dragSection', { name: title })}
+                    className="flex size-7 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
+                  >
+                    <GripVerticalIcon className="size-4" aria-hidden />
+                  </div>
+                ) : null}
                 {hasChildren ? (
                   <button
                     type="button"
@@ -135,7 +138,7 @@ function SectionNode({ id, index }: { id: NodeId; index: number }) {
                   <EyeOffIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
                 ) : null}
                 <Count value={view.placements[id]?.length ?? 0} />
-                <SectionMenu sectionId={id} />
+                {canEdit ? <SectionMenu sectionId={id} /> : null}
                 {/* The library appends its drop placeholder here; it must not move the row. */}
                 <div className="pointer-events-none absolute h-0 w-0 overflow-hidden">
                   {drop.placeholder}

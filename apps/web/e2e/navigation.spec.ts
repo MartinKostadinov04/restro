@@ -6,13 +6,14 @@ import { type Browser, type BrowserContext, expect, type Page, test } from '@pla
 import { runScript } from './global-setup'
 import { ADMIN_PASSWORD } from './support'
 
-// The sidebar and the organisation's Settings (CF-09a, D74) on a production build. The sidebar
-// lists the organisation's venues, "All venues", "New venue" (owners and admins only) and Settings;
-// a venue's sections stay the tabs at the top of its page, so none of them is in the sidebar.
+// The sidebar and the organisation's Settings (CF-09a, D74, D161) on a production build. Off a
+// venue's page the sidebar lists the organisation's venues, "All venues", "New venue" (owners and
+// admins only) and Settings. On a venue's page it is the venue's: its name (the venue switcher) and
+// its screens grouped by module, each module with its own Settings (D156).
 //
-//   the list      three venues by name (a lower-case name is not put last), no tab links
-//   open a venue  from the sidebar; the open one is lit
-//   swap venues   on the same tab: ?tab= is carried over
+//   the list      three venues by name (a lower-case name is not put last), no screen links
+//   open a venue  from the sidebar; the venue's screens by module, the open one lit
+//   swap venues   from the switcher, on the same screen
 //   Settings      /settings opens General; the breadcrumb reads "Settings > General"; Integrations
 //                 is the next section
 //   General       the owner renames the organisation (the sidebar follows); the address name is
@@ -20,7 +21,7 @@ import { ADMIN_PASSWORD } from './support'
 //   collapsed     each venue shows its initial and, hovered, its name
 //   New venue     from the sidebar; the new venue is in the list without a reload
 //   a member      sees the venues and Settings, not "New venue"; General shows the values as text
-//   a phone       the sidebar is a sheet that closes once a venue is chosen
+//   a phone       the sidebar is a sheet that closes once a venue or a screen is chosen
 //
 // The organisation is the fixture of scripts/seed-navigation-e2e.ts. With SCREENSHOT_DIR set, the
 // test saves the screenshots of the brief there.
@@ -83,6 +84,8 @@ const venueItem = (target: Page, name: string) =>
 const settingsItem = (target: Page) => target.getByTestId('nav-settings')
 const newVenueItem = (target: Page) => target.getByTestId('venue-nav-new')
 const trail = (target: Page) => target.getByRole('navigation', { name: 'Breadcrumb' })
+const switcher = (target: Page) => target.getByTestId('venue-switcher')
+const entry = (target: Page, key: string) => target.locator(`[data-nav="${key}"]`)
 
 test.beforeAll(async ({ browser }) => {
   runScript('./scripts/seed-navigation-e2e.ts', 'seed')
@@ -119,8 +122,8 @@ test('the sidebar lists the venues by name, then All venues, New venue and Setti
   await expect(page.getByTestId('venue-nav-all')).toHaveAttribute('aria-current', 'page')
   await expect(venueList(page).locator('[aria-current="page"]')).toHaveCount(1)
 
-  // The venues' sections are the tabs of a venue's page: the sidebar lists none of them.
-  for (const section of ['Composer', 'Tables & QR', 'Design']) {
+  // Off a venue's page the sidebar lists none of a venue's screens.
+  for (const section of ['Studio', 'Tables & QR', 'Design']) {
     await expect(page.locator('[data-sidebar="sidebar"]').getByText(section)).toHaveCount(0)
   }
   // One organisation: its name, nothing to switch; and no venue switcher in the footer.
@@ -129,49 +132,59 @@ test('the sidebar lists the venues by name, then All venues, New venue and Setti
   await expect(page.getByTestId('venue-switcher')).toHaveCount(0)
 })
 
-test('open a venue from the sidebar, then swap to another on the same tab', async () => {
+test('open a venue from the sidebar: its screens by module, then switch venue on the same screen', async () => {
   await venueItem(page, 'Boulevard Club').click()
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
-  await expect(page.getByRole('heading', { name: 'Boulevard Club', level: 1 })).toBeVisible()
-  // The open venue is lit, and only it.
-  await expect(venueItem(page, 'Boulevard Club')).toHaveAttribute('aria-current', 'page')
-  await expect(venueList(page).locator('[aria-current="page"]')).toHaveCount(1)
-  await expect(page.getByTestId('venue-nav-all')).not.toHaveAttribute('aria-current', 'page')
-
-  // The venue's tabs (D97): no Publishing tab; the Publish button heads every tab instead. Design
-  // is the composer's subtab (D92), drawn in a tab list of its own under the composer.
-  await expect(page.getByRole('tablist').first().getByRole('tab')).toHaveText([
-    'Composer',
-    'Tables & QR',
-    'Settings',
+  // On a venue's page the sidebar is the venue's (D161): its name on top, which switches venue,
+  // and its screens grouped by module; the heading and the browser tab name the screen.
+  await expect(switcher(page)).toContainText('Boulevard Club')
+  await expect(page.getByRole('heading', { name: 'Studio', level: 1 })).toBeVisible()
+  await expect(page).toHaveTitle(/Studio · Boulevard Club/)
+  await expect(page.locator('[data-sidebar="group-label"]')).toHaveText([
+    'Menu',
+    'Ordering',
+    'Reservations',
+    'Venue',
+    'Organisation',
   ])
+  await expect(venueItems(page)).toHaveCount(0)
+  await expect(entry(page, 'studio')).toHaveAttribute('aria-current', 'page')
+  // No Publishing screen (D97): the Publish button heads every screen instead.
   await expect(page.getByTestId('publish-button')).toBeVisible()
 
-  // Another tab; the venue's links in the sidebar now carry it.
-  await page.getByRole('tab', { name: 'Settings' }).click()
-  await expect(page).toHaveURL(/\?tab=settings$/)
-  await expect(venueItem(page, 'Aurora Bar')).toHaveAttribute('href', /\?tab=settings$/)
+  // Each module has its own Settings (D156); the venue's own are under Venue.
+  await page.getByRole('link', { name: 'Venue settings' }).click()
+  await expect(page).toHaveURL(/\?tab=settings&section=general$/)
   await expect(page.getByTestId('settings-general')).toBeVisible()
+  await expect(entry(page, 'settings-venue')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('heading', { name: 'Venue settings', level: 1 })).toBeVisible()
   await expect(page.getByTestId('publish-button')).toBeVisible()
   await snapshot('cf-09a-venue-desktop.png')
 
+  // The switcher lists the venues by name, the open one lit, each on the same screen.
+  await switcher(page).click()
+  await expect(venueItems(page)).toHaveText([/Aurora Bar$/, /Boulevard Club$/, /zenith Lounge$/])
+  await expect(venueItem(page, 'Boulevard Club')).toHaveAttribute('aria-current', 'page')
+  await expect(venueItem(page, 'Aurora Bar')).toHaveAttribute(
+    'href',
+    /\?tab=settings&section=general$/,
+  )
   await venueItem(page, 'Aurora Bar').click()
-  await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}\?tab=settings$/)
-  await expect(page.getByRole('heading', { name: 'Aurora Bar', level: 1 })).toBeVisible()
-  await expect(page.getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true')
-  await expect(venueItem(page, 'Aurora Bar')).toHaveAttribute('aria-current', 'page')
-  await expect(venueItem(page, 'Boulevard Club')).not.toHaveAttribute('aria-current', 'page')
+  await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}\?tab=settings&section=general$/)
+  await expect(switcher(page)).toContainText('Aurora Bar')
+  await expect(entry(page, 'settings-venue')).toHaveAttribute('aria-current', 'page')
 
-  // An old link to the Publishing tab opens Settings, where its settings went (D97).
+  // An old link to the Publishing tab opens the venue's own Settings, where its settings went (D97).
   await page.goto(`${new URL(page.url()).pathname}?tab=publishing`)
-  await expect(page.getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page).toHaveURL(/\?tab=settings&section=(general|publish)$/)
+  await expect(entry(page, 'settings-venue')).toHaveAttribute('aria-current', 'page')
 
-  // "All venues" is the overview, with a card for each.
+  // "All venues", in the switcher, is the overview, with a card for each.
+  await switcher(page).click()
   await page.getByTestId('venue-nav-all').click()
   await expect(page).toHaveURL(/\/venues$/)
   await expect(page.getByTestId('venue-card')).toHaveCount(3)
-  // From the overview a venue opens on its first tab: there is no tab to carry.
+  // From the overview a venue opens on its first screen: there is no screen to carry.
   await expect(venueItem(page, 'Aurora Bar')).toHaveAttribute(
     'href',
     /\/venues\/vn_[0-9A-Za-z]{22}$/,
@@ -225,10 +238,10 @@ test('Settings opens General; the breadcrumb reads "Settings > General"', async 
   await expect(trail(page).getByText('Integrations')).toHaveAttribute('aria-current', 'page')
   await expect(page).toHaveTitle(/Integrations/)
 
-  // And back to a venue from Settings: no tab to carry, the venue is lit.
+  // And back to a venue from Settings: no screen to carry, the venue's Studio opens.
   await venueItem(page, 'Boulevard Club').click()
-  await expect(page.getByRole('heading', { name: 'Boulevard Club', level: 1 })).toBeVisible()
-  await expect(venueItem(page, 'Boulevard Club')).toHaveAttribute('aria-current', 'page')
+  await expect(switcher(page)).toContainText('Boulevard Club')
+  await expect(entry(page, 'studio')).toHaveAttribute('aria-current', 'page')
   await expect(settingsItem(page)).not.toHaveAttribute('aria-current', 'page')
 })
 
@@ -287,7 +300,9 @@ test('collapsed to icons, each venue shows its initial and, hovered, its name', 
   // the first from far away, and the test's mouse jumps; the first tooltip may still be fading
   // out, so look for the one that names Settings.)
   await settingsItem(page).focus()
-  await expect(page.getByRole('tooltip').filter({ hasText: 'Settings' })).toHaveText('Settings')
+  await expect(page.getByRole('tooltip').filter({ hasText: 'Organisation settings' })).toHaveText(
+    'Organisation settings',
+  )
 
   // Open again for the tests that follow (the sidebar keeps its state in a cookie).
   await page.locator('[data-sidebar="trigger"]').click()
@@ -305,8 +320,9 @@ test('New venue from the sidebar: the new venue opens and is in the list at once
   await dialog.getByTestId('new-venue-submit').click()
 
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
-  await expect(page.getByRole('heading', { name: CREATED_VENUE, level: 1 })).toBeVisible()
-  // In the list without a reload, in its place by name, and lit.
+  await expect(switcher(page)).toContainText(CREATED_VENUE)
+  // In the switcher's list without a reload, in its place by name, and lit.
+  await switcher(page).click()
   await expect(venueItems(page)).toHaveText([
     /Aurora Bar$/,
     /Boulevard Club$/,
@@ -317,6 +333,7 @@ test('New venue from the sidebar: the new venue opens and is in the list at once
 })
 
 test('a venue made with the button on the overview is in the sidebar too', async () => {
+  // The switcher's list is still open from the test before.
   await page.getByTestId('venue-nav-all').click()
   await expect(page).toHaveURL(/\/venues$/)
   await page.getByTestId('new-venue').click()
@@ -326,7 +343,8 @@ test('a venue made with the button on the overview is in the sidebar too', async
   await dialog.getByTestId('new-venue-name').fill(SECOND_CREATED_VENUE)
   await dialog.getByTestId('new-venue-submit').click()
 
-  await expect(page.getByRole('heading', { name: SECOND_CREATED_VENUE, level: 1 })).toBeVisible()
+  await expect(switcher(page)).toContainText(SECOND_CREATED_VENUE)
+  await switcher(page).click()
   await expect(venueItems(page)).toHaveText([
     /Aurora Bar$/,
     /Boulevard Club$/,
@@ -335,6 +353,7 @@ test('a venue made with the button on the overview is in the sidebar too', async
     /zenith Lounge$/,
   ])
   await expect(venueItem(page, SECOND_CREATED_VENUE)).toHaveAttribute('aria-current', 'page')
+  await page.keyboard.press('Escape')
 })
 
 test('a plain member sees the venues and Settings, but is not offered New venue', async ({
@@ -371,7 +390,7 @@ test('a plain member sees the venues and Settings, but is not offered New venue'
   }
 })
 
-test('on a phone the sidebar is a sheet that closes once a venue is chosen', async ({
+test('on a phone the sidebar is a sheet that closes once a venue or a screen is chosen', async ({
   browser,
 }) => {
   const { context, target } = await otherPerson(browser, OWNER_EMAIL, { width: 390, height: 844 })
@@ -386,7 +405,17 @@ test('on a phone the sidebar is a sheet that closes once a venue is chosen', asy
 
     await sheet.getByTestId('venue-nav-item').filter({ hasText: 'Aurora Bar' }).click()
     await expect(target).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
-    await expect(target.getByRole('heading', { name: 'Aurora Bar', level: 1 })).toBeVisible()
+    await expect(target.getByRole('heading', { name: 'Studio', level: 1 })).toBeVisible()
+    await expect(sheet).toHaveCount(0)
+
+    // On the venue's page the sheet holds its screens; one tap opens the screen and closes it (C5).
+    await target.locator('[data-sidebar="trigger"]').click()
+    await expect(sheet.getByTestId('venue-switcher')).toContainText('Aurora Bar')
+    if (process.env.SCREENSHOT_DIR) await target.waitForTimeout(500) // the sheet slides in
+    await snapshot('d154-phone-venue-sheet.png', target)
+    await sheet.locator('[data-nav="tonight"]').click()
+    await expect(target).toHaveURL(/\?tab=tonight$/)
+    await expect(target.getByRole('heading', { name: 'Tonight', level: 1 })).toBeVisible()
     await expect(sheet).toHaveCount(0)
   } finally {
     await context.close()

@@ -33,9 +33,9 @@ async function guestFilterControls(browser: Browser): Promise<number> {
   }
 }
 
-/** Sets the filters switch in the composer's Guest features card (Design subtab) and saves it. */
+/** Sets the filters switch in the Guest features card (the Studio, under Structure) and saves it. */
 async function saveFiltersSwitch(on: boolean) {
-  await page.goto(`/venues/${venueId}?tab=composer&sub=design`)
+  await page.goto(`/venues/${venueId}?tab=studio`)
   const panel = page.getByTestId('guest-features-panel')
   await expect(panel).toBeVisible()
   const filters = panel.getByRole('switch', { name: FILTERS })

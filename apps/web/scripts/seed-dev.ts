@@ -8,15 +8,22 @@
 // `provisionVenue`, and the venue's menu with core's `provisionMenu` and `apply()` (a made-up
 // barsy integration and pull: see lib/demo-menu.ts). It connects as the app role (DATABASE_URL),
 // like the web app.
-import { menuPath } from '@restro/core'
-import { provisionTenant, provisionVenue } from '@restro/core/apply'
+import { CALL_WAITER_KINDS, menuPath, type VenueId } from '@restro/core'
+import { provisionTenant, provisionVenue, setGuestFeatures } from '@restro/core/apply'
 import { authMember, authOrganization, venues, withTenant } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
 
 import { createAuth } from '../src/server/auth'
 import { getAuthDb, getPool } from '../src/server/db'
 import { authModelId } from '../src/server/ids'
-import { assertDevEnvironment, readAdminCredentials } from './lib/guard'
+import { runSettingsCommand } from '../src/server/settings/command'
+import {
+  assertDevEnvironment,
+  readAdminCredentials,
+  seedsDemoBar,
+  seedsDemoMenu,
+} from './lib/guard'
+import { seedDemoBar } from './lib/seed-demo-bar'
 import { seedDemoMenu } from './lib/seed-demo-menu'
 
 const ORGANIZATION = { name: 'Demo Club', slug: 'demo-club' }
@@ -96,16 +103,64 @@ async function main(): Promise<void> {
 
   // 5. The demo menu (made-up items), unless SEED_DEMO_MENU=0: then the venue starts empty and
   // its menu comes from a real barsy sync (the Stage 2 acceptance run).
-  const menu =
-    process.env.SEED_DEMO_MENU === '0'
-      ? null
-      : await seedDemoMenu(pool, organizationId, venueId, userId)
+  const menu = seedsDemoMenu(process.env)
+    ? await seedDemoMenu(pool, organizationId, venueId, userId)
+    : null
+
+  // 6. Demo Bar: a venue on a simulated POS (#71), unless SEED_DEMO_MENU=0. Its menu is written
+  // through apply() from the same scenario file the simulator loads; its bars and tables come
+  // from the simulator through the worker's floor reading (start `pnpm sim:serve` and the worker).
+  const demoBar = seedsDemoBar(process.env) ? await seedDemoBar(pool, organizationId) : null
+
+  // 7. Demo Bar's guest services on, for the ordering and paying walks from a phone. The change
+  // reaches guests with the next publish. Its page draws Basic, the default design.
+  if (demoBar !== null) {
+    const demoBarId = demoBar.venueId as VenueId
+    // Its legal details first: ordering from the phone turns on only once the venue has a privacy
+    // notice link (RR-O44), and paying needs them too (#198). Made-up values, saved the way the
+    // owner's Paying settings save them.
+    const legal = await runSettingsCommand(
+      {
+        pool,
+        tenantId: organizationId,
+        venueId: demoBarId,
+        userId,
+        sessionId: 'seed-dev',
+        signedInAt: new Date(),
+        operator: false,
+      },
+      {
+        type: 'settings.paying_set',
+        changes: {
+          legalDetails: {
+            name: 'Demo Bar EOOD',
+            eik: '123456789',
+            address: 'Sofia, 1 Demo Street',
+            privacyUrl: 'https://demo-bar.example/privacy',
+          },
+        },
+        providerMinMinor: 0,
+      },
+    )
+    if (!legal.ok) throw new Error(`the Demo Bar's legal details were refused: ${legal.error}`)
+    await setGuestFeatures(pool, organizationId, {
+      venueId: demoBarId,
+      features: {
+        filters: true,
+        call_waiter: { enabled: true, kinds: [...CALL_WAITER_KINDS] },
+        bill: true,
+        ordering: true,
+        pay: true,
+      },
+    })
+  }
 
   console.log(
     JSON.stringify({
       level: 'info',
       event: 'seed_dev_done',
       menu,
+      demoBar,
       organization: ORGANIZATION.name,
       organizationId,
       venue: VENUE.name,

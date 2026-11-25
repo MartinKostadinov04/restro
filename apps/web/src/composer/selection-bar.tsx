@@ -1,8 +1,10 @@
 'use client'
 
+import { PAYMENT_MODES, type PaymentMode } from '@restro/core'
 // The bar at the bottom of the screen while items are ticked (brief S3-06): "Add tag…",
-// "Remove tag…" and "Clear selection". Adding or removing is one atomic change for the whole
-// selection: every ticked item changes, or none does.
+// "Remove tag…", "Payment mode…" (#218, only where pay first can take effect) and "Clear
+// selection". Each is one atomic change for the whole selection: every ticked item changes, or
+// none does.
 import { PlusIcon, TagIcon, XIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -16,11 +18,23 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { TagChip } from '@/fields/tag-chip'
 import { useComposer } from './composer-context'
+import { useModeInSentence } from './item-sheet-payment-mode'
 import { activeTagIds } from './tag-filter'
 
 export function SelectionBar() {
   const t = useTranslations('composer.selection')
-  const { view, selected, setItemTags, clearSelection, openTagsPanel } = useComposer()
+  const owner = useTranslations('ownerSettings')
+  const modes = useTranslations('options.payment_mode')
+  const inSentence = useModeInSentence()
+  const {
+    view,
+    selected,
+    setItemTags,
+    setPaymentMode,
+    payFirstDefault,
+    clearSelection,
+    openTagsPanel,
+  } = useComposer()
   const items = [...selected].filter((id) => view.items[id] !== undefined)
   if (items.length === 0) return null
 
@@ -111,6 +125,30 @@ export function SelectionBar() {
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {payFirstDefault === null ? null : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" size="sm" variant="outline" data-testid="payment-mode">
+              {owner('pf_sel')}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="center" side="top" className="min-w-56">
+            <DropdownMenuLabel>{owner('pf_sel')}</DropdownMenuLabel>
+            {[null, ...PAYMENT_MODES].map((mode: PaymentMode | null) => (
+              <DropdownMenuItem
+                key={mode ?? 'same'}
+                onSelect={() => setPaymentMode(items, mode)}
+                data-testid={`payment-mode-option-${mode ?? 'same'}`}
+              >
+                {mode === null
+                  ? owner('pf_i_same', { mode: inSentence(payFirstDefault) })
+                  : modes(mode)}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       <Button
         type="button"

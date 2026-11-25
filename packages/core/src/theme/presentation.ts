@@ -1,8 +1,9 @@
-// Two venue settings the snapshot publishes beside the theme (brief SH-01 §8):
-// - `presentation` (D69): which template (face) the venue chose and the face's options;
-// - `guest_features` (D71): which guest services the venue switched on.
-// Both live in `venues.settings` (snake_case keys, no migration) and are published as the
-// snapshot's `presentation` and `features`.
+// Two shapes the snapshot carries beside the theme (brief SH-01 §8):
+// - `presentation` (D69): which template (face) the venue chose and the face's options. Retired
+//   by the design record (D129, migration 0051): no longer stored or published, kept so that a
+//   snapshot published before it still parses;
+// - `guest_features` (D71): which guest services the venue switched on, in `venues.settings`,
+//   published as the snapshot's `features`.
 //
 // Core does not know which faces exist or which options each declares: the admin checks the face
 // and its options against the template registry before it saves (SH-05a/b). Core only fixes the
@@ -51,18 +52,42 @@ export const PresentationSchema = z.strictObject({
 /** The venue's template and its options. */
 export type Presentation = z.output<typeof PresentationSchema>
 
-/** What a guest can ask staff for (the designer's six request kinds, handover §12). */
+/**
+ * What a guest can ask staff for (#180): a fixed list the venue ticks from. A venue's own list is
+ * kept in this order; `waiter` is always in it while the feature is on.
+ */
 export const CALL_WAITER_KINDS = [
   'waiter',
   'bill',
+  'ice',
   'water',
-  'cutlery',
+  'glasses',
+  'clean_table',
   'terminal',
-  'other',
 ] as const
+
+/** Kinds an earlier list had (the designer's six, #71): read and dropped, never a failed parse. */
+const RETIRED_CALL_WAITER_KINDS = ['cutlery', 'other'] as const
+
+/** What "Call a waiter" offers when a venue switches it on: every kind but the card terminal. */
+export const DEFAULT_CALL_WAITER_KINDS: readonly CallWaiterKind[] = CALL_WAITER_KINDS.filter(
+  (kind) => kind !== 'terminal',
+)
+
+/** A list without the kinds an earlier list had; anything that is not a list is left to the schema. */
+function dropRetiredKinds(value: unknown): unknown {
+  return Array.isArray(value)
+    ? value.filter((kind) => !(RETIRED_CALL_WAITER_KINDS as readonly unknown[]).includes(kind))
+    : value
+}
 
 /** One request kind. */
 export type CallWaiterKind = (typeof CALL_WAITER_KINDS)[number]
+
+/** True for a kind of the current list (not a dropped one). */
+export function isCallWaiterKind(value: string): value is CallWaiterKind {
+  return (CALL_WAITER_KINDS as readonly string[]).includes(value)
+}
 
 /** The guest services a venue can switch on (D71), as stored and as published. */
 export const GuestFeaturesSchema = z.strictObject({
@@ -71,10 +96,15 @@ export const GuestFeaturesSchema = z.strictObject({
   /** Calling staff to the table, with the request kinds offered. */
   call_waiter: z.strictObject({
     enabled: z.boolean(),
-    kinds: z
-      .array(z.enum(CALL_WAITER_KINDS))
-      .max(CALL_WAITER_KINDS.length)
-      .refine((kinds) => new Set(kinds).size === kinds.length, 'request kinds must not repeat'),
+    // A stored or published list that still holds a dropped kind reads without it (#180). The
+    // preprocess keeps the JSON Schema for faces (its output side) the plain list of kinds.
+    kinds: z.preprocess(
+      dropRetiredKinds,
+      z
+        .array(z.enum(CALL_WAITER_KINDS))
+        .max(CALL_WAITER_KINDS.length)
+        .refine((kinds) => new Set(kinds).size === kinds.length, 'request kinds must not repeat'),
+    ),
   }),
   /** The table's running bill. */
   bill: z.boolean(),
@@ -106,16 +136,6 @@ function settingOf(settings: unknown, key: string): unknown {
 }
 
 /**
- * The template a venue chose (`venues.settings.presentation`), or null when it has none or the
- * stored value is not valid (only a hand-edited row could cause that): the face's registry default
- * applies then.
- */
-export function readPresentation(settings: unknown): Presentation | null {
-  const parsed = PresentationSchema.safeParse(settingOf(settings, 'presentation'))
-  return parsed.success ? parsed.data : null
-}
-
-/**
  * The guest services of a venue (`venues.settings.guest_features`): the defaults when it has none
  * or the stored value is not valid (fail closed: every service off).
  */
@@ -124,9 +144,13 @@ export function readGuestFeatures(settings: unknown): GuestFeatures {
   return parsed.success ? canonicalFeatures(parsed.data) : DEFAULT_GUEST_FEATURES
 }
 
-/** The features with the request kinds in the vocabulary's order (a set: order carries nothing). */
+/**
+ * The features with the request kinds in the vocabulary's order (a set: order carries nothing),
+ * and `waiter` among them while Call a waiter is on.
+ */
 export function canonicalFeatures(features: GuestFeatures): GuestFeatures {
-  const present = new Set(features.call_waiter.kinds)
+  const present = new Set<CallWaiterKind>(features.call_waiter.kinds)
+  if (features.call_waiter.enabled) present.add('waiter')
   return {
     ...features,
     call_waiter: {

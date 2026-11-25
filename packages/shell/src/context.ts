@@ -15,8 +15,8 @@ export type Channel = (typeof CHANNELS)[number]
 /** Channels a guest can touch: they scroll, expand text and (later) order (R9, R11). */
 export const INTERACTIVE_CHANNELS: readonly Channel[] = ['qr', 'kiosk']
 
-/** The menu setting `sold_out_display` (R5). */
-export const SOLD_OUT_DISPLAYS = ['show', 'hide'] as const
+/** What the guest page does with a sold-out item (R5, D131): it is not drawn; there is no other value. */
+export const SOLD_OUT_DISPLAYS = ['hide'] as const
 
 /** The three image sizes a snapshot carries per asset. */
 export const IMAGE_VARIANTS = ['thumb', 'card', 'full'] as const
@@ -84,8 +84,8 @@ export const ShellContextSchema = z.strictObject({
   tableToken: z.string().min(1).max(128).nullable().default(null),
   /** Whether ordering is switched on for the venue (false in Stage 3). */
   orderingEnabled: z.boolean().default(false),
-  /** The menu setting `sold_out_display`, applied in R5. */
-  soldOutDisplay: z.enum(SOLD_OUT_DISPLAYS).default('show'),
+  /** What R5 does with a sold-out item: hidden (D131). */
+  soldOutDisplay: z.enum(SOLD_OUT_DISPLAYS).default('hide'),
   /** The services the platform supports for this page (R15); none until the host says so. */
   capabilities: CapabilitiesSchema,
   /** The face's declared image slots (R10). */

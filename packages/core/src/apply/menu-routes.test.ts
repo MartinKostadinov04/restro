@@ -2,6 +2,8 @@
 // Postgres: an entry per area or table, the most specific published menu wins, an unpublished or
 // binned menu falls back to the next level up, the live menu is the default, and the token files
 // carry the menu each code opens. Skipped without a database.
+import { generateKeyPairSync } from 'node:crypto'
+
 import { createPool, type DbPool } from '@restro/db'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -22,6 +24,9 @@ import {
   loadTokenFiles,
 } from './tables'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
+
+/** The worker's public seal key, for the table codes these tests issue (#70). */
+const { publicKey } = generateKeyPairSync('x25519')
 
 describe.skipIf(!hasDatabase)('menu routes (as the restro_app role)', () => {
   const tenant = newId('tn')
@@ -104,7 +109,7 @@ describe.skipIf(!hasDatabase)('menu routes (as the restro_app role)', () => {
     one = ok(await createTable(app, tenant, { areaId: hall, name: null, number: '1' })).table.id
     two = ok(await createTable(app, tenant, { areaId: hall, name: null, number: '2' })).table.id
     three = ok(await createTable(app, tenant, { areaId: patio, name: null, number: '3' })).table.id
-    ok(await issueAllTableTokens(app, tenant, venueId))
+    ok(await issueAllTableTokens(app, tenant, venueId, publicKey))
   })
 
   afterAll(async () => {
@@ -148,7 +153,7 @@ describe.skipIf(!hasDatabase)('menu routes (as the restro_app role)', () => {
     const files = await loadTokenFiles(app, tenant, venueId)
     const tables = await listVenueTables(app, tenant, venueId)
     const menuOf = (tableId: string) =>
-      files?.files.find((file) => file.token === tables.find((t) => t.id === tableId)?.token)
+      files?.files.find((file) => file.codeHash === tables.find((t) => t.id === tableId)?.codeHash)
         ?.menuId
     expect([menuOf(one), menuOf(two), menuOf(three)]).toEqual([second, live, live])
 

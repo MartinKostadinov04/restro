@@ -6,13 +6,16 @@ import {
   CURRENCY_SCALE,
   decimalToMinor,
   formatMoney,
+  formatSignedMoney,
   MoneyError,
   MoneySchema,
   minorToDecimal,
   multiplyMinor,
   percentOfMinor,
   ratioOfMinor,
+  signedMinorToDecimal,
   subtractMinor,
+  sumSignedMinor,
 } from './money'
 
 /**
@@ -71,6 +74,31 @@ describe('addMinor', () => {
 
 /** Everything the whole-number helpers must refuse: floats, negatives, NaN, infinities, unsafe. */
 const NOT_MINOR = [12.5, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]
+
+describe('sumSignedMinor', () => {
+  it('sums signed POS amounts', () => {
+    expect(sumSignedMinor([3600, -100])).toBe(3500)
+    expect(sumSignedMinor([100, -3600])).toBe(-3500)
+    expect(sumSignedMinor([])).toBe(0)
+  })
+
+  it('refuses floats, unsafe integers and a sum past the safe range (rule 8)', () => {
+    for (const bad of [1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53]) {
+      expect(() => sumSignedMinor([1, bad]), `1 + ${bad}`).toThrow(MoneyError)
+    }
+    expect(() => sumSignedMinor([Number.MAX_SAFE_INTEGER, 1])).toThrow(MoneyError)
+    expect(() => sumSignedMinor([Number.MIN_SAFE_INTEGER, -1])).toThrow(MoneyError)
+  })
+
+  it('is the exact sum on every safe list (property)', () => {
+    fc.assert(
+      fc.property(fc.array(fc.integer({ min: -(2 ** 40), max: 2 ** 40 })), (amounts) => {
+        const exact = amounts.reduce((sum, a) => sum + BigInt(a), 0n)
+        expect(BigInt(sumSignedMinor(amounts))).toBe(exact)
+      }),
+    )
+  })
+})
 
 describe('subtractMinor', () => {
   it('subtracts integer minor units', () => {
@@ -411,5 +439,52 @@ describe('MoneySchema', () => {
     ]) {
       expect(MoneySchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false)
     }
+  })
+})
+
+/** The minus a locale may write: a hyphen, or the typographic minus sign. */
+const MINUS = /[-\u2212]/
+
+describe("the POS's own signed amounts (#293, DA-8; rule 8)", () => {
+  // A waiter's discount reaches Restro negative. It is shown, never priced: the conversions that
+  // price something keep refusing a negative amount (the tests above), and these two are display
+  // only, still through an exact decimal string and never a float.
+  it('writes a signed amount as an exact decimal string', () => {
+    expect(signedMinorToDecimal(1250)).toBe('12.50')
+    expect(signedMinorToDecimal(-400)).toBe('-4.00')
+    expect(signedMinorToDecimal(-5)).toBe('-0.05')
+    expect(signedMinorToDecimal(0)).toBe('0.00')
+    expect(signedMinorToDecimal(-1234, 0)).toBe('-1234')
+  })
+
+  it('refuses a float, NaN and an unsafe integer, as the unsigned one does', () => {
+    for (const bad of [1.5, -1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53]) {
+      expect(() => signedMinorToDecimal(bad), String(bad)).toThrow(MoneyError)
+    }
+  })
+
+  it('shows a discount with its minus and agrees with formatMoney above zero', () => {
+    expect(formatSignedMoney(-400, 'EUR', 'en_US')).toContain('4.00')
+    expect(formatSignedMoney(-400, 'EUR', 'en_US')).toMatch(MINUS)
+    for (const minor of [0, 5, 1250, 999_999]) {
+      expect(formatSignedMoney(minor, 'EUR', 'bg_BG')).toBe(formatMoney(minor, 'EUR', 'bg_BG'))
+    }
+    // The unsigned one still refuses it, so nothing Restro prices can slip through (check V2).
+    expect(() => formatMoney(-400, 'EUR', 'en_US')).toThrow(MoneyError)
+  })
+
+  it('keeps the digits of any signed amount, in every locale', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: -9_999_999, max: 9_999_999 }),
+        fc.constantFrom('en_US' as const, 'bg_BG' as const),
+        (minor, locale) => {
+          const shown = formatSignedMoney(minor, 'EUR', locale)
+          expect(Number(shown.replace(/[^\d]/g, ''))).toBe(Math.abs(minor))
+          expect(MINUS.test(shown)).toBe(minor < 0)
+        },
+      ),
+      { numRuns: 400 },
+    )
   })
 })

@@ -1,0 +1,526 @@
+// The words and the shapes of the other Tonight screens (#86), without a database: every reason
+// code core writes on a sent order has a word (a code with none is reported, never drawn raw), the
+// states read as the plan's words, and the end of the night draws what the role was handed.
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+import { REFUSAL_CODES } from '@restro/core'
+import {
+  ALERT_RULES,
+  type LogLine,
+  type NightRead,
+  paymentNumberOf,
+  type SentOrderRow,
+} from '@restro/core/service'
+import { describe, expect, it } from 'vitest'
+
+import en from '../../../messages/en.json'
+import { nightCsvRows } from './night-csv'
+
+import {
+  clockIn,
+  logLineView,
+  nightView,
+  REASON_WORD_CODES,
+  reasonWordOf,
+  sentRowView,
+  settingWordsOf,
+  stateWord,
+  unknownReasons,
+} from './night-view'
+
+const repo = (path: string) => fileURLToPath(new URL(`../../../../../${path}`, import.meta.url))
+
+describe('the reason words of a sent order', () => {
+  it('words the codes the plan names', () => {
+    expect(reasonWordOf('item_unavailable')).toEqual({ word: 'soldout', unknown: false })
+    expect(reasonWordOf('ordering_paused')).toEqual({ word: 'paused', unknown: false })
+    expect(reasonWordOf('table_closed')).toEqual({ word: 'closed', unknown: false })
+    expect(reasonWordOf('staff_closed')).toEqual({ word: 'closed', unknown: false })
+    expect(reasonWordOf('closing_hour')).toEqual({ word: 'hours', unknown: false })
+    expect(reasonWordOf('pos_unreachable')).toEqual({ word: 'unreachable', unknown: false })
+  })
+
+  it('words every refusal the POS can give as "refused it", except an item that ran out', () => {
+    for (const code of REFUSAL_CODES) {
+      expect(reasonWordOf(code)).toEqual({
+        word: code === 'item_unavailable' ? 'soldout' : 'refused',
+        unknown: false,
+      })
+    }
+  })
+
+  it('shows no word for an answer or a check, and no raw code', () => {
+    for (const code of ['staff_found', 'staff_not_found', 'check_timed_out', 'check_ambiguous']) {
+      expect(reasonWordOf(code)).toEqual({ word: null, unknown: false })
+    }
+    expect(reasonWordOf(null)).toEqual({ word: null, unknown: false })
+  })
+
+  it('reports a code with no word, and shows none', () => {
+    expect(reasonWordOf('made_up_reason')).toEqual({ word: null, unknown: true })
+    expect(
+      unknownReasons([
+        { reason: 'made_up_reason' },
+        { reason: 'ordering_paused' },
+        { reason: null },
+      ]),
+    ).toEqual(['made_up_reason'])
+  })
+
+  it('has a word for every reason code core and the worker write on a sent order', () => {
+    // The codes are listed from the sources that write them, so a new one fails here.
+    const found = new Set<string>()
+    for (const path of [
+      'packages/core/src/service/sent-order.ts',
+      'packages/core/src/service/sent-order-answer.ts',
+      'apps/worker/src/jobs/order-send.ts',
+    ]) {
+      for (const line of readFileSync(repo(path), 'utf8').split('\n')) {
+        if (!/reason|settle\(|unconfirmed\(|paused\(\)/.test(line)) continue
+        for (const match of line.matchAll(/'([a-z]+(?:_[a-z]+)+)'/g)) found.add(match[1] as string)
+      }
+    }
+    // States, commands and other words that share those lines.
+    const notReasons = new Set([
+      'not_sent',
+      'awaiting_approval',
+      'sent_order',
+      'on_bill',
+      'pay_first',
+      'by_state',
+      'sent_order_missing',
+      'sent_order_answered',
+      'sent_order_settled',
+      'no_turn',
+    ])
+    const missing = [...found].filter(
+      (code) =>
+        !notReasons.has(code) &&
+        !REASON_WORD_CODES.includes(code) &&
+        // A code the sources use that is not a sent order's reason (a refusal of a command, a key).
+        !/^(sent_order|pos_table|table_order)\./.test(code) &&
+        reasonWordOf(code).unknown,
+    )
+    expect(missing).toEqual([])
+    expect(found.size).toBeGreaterThan(5)
+  })
+})
+
+describe('the state words', () => {
+  it("maps the stored states to the plan's words", () => {
+    expect(stateWord('waiting')).toBe('waiting')
+    expect(stateWord('sending')).toBe('sending')
+    expect(stateWord('checking')).toBe('checking')
+    expect(stateWord('added')).toBe('added')
+    expect(stateWord('awaiting_approval')).toBe('approval')
+    expect(stateWord('not_sent')).toBe('notsent')
+    expect(stateWord('unconfirmed')).toBe('check')
+  })
+
+  it('reads an unknown state as the cautious one', () => {
+    expect(stateWord('made_up')).toBe('check')
+    expect(stateWord(null)).toBeNull()
+  })
+})
+
+const row = (fields: Partial<SentOrderRow> = {}): SentOrderRow => ({
+  id: 'so_A1',
+  reference: 'K7Q',
+  tableId: 'tb_A1',
+  table: '7',
+  numbered: true,
+  itemCount: 3,
+  totalMinor: 1250,
+  state: 'added',
+  reason: null,
+  createdAt: new Date('2026-10-26T22:30:00Z'),
+  landedAt: null,
+  answer: null,
+  ...fields,
+})
+
+describe('a sent order row', () => {
+  const clock = clockIn('Europe/Sofia')
+
+  it("words the time in the venue's zone, not the server's", () => {
+    expect(clock(new Date('2026-10-26T22:30:00Z'))).toBe('00:30')
+    expect(sentRowView(row(), clock).time).toBe('00:30')
+  })
+
+  it('keeps the answer and who gave it, and where it came from', () => {
+    const answered = sentRowView(
+      row({
+        state: 'not_sent',
+        answer: { answer: 'not_found', who: { kind: 'person', name: 'Maria' }, via: 'telegram' },
+      }),
+      clock,
+    )
+    expect(answered.answer).toEqual({
+      answer: 'not_found',
+      by: { who: { kind: 'person', name: 'Maria' }, telegram: true },
+    })
+    expect(answered.state).toBe('notsent')
+  })
+
+  it('carries our fields only: no POS reference, no guest data', () => {
+    expect(Object.keys(sentRowView(row(), clock)).sort()).toEqual(
+      [
+        'answer',
+        'id',
+        'itemCount',
+        'landedAt',
+        'numbered',
+        'reason',
+        'reference',
+        'state',
+        'table',
+        'tableId',
+        'time',
+        'totalMinor',
+      ].sort(),
+    )
+  })
+})
+
+const line = (fields: Partial<LogLine> = {}): LogLine => ({
+  seq: 1,
+  at: new Date('2026-10-26T22:30:00Z'),
+  kind: 'sent_order.state',
+  tableId: 'tb_A1',
+  table: '7',
+  numbered: true,
+  sentOrderId: 'so_A1',
+  reference: 'K7Q',
+  paymentId: null,
+  fromState: null,
+  toState: 'added',
+  reason: null,
+  who: { kind: 'restro' },
+  via: null,
+  scope: null,
+  cause: null,
+  subject: null,
+  heldCount: null,
+  codeCount: null,
+  amountMinor: null,
+  providerKind: null,
+  sentOrdersOfDay: null,
+  openBills: null,
+  callKinds: [],
+  settingKeys: [],
+  ...fields,
+})
+
+describe('a Log line', () => {
+  const input = {
+    clock: clockIn('Europe/Sofia'),
+    locale: 'en' as const,
+    source: 'Mistral',
+    venueName: 'Club Nova',
+  }
+
+  it('names the venue in an alert line, so no title stops short (RR-57)', () => {
+    for (const locale of ['en', 'bg'] as const) {
+      for (const reason of Object.keys(ALERT_RULES)) {
+        const title = logLineView(line({ kind: 'alert.raised', reason }), {
+          ...input,
+          locale,
+        }).alertTitle
+        expect(title, `${locale} ${reason}`).toBeTruthy()
+        expect(title, `${locale} ${reason}`).not.toMatch(/(^[:,\s])|[\s,:]$|\s\s/)
+      }
+    }
+    expect(
+      logLineView(line({ kind: 'alert.raised', reason: 'ordering_paused' }), input).alertTitle,
+    ).toBe('Ordering is paused at Club Nova')
+  })
+
+  it('names the alert’s table when it has one', () => {
+    const view = logLineView(
+      line({ kind: 'alert.raised', reason: 'payment_stranded', table: '7', numbered: true }),
+      input,
+    )
+    expect(view.alertTitle).toContain('Table 7')
+  })
+
+  it('names the table on the done line as on the raised one (RR-91)', () => {
+    for (const kind of ['alert.raised', 'alert.done'] as const) {
+      const view = logLineView(
+        line({ kind, reason: 'order_unconfirmed', table: '1', numbered: true }),
+        input,
+      )
+      expect(view.alertTitle, kind).toBe('Table 1: an order couldn’t be confirmed')
+    }
+  })
+
+  it('keeps the answer apart from an ordinary move', () => {
+    const answer = logLineView(line({ reason: 'staff_found' }), input)
+    expect(answer.answer).toBe('found')
+    expect(logLineView(line(), input).answer).toBeNull()
+  })
+
+  it("titles an alert by its own kind, in the admin's language", () => {
+    const view = logLineView(line({ kind: 'alert.raised', reason: 'order_unconfirmed' }), input)
+    expect(view.alertTitle).toBeTruthy()
+    expect(view.alertTitle).not.toContain('order_unconfirmed')
+  })
+
+  it('marks a receipt line as the mark or its Undo, with the number the guest shows (#200)', () => {
+    const marked = logLineView(
+      line({
+        kind: 'receipt.brought',
+        paymentId: 'py_A1',
+        fromState: 'to_bring',
+        toState: 'brought',
+      }),
+      input,
+    )
+    const undone = logLineView(
+      line({
+        kind: 'receipt.brought',
+        paymentId: 'py_A1',
+        fromState: 'brought',
+        toState: 'to_bring',
+      }),
+      input,
+    )
+    expect(marked.receipt).toEqual({ undone: false, paymentNumber: paymentNumberOf('py_A1') })
+    expect(undone.receipt).toEqual({ undone: true, paymentNumber: paymentNumberOf('py_A1') })
+    // Every other kind is untouched.
+    expect('receipt' in logLineView(line(), input)).toBe(false)
+  })
+
+  it('words a guard and a setting, and falls back to a plain word for an unknown one', () => {
+    expect(logLineView(line({ kind: 'guard.tripped', reason: 'pin_wrong' }), input).guard).toBe(
+      'pin',
+    )
+    expect(logLineView(line({ kind: 'guard.tripped', reason: 'new_guard' }), input).guard).toBe(
+      'other',
+    )
+    expect(
+      logLineView(line({ kind: 'settings.changed', reason: 'payment_table' }), input).setting,
+    ).toEqual(['pay_table'])
+    expect(logLineView(line({ kind: 'settings.changed', reason: 'x' }), input).setting).toEqual([
+      'setting',
+    ])
+  })
+
+  it('words a pause cause only when it has a word', () => {
+    expect(logLineView(line({ kind: 'pause.started', cause: 'staff' }), input).cause).toBe('staff')
+    expect(
+      logLineView(line({ kind: 'pause.started', cause: 'pos_unreachable' }), input).cause,
+    ).toBe('unreachable')
+    expect(logLineView(line({ kind: 'pause.started', cause: 'made_up' }), input).cause).toBeNull()
+  })
+})
+
+const night = (fields: Partial<NightRead> = {}): NightRead => ({
+  day: '2026-10-26',
+  days: ['2026-10-26'],
+  today: false,
+  hasService: true,
+  dayEndsAt: '07:00',
+  closedAt: new Date('2026-10-27T05:05:00Z'),
+  ended: false,
+  full: true,
+  fix: [
+    {
+      alertId: 'al_A1',
+      sentOrderId: 'so_A1',
+      reference: 'K7Q',
+      tableId: 'tb_A1',
+      table: '7',
+      numbered: true,
+      items: [{ name: 'Gin tonic', options: ['no mint'], qty: 2 }],
+      at: new Date('2026-10-26T22:30:00Z'),
+      sentAt: new Date('2026-10-26T22:29:00Z'),
+      billBeforeMinor: 4200,
+      landedAt: null,
+      answer: null,
+    },
+    {
+      alertId: null,
+      sentOrderId: 'so_B2',
+      reference: 'M2P',
+      tableId: 'tb_B2',
+      table: 'Loge',
+      numbered: false,
+      items: [],
+      at: new Date('2026-10-26T23:00:00Z'),
+      sentAt: null,
+      billBeforeMinor: null,
+      landedAt: null,
+      answer: { answer: 'found', who: { kind: 'person', name: 'Georgi' }, via: null },
+    },
+  ],
+  sent: {
+    counts: { all: 84, notAdded: 5, added: 79, notSent: 3, unconfirmed: 2 },
+    notAdded: {
+      day: '2026-10-26',
+      rows: [row({ state: 'unconfirmed' })],
+      hasMore: false,
+      counts: { all: 84, notAdded: 5, added: 79, notSent: 3, unconfirmed: 2 },
+    },
+  },
+  totals: {
+    sittings: 30,
+    sentOrders: 84,
+    sentOrdersAdded: 79,
+    sentOrdersNotSent: 3,
+    sentOrdersUnconfirmed: 2,
+    addedMinor: 123456,
+    waiterCalls: 12,
+    alerts: 4,
+    pauses: 1,
+  },
+  reservations: null,
+  money: null,
+  ...fields,
+})
+
+describe('the end of the night', () => {
+  it('splits section 1 into the problems that wait and the ones already answered', () => {
+    const view = nightView(night(), 'Europe/Sofia')
+    expect(view.fix.map((r) => r.check?.reference)).toEqual(['K7Q'])
+    expect(view.fix[0]?.kind).toBe('check')
+    expect(view.fix[0]?.check?.sentAt).toBe('00:29')
+    expect(view.answered).toEqual([
+      {
+        sentOrderId: 'so_B2',
+        reference: 'M2P',
+        table: 'Loge',
+        numbered: false,
+        answer: 'found',
+        by: { who: { kind: 'person', name: 'Georgi' }, telegram: false },
+      },
+    ])
+  })
+
+  it('hands a staff role no money: the view has no field for tips or captured money', () => {
+    const view = nightView(night({ full: false }), 'Europe/Sofia')
+    expect(view.full).toBe(false)
+    expect(JSON.stringify(view)).not.toMatch(/tip|captured|payments/i)
+  })
+})
+
+describe('the reservation group of the end of the night (#408, D144)', () => {
+  const counts = {
+    resBookings: 5,
+    resWalkIns: 2,
+    resArrived: 4,
+    resBookingsArrived: 3,
+    resNoShows: 1,
+    resCancelled: 1,
+    resNotSeated: 1,
+    resCoversBooked: 18,
+    resCoversSeated: 14,
+    noShowRate: 25,
+  }
+  const words = en.tonight as unknown as Record<string, string>
+  const say = (key: string) => words[key] ?? key
+  const csv = (view: ReturnType<typeof nightView>) =>
+    nightCsvRows(view, [], { say, source: 'tonight', timezone: 'Europe/Sofia' })
+  const door = (rows: ReturnType<typeof csv>) => rows.filter((row) => row.section === words.nt_res)
+
+  it('is hidden, in the view and in the file, where reservations are off', () => {
+    const view = nightView(night({ reservations: null }), 'Europe/Sofia')
+    expect(view.reservations).toBeNull()
+    expect(door(csv(view))).toEqual([])
+  })
+
+  it('shows zeros, and no rate, when reservations are on and nobody booked', () => {
+    const zeros = {
+      resBookings: 0,
+      resWalkIns: 0,
+      resArrived: 0,
+      resBookingsArrived: 0,
+      resNoShows: 0,
+      resCancelled: 0,
+      resNotSeated: 0,
+      resCoversBooked: 0,
+      resCoversSeated: 0,
+      noShowRate: null,
+    }
+    const view = nightView(night({ reservations: zeros }), 'Europe/Sofia')
+    expect(view.reservations).toEqual(zeros)
+    expect(door(csv(view)).map((row) => row.detail)).toEqual([
+      '0',
+      '0',
+      '0',
+      '0',
+      '0',
+      '0',
+      '0',
+      '0',
+      '',
+    ])
+  })
+
+  it('writes one CSV row per count, in the screen’s order, with the rate as a percentage', () => {
+    const rows = door(csv(nightView(night({ reservations: counts }), 'Europe/Sofia')))
+    expect(rows.map((row) => [row.what, row.detail])).toEqual([
+      ['Bookings', '5'],
+      ['Walk-ins', '2'],
+      ['Arrived', '4'],
+      ['No-shows', '1'],
+      ['Cancelled', '1'],
+      ['Not seated', '1'],
+      ['Covers booked', '18'],
+      ['Covers seated', '14'],
+      ['No-show rate', '25%'],
+    ])
+  })
+
+  it('gives a role with night.view alone the group and no money', () => {
+    const view = nightView(
+      night({ full: false, money: null, reservations: counts }),
+      'Europe/Sofia',
+    )
+    expect(view.reservations).toEqual(counts)
+    expect(view.money).toBeNull()
+    expect(door(csv(view))).toHaveLength(9)
+    expect(JSON.stringify(csv(view))).not.toMatch(/captured|tip/i)
+  })
+})
+
+describe('the screen round Log lines (S15, S20)', () => {
+  const input = {
+    clock: clockIn('Europe/Sofia'),
+    locale: 'en' as const,
+    source: 'Mistral',
+    venueName: 'Club',
+  }
+
+  it('names a changed setting by its part of Settings', () => {
+    const changed = (reason: string, keys: string[] = []) =>
+      logLineView(line({ kind: 'settings.changed', reason, settingKeys: keys }), input).setting
+    expect(changed('ordering', ['serviceHours', 'closedDayHours'])).toEqual(['hours'])
+    expect(changed('ordering', ['capMinor', 'spot'])).toEqual(['limits', 'location'])
+    expect(changed('payment_table')).toEqual(['pay_table'])
+    expect(changed('pay_first')).toEqual(['pay_rule'])
+    expect(changed('refund_route')).toEqual(['refunds'])
+    expect(changed('telegram_linked')).toEqual(['telegram'])
+    expect(changed('ordering')).toEqual(['setting'])
+    expect(settingWordsOf(null, ['unknownKey'])).toEqual(['setting'])
+    // A key with no part of its own is still said, after the parts that are named.
+    expect(changed('ordering', ['unknownKey', 'capMinor'])).toEqual(['limits', 'setting'])
+    // The alerts form saves the Telegram chat too: its keys say which part changed.
+    expect(changed('alerts', ['telegramChatId'])).toEqual(['telegram'])
+    expect(changed('alerts', ['alertRecipientUserIds', 'telegramChatId'])).toEqual([
+      'alerts',
+      'telegram',
+    ])
+    expect(changed('alerts')).toEqual(['alerts'])
+    expect(changed('telegram_unlinked')).toEqual(['telegram'])
+    expect(logLineView(line(), input).setting).toEqual([])
+  })
+
+  it('keeps why a payment step was logged, for the freed table and the refused release', () => {
+    const step = (reason: string | null) =>
+      logLineView(line({ kind: 'payment.state', toState: 'captured', reason }), input).paymentReason
+    expect(step('table_freed')).toBe('table_freed')
+    expect(step('release_refused')).toBe('release_refused')
+    expect(step(null)).toBeNull()
+  })
+})

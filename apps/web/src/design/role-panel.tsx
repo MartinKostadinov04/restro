@@ -306,7 +306,7 @@ export function AdvancedColours({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <CollapsibleTrigger asChild>
           <Button type="button" variant="outline" size="sm" data-testid="design-advanced-toggle">
-            {t('advanced')}
+            {t('colourRoles')}
             <ChevronDownIcon aria-hidden className={shown ? 'rotate-180' : undefined} />
           </Button>
         </CollapsibleTrigger>

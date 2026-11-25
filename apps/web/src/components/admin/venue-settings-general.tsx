@@ -10,6 +10,7 @@ import { MenuSourceSkeleton } from '@/integration/menu-source-skeleton'
 import { MenuSourceTab } from '@/integration/menu-source-tab'
 import { getPool } from '@/server/db'
 import { canDeleteVenue, canManageIntegration } from '@/server/roles'
+import { tillLabelOfVenue } from '@/server/tables/service'
 
 import { type MenuRow, MenusCard } from './menus-card'
 import { VenueDangerZone } from './venue-danger-zone'
@@ -26,7 +27,10 @@ export async function VenueSettingsGeneral({
   venue: Venue
   hasTill: boolean
 }) {
-  const all = await listMenus(getPool(), tenantId, venue.id, { includeDeleted: true })
+  const [all, source] = await Promise.all([
+    listMenus(getPool(), tenantId, venue.id, { includeDeleted: true }),
+    hasTill ? tillLabelOfVenue(getPool(), tenantId, venue.id) : null,
+  ])
   const row = (menu: (typeof all)[number]): MenuRow => ({
     id: menu.id,
     name: menu.name,
@@ -40,12 +44,13 @@ export async function VenueSettingsGeneral({
     .map(row)
 
   return (
-    <div className="grid gap-8" data-testid="settings-general">
+    <div className="grid grid-cols-1 gap-8" data-testid="settings-general">
       <VenueSettings venue={venue} role={role} />
       <MenusCard
         venueId={venue.id}
         venueName={venue.name}
         hasTill={hasTill}
+        source={source ?? ''}
         canManage={canManageIntegration(role)}
         menus={inUse}
         deleted={deleted}
@@ -56,7 +61,9 @@ export async function VenueSettingsGeneral({
         <MenuSourceTab tenantId={tenantId} role={role} venue={venue} />
       </Suspense>
       {/* The end of the tab (D76): only an owner deletes a venue; the action checks again. */}
-      {canDeleteVenue(role) ? <VenueDangerZone venueId={venue.id} venueName={venue.name} /> : null}
+      {canDeleteVenue(role) ? (
+        <VenueDangerZone venueId={venue.id} venueName={venue.name} hasTill={hasTill} />
+      ) : null}
     </div>
   )
 }

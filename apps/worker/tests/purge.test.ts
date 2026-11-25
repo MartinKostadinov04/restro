@@ -228,9 +228,9 @@ describe.skipIf(!hasPurge)('the purge (as the restro_purge role)', () => {
       ],
       { pagesOk: [true] },
     )
-    await issueAllTableTokens(world.pool, world.tenantId, world.venueId)
+    await issueAllTableTokens(world.pool, world.tenantId, world.venueId, world.publicKeyText)
     const tokens = (await listVenueTables(world.pool, world.tenantId, world.venueId)).map(
-      (table) => table.token as string,
+      (table) => table.codeHash as string,
     )
     expect(tokens).toHaveLength(2)
     await publish(world.menuId, world.venueId)
@@ -408,12 +408,12 @@ describe.skipIf(!hasPurge)('the purge (as the restro_purge role)', () => {
       number: '9',
     })
     if (!table.ok) throw new Error('no table')
-    await issueAllTableTokens(world.pool, world.tenantId, venueId)
+    await issueAllTableTokens(world.pool, world.tenantId, venueId, world.publicKeyText)
     const [coded] = await listVenueTables(world.pool, world.tenantId, venueId)
-    const token = coded?.token as string
+    const token = coded?.codeHash as string
     expect(await deleteTable(world.pool, world.tenantId, table.table.id)).toMatchObject({
       ok: true,
-      retired: token,
+      retired: [token],
     })
     expect(
       await purgeTables(scoped(), { tenantId: world.tenantId, venueId, now: new Date() }),

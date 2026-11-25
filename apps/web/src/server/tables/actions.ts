@@ -4,17 +4,23 @@
 // asking (`requireTenant`: the tenant is the person's organisation, never the request's), that
 // the venue is theirs and whether their role may change codes, areas, tables and menus (owners
 // and admins), checks the input with Zod and calls service.ts. After a change the venue page and
-// its print sheet are revalidated, so the client gets the fresh tab in the same round trip.
+// its print sheet are revalidated, so the client gets the fresh tab in the same round trip. The
+// one action that changes nothing, `revealCodesAction`, refreshes nothing: the tab asks it for its
+// codes once the page is up (#70).
 import { idSchema } from '@restro/core'
 import { findVenueTable } from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { getPool } from '../db'
+import { defaultQrBaseUrl, serverEnv } from '../env'
+import { signInTooOld } from '../fresh-sign-in'
 import { enqueueJob } from '../jobs'
 import { logError } from '../log'
+import { revealConfig, revealFor } from '../reveal'
 import { canManageIntegration } from '../roles'
 import { requireTenant } from '../session'
+import { onSharedDevice } from '../staff/shared-device'
 import { getVenue } from '../venues'
 import {
   addArea,
@@ -31,11 +37,12 @@ import {
   renameAreaOf,
   renameTable,
   renumberTable,
+  revealCodes,
   type TablesScope,
   type TablesServices,
   turnOffCode,
 } from './service'
-import type { TablesActionResult } from './view'
+import type { RevealCodesResult, TablesActionResult } from './view'
 
 const tableId = idSchema('tb')
 const areaId = idSchema('ar')
@@ -67,6 +74,8 @@ const MoveTable = z.strictObject({
   position,
 })
 const OnVenueTable = z.strictObject({ venueId, tableId })
+/** The tables whose codes the tab draws (a venue has far fewer). */
+const RevealTables = z.strictObject({ venueId, tableIds: z.array(tableId).min(1).max(1_000) })
 const MenuRoute = z.strictObject({
   venueId,
   target: z.union([z.strictObject({ areaId }), z.strictObject({ tableId })]),
@@ -75,8 +84,14 @@ const MenuRoute = z.strictObject({
 
 const INVALID: TablesActionResult = { ok: false, error: 'invalid' }
 const NOT_FOUND: TablesActionResult = { ok: false, error: 'not_found' }
+const FORBIDDEN: TablesActionResult = { ok: false, error: 'forbidden' }
+const FRESH = { fresh: true } as const
 
-const services: TablesServices = { enqueue: (name, data) => enqueueJob(name, data) }
+// Read when an action runs (the settings are read lazily, so `next build` needs none of them).
+const services = (): TablesServices => ({
+  enqueue: (name, data) => enqueueJob(name, data),
+  sealPublicKey: serverEnv().SEAL_PUBLIC_KEY,
+})
 
 /** Which venue an action is about: given, or the venue a table belongs to. */
 type Target = { readonly venue: string } | { readonly table: string }
@@ -85,9 +100,15 @@ type Target = { readonly venue: string } | { readonly table: string }
 async function perform(
   target: Target,
   run: (scope: TablesScope) => Promise<TablesActionResult>,
+  { fresh = false }: { readonly fresh?: boolean } = {},
 ): Promise<TablesActionResult> {
   try {
-    const { organization } = await requireTenant()
+    const { organization, user, sessionId, signedInAt } = await requireTenant()
+    // A shared tablet works Tonight; tables and codes need the person's own sign-in (RR-84).
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) return FORBIDDEN
+    // A code (new, again, off, or gone with its table or area) asks for the password after
+    // 15 minutes (D122 §7).
+    if (fresh && signInTooOld(signedInAt)) return { ok: false, error: 'sign_in_again' }
     const venueOfAction =
       'venue' in target
         ? target.venue
@@ -101,6 +122,7 @@ async function perform(
       tenantId: organization.id,
       venue: found,
       canManage: canManageIntegration(organization.role),
+      actor: { userId: user.id, sessionId },
     })
     if (result.ok) {
       revalidatePath(`/venues/${found.id}`)
@@ -115,19 +137,61 @@ async function perform(
   }
 }
 
+/**
+ * Opens the codes the tab draws (#70), through the worker, which checks the person may see them
+ * and writes the reveal's Log entry. Revalidates nothing: the tab keeps the codes it was given,
+ * and an action's refresh asks for none again.
+ */
+export async function revealCodesAction(input: unknown): Promise<RevealCodesResult> {
+  const parsed = RevealTables.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  try {
+    const { organization, user, sessionId } = await requireTenant()
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'forbidden' }
+    }
+    // Another tenant's venue and a made-up id both come back as null (row-level security).
+    const found = await getVenue(organization.id, parsed.data.venueId)
+    if (!found) return { ok: false, error: 'not_found' }
+    const actor = { userId: user.id, sessionId }
+    return await revealCodes(
+      {
+        pool: getPool(),
+        tenantId: organization.id,
+        venue: found,
+        canManage: canManageIntegration(organization.role),
+        actor,
+      },
+      defaultQrBaseUrl(),
+      parsed.data.tableIds,
+      revealFor(revealConfig(), { tenantId: organization.id, venueId: found.id, actor }),
+    )
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('tables_reveal_failed', error)
+    return { ok: false, error: 'failed' }
+  }
+}
+
 /** Gives every active table without one a code. */
 export async function createAllCodesAction(input: unknown): Promise<TablesActionResult> {
   const parsed = OnVenue.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform({ venue: parsed.data.venueId }, (scope) => createAllCodes(scope, services))
+  return perform(
+    { venue: parsed.data.venueId },
+    (scope) => createAllCodes(scope, services()),
+    FRESH,
+  )
 }
 
 /** Gives one table a code, or a new one (the printed sticker stops working). */
 export async function issueCodeAction(input: unknown): Promise<TablesActionResult> {
   const parsed = OnTable.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform({ table: parsed.data.tableId }, (scope) =>
-    issueCode(scope, services, parsed.data.tableId),
+  return perform(
+    { table: parsed.data.tableId },
+    (scope) => issueCode(scope, services(), parsed.data.tableId),
+    FRESH,
   )
 }
 
@@ -135,8 +199,10 @@ export async function issueCodeAction(input: unknown): Promise<TablesActionResul
 export async function turnOffCodeAction(input: unknown): Promise<TablesActionResult> {
   const parsed = OnTable.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform({ table: parsed.data.tableId }, (scope) =>
-    turnOffCode(scope, services, parsed.data.tableId),
+  return perform(
+    { table: parsed.data.tableId },
+    (scope) => turnOffCode(scope, services(), parsed.data.tableId),
+    FRESH,
   )
 }
 
@@ -145,7 +211,7 @@ export async function renameTableAction(input: unknown): Promise<TablesActionRes
   const parsed = Rename.safeParse(input)
   if (!parsed.success) return INVALID
   return perform({ table: parsed.data.tableId }, (scope) =>
-    renameTable(scope, services, parsed.data.tableId, parsed.data.label),
+    renameTable(scope, services(), parsed.data.tableId, parsed.data.label),
   )
 }
 
@@ -172,7 +238,7 @@ export async function setAreaHiddenAction(input: unknown): Promise<TablesActionR
   const parsed = HideArea.safeParse(input)
   if (!parsed.success) return INVALID
   return perform({ venue: parsed.data.venueId }, (scope) =>
-    hideArea(scope, services, parsed.data.areaId, parsed.data.hidden),
+    hideArea(scope, services(), parsed.data.areaId, parsed.data.hidden),
   )
 }
 
@@ -189,8 +255,10 @@ export async function moveAreaAction(input: unknown): Promise<TablesActionResult
 export async function deleteAreaAction(input: unknown): Promise<TablesActionResult> {
   const parsed = OnArea.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform({ venue: parsed.data.venueId }, (scope) =>
-    removeArea(scope, services, parsed.data.areaId),
+  return perform(
+    { venue: parsed.data.venueId },
+    (scope) => removeArea(scope, services(), parsed.data.areaId),
+    FRESH,
   )
 }
 
@@ -213,7 +281,7 @@ export async function setTableNumberAction(input: unknown): Promise<TablesAction
   const parsed = Renumber.safeParse(input)
   if (!parsed.success) return INVALID
   return perform({ venue: parsed.data.venueId }, (scope) =>
-    renumberTable(scope, services, parsed.data.tableId, parsed.data.number),
+    renumberTable(scope, services(), parsed.data.tableId, parsed.data.number),
   )
 }
 
@@ -222,7 +290,7 @@ export async function setTableHiddenAction(input: unknown): Promise<TablesAction
   const parsed = HideTable.safeParse(input)
   if (!parsed.success) return INVALID
   return perform({ venue: parsed.data.venueId }, (scope) =>
-    hideTable(scope, services, parsed.data.tableId, parsed.data.hidden),
+    hideTable(scope, services(), parsed.data.tableId, parsed.data.hidden),
   )
 }
 
@@ -231,7 +299,7 @@ export async function moveTableAction(input: unknown): Promise<TablesActionResul
   const parsed = MoveTable.safeParse(input)
   if (!parsed.success) return INVALID
   return perform({ venue: parsed.data.venueId }, (scope) =>
-    moveTableOf(scope, services, parsed.data.tableId, parsed.data.areaId, parsed.data.position),
+    moveTableOf(scope, services(), parsed.data.tableId, parsed.data.areaId, parsed.data.position),
   )
 }
 
@@ -239,8 +307,10 @@ export async function moveTableAction(input: unknown): Promise<TablesActionResul
 export async function deleteTableAction(input: unknown): Promise<TablesActionResult> {
   const parsed = OnVenueTable.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform({ venue: parsed.data.venueId }, (scope) =>
-    removeTable(scope, services, parsed.data.tableId),
+  return perform(
+    { venue: parsed.data.venueId },
+    (scope) => removeTable(scope, services(), parsed.data.tableId),
+    FRESH,
   )
 }
 
@@ -257,7 +327,7 @@ export async function setMenuRouteAction(input: unknown): Promise<TablesActionRe
   return perform({ venue: parsed.data.venueId }, (scope) =>
     chooseMenu(
       scope,
-      services,
+      services(),
       'areaId' in target ? { areaId: target.areaId } : { tableId: target.tableId },
       parsed.data.menuId,
     ),

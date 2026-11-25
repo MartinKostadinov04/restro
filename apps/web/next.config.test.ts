@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { frameHeaders } from './src/frame-headers'
 import { GUEST_PAGE_SOURCES, guestHeaders } from './src/guest/headers'
 
 // The real headers on a running server are checked by e2e/guest.spec.ts. This reads the config
@@ -11,10 +12,10 @@ describe('the guest pages send no referrer (A5-F5)', () => {
 
   it('defines Referrer-Policy: no-referrer for the menu and the table address', () => {
     expect(GUEST_PAGE_SOURCES).toEqual(['/m/:path*', '/t/:path*'])
-    expect(guestHeaders()).toEqual([
-      { source: '/m/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
-      { source: '/t/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
-    ])
+    for (const rule of guestHeaders()) {
+      expect(rule.headers[0]).toEqual({ key: 'Referrer-Policy', value: 'no-referrer' })
+    }
+    expect(guestHeaders().map((rule) => rule.source)).toEqual(['/m/:path*', '/t/:path*'])
   })
 
   it('has next.config.ts return them from headers()', async () => {
@@ -22,7 +23,8 @@ describe('the guest pages send no referrer (A5-F5)', () => {
     vi.spyOn(process, 'loadEnvFile').mockImplementation(() => {})
     const { default: config } = await import('./next.config')
     const rules = await config.headers?.()
-    expect(rules).toEqual(guestHeaders())
+    // The admin pages' framing rules (DA-O8) follow the guest pages' rules.
+    expect(rules).toEqual([...guestHeaders(), ...frameHeaders()])
     const sources = (rules ?? []).map((rule) => rule.source)
     expect(sources).toContain('/m/:path*')
     expect(sources).toContain('/t/:path*')

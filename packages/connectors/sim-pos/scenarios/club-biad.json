@@ -1,0 +1,1283 @@
+{
+  "name": "club-biad",
+  "description": "Club Biad: the demo club of the acceptance walk (pnpm db:seed:demo). Three bars, the club’s own floor of 76 tables ported from its paper plan plus three payment tables, and a Bulgarian club menu of about thirty articles. A table’s number is the plan’s spot name, so a spot, its table and its QR code are the same place. Three bills are already open, the same three the demo seed writes.",
+  "profile": "pilot",
+  "switches": {
+    "readsTableBar": true,
+    "oneLoginPerBar": false,
+    "firstItemsOpenBill": true,
+    "notesReachTicket": true,
+    "lineShowsWhoAndWhen": true,
+    "lineCarriesCallerRef": false,
+    "repeatSafeAdd": true,
+    "receiptNumberOnClose": true,
+    "readClosedBills": true,
+    "tipAsLine": true,
+    "rateLimit": {
+      "concurrent": 8,
+      "perSecond": 50
+    }
+  },
+  "pageSize": 50,
+  "bars": [
+    {
+      "id": "5001",
+      "name": "Бар 1"
+    },
+    {
+      "id": "5002",
+      "name": "Бар 2"
+    },
+    {
+      "id": "5003",
+      "name": "Бар 3"
+    }
+  ],
+  "tables": [
+    {
+      "id": "50001",
+      "number": "5",
+      "hall": "Горен салон",
+      "bar": "5001",
+      "payment": false
+    },
+    {
+      "id": "50002",
+      "number": "6",
+      "hall": "Горен салон",
+      "bar": "5001",
+      "payment": false
+    },
+    {
+      "id": "50003",
+      "number": "7",
+      "hall": "Горен салон",
+      "bar": "5001",
+      "payment": false
+    },
+    {
+      "id": "50004",
+      "number": "4",
+      "hall": "Горен салон",
+      "bar": "5001",
+      "payment": false
+    },
+    {
+      "id": "50005",
+      "number": "8",
+      "hall": "Горен салон",
+      "bar": "5001",
+      "payment": false
+    },
+    {
+      "id": "50006",
+      "number": "3",
+      "hall": "Горен салон",
+      "bar": "5001",
+      "payment": false
+    },
+    {
+      "id": "50007",
+      "number": "46",
+      "hall": "Горен салон",
+      "bar": "5001",
+      "payment": false
+    },
+    {
+      "id": "50008",
+      "number": "49",
+      "hall": "Горен салон",
+      "bar": "5001",
+      "payment": false
+    },
+    {
+      "id": "50009",
+      "number": "48",
+      "hall": "Горен салон",
+      "bar": "5001",
+      "payment": false
+    },
+    {
+      "id": "50010",
+      "number": "47",
+      "hall": "Горен салон",
+      "bar": "5001",
+      "payment": false
+    },
+    {
+      "id": "50011",
+      "number": "50",
+      "hall": "Горен салон",
+      "bar": "5001",
+      "payment": false
+    },
+    {
+      "id": "50012",
+      "number": "51",
+      "hall": "Горен салон",
+      "bar": "5001",
+      "payment": false
+    },
+    {
+      "id": "50013",
+      "number": "45",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50014",
+      "number": "44",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50015",
+      "number": "43",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50016",
+      "number": "42",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50017",
+      "number": "101",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50018",
+      "number": "52",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50019",
+      "number": "53 А",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50020",
+      "number": "53 Б",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50021",
+      "number": "54",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50022",
+      "number": "55 А",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50023",
+      "number": "55 Б",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50024",
+      "number": "61",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50025",
+      "number": "84",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50026",
+      "number": "85",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50027",
+      "number": "9",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50028",
+      "number": "10",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50029",
+      "number": "39",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50030",
+      "number": "40/41",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50031",
+      "number": "59 А",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50032",
+      "number": "59 Б",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50033",
+      "number": "60",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50034",
+      "number": "63",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50035",
+      "number": "77",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50036",
+      "number": "80",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50037",
+      "number": "81",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50038",
+      "number": "82",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50039",
+      "number": "37",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50040",
+      "number": "34",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50041",
+      "number": "33",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50042",
+      "number": "32",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50043",
+      "number": "2",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50044",
+      "number": "1",
+      "hall": "Долен салон",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50045",
+      "number": "62",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50046",
+      "number": "67",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50047",
+      "number": "68",
+      "hall": "Бар 1 / 2",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50048",
+      "number": "65",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50049",
+      "number": "64",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50050",
+      "number": "66",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50051",
+      "number": "69",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50052",
+      "number": "70",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50053",
+      "number": "76",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50054",
+      "number": "75",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50055",
+      "number": "83",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50056",
+      "number": "74",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50057",
+      "number": "73",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50058",
+      "number": "11",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50059",
+      "number": "12",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50060",
+      "number": "13",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50061",
+      "number": "31",
+      "hall": "Долен салон",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50062",
+      "number": "29",
+      "hall": "Долен салон",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50063",
+      "number": "0",
+      "hall": "Долен салон",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50064",
+      "number": "24",
+      "hall": "Долен салон",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50065",
+      "number": "25.1",
+      "hall": "Долен салон",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50066",
+      "number": "25",
+      "hall": "Долен салон",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50067",
+      "number": "22",
+      "hall": "Бар 3",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50068",
+      "number": "19",
+      "hall": "Долен салон",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50069",
+      "number": "18",
+      "hall": "Долен салон",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50070",
+      "number": "17",
+      "hall": "Долен салон",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50071",
+      "number": "71",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50072",
+      "number": "72",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50073",
+      "number": "26",
+      "hall": "Долен салон",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50074",
+      "number": "16",
+      "hall": "Долен салон",
+      "bar": "5002",
+      "payment": false
+    },
+    {
+      "id": "50075",
+      "number": "15",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "50076",
+      "number": "14",
+      "hall": "Сцена",
+      "bar": "5003",
+      "payment": false
+    },
+    {
+      "id": "59001",
+      "number": "П1",
+      "hall": "Каса",
+      "bar": "5001",
+      "payment": true
+    },
+    {
+      "id": "59002",
+      "number": "П2",
+      "hall": "Каса",
+      "bar": "5002",
+      "payment": true
+    },
+    {
+      "id": "59003",
+      "number": "П3",
+      "hall": "Каса",
+      "bar": "5003",
+      "payment": true
+    }
+  ],
+  "articles": [
+    {
+      "id": "6101",
+      "name": "Absolut 0.7",
+      "priceMinor": 9500,
+      "tip": false
+    },
+    {
+      "id": "6102",
+      "name": "Jack Daniels 0.7",
+      "priceMinor": 11000,
+      "tip": false
+    },
+    {
+      "id": "6103",
+      "name": "Grey Goose 0.7",
+      "priceMinor": 14000,
+      "tip": false
+    },
+    {
+      "id": "6104",
+      "name": "Jagermeister 0.7",
+      "priceMinor": 8500,
+      "tip": false
+    },
+    {
+      "id": "6105",
+      "name": "Moet Chandon 0.75",
+      "priceMinor": 18000,
+      "tip": false
+    },
+    {
+      "id": "6106",
+      "name": "Prosecco 0.75",
+      "priceMinor": 6500,
+      "tip": false
+    },
+    {
+      "id": "6201",
+      "name": "Mojito",
+      "priceMinor": 950,
+      "tip": false
+    },
+    {
+      "id": "6202",
+      "name": "Aperol Spritz",
+      "priceMinor": 1000,
+      "tip": false
+    },
+    {
+      "id": "6203",
+      "name": "Espresso Martini",
+      "priceMinor": 1100,
+      "tip": false
+    },
+    {
+      "id": "6204",
+      "name": "Pina Colada",
+      "priceMinor": 1100,
+      "tip": false
+    },
+    {
+      "id": "6205",
+      "name": "Cosmopolitan",
+      "priceMinor": 1000,
+      "tip": false
+    },
+    {
+      "id": "6206",
+      "name": "Gin Tonic",
+      "priceMinor": 850,
+      "tip": false
+    },
+    {
+      "id": "6301",
+      "name": "Tequila shot",
+      "priceMinor": 450,
+      "tip": false
+    },
+    {
+      "id": "6302",
+      "name": "Jager shot",
+      "priceMinor": 450,
+      "tip": false
+    },
+    {
+      "id": "6303",
+      "name": "B52",
+      "priceMinor": 600,
+      "tip": false
+    },
+    {
+      "id": "6304",
+      "name": "Sambuca",
+      "priceMinor": 500,
+      "tip": false
+    },
+    {
+      "id": "6401",
+      "name": "Whisky 50ml",
+      "priceMinor": 800,
+      "tip": false
+    },
+    {
+      "id": "6402",
+      "name": "Vodka 50ml",
+      "priceMinor": 650,
+      "tip": false
+    },
+    {
+      "id": "6403",
+      "name": "Gin 50ml",
+      "priceMinor": 700,
+      "tip": false
+    },
+    {
+      "id": "6404",
+      "name": "Rakia 50ml",
+      "priceMinor": 550,
+      "tip": false
+    },
+    {
+      "id": "6501",
+      "name": "Stella Artois 0.33",
+      "priceMinor": 550,
+      "tip": false
+    },
+    {
+      "id": "6502",
+      "name": "Corona 0.33",
+      "priceMinor": 600,
+      "tip": false
+    },
+    {
+      "id": "6503",
+      "name": "Heineken 0.0 0.33",
+      "priceMinor": 500,
+      "tip": false
+    },
+    {
+      "id": "6504",
+      "name": "Guinness 0.44",
+      "priceMinor": 650,
+      "tip": false
+    },
+    {
+      "id": "6601",
+      "name": "Coca-Cola 0.25",
+      "priceMinor": 350,
+      "tip": false
+    },
+    {
+      "id": "6602",
+      "name": "Fanta 0.25",
+      "priceMinor": 350,
+      "tip": false
+    },
+    {
+      "id": "6603",
+      "name": "Tonic 0.25",
+      "priceMinor": 350,
+      "tip": false
+    },
+    {
+      "id": "6604",
+      "name": "Still water 0.5",
+      "priceMinor": 250,
+      "tip": false
+    },
+    {
+      "id": "6605",
+      "name": "Red Bull 0.25",
+      "priceMinor": 500,
+      "tip": false
+    },
+    {
+      "id": "6606",
+      "name": "Fresh orange 0.25",
+      "priceMinor": 600,
+      "tip": false
+    },
+    {
+      "id": "6701",
+      "name": "Kuvert",
+      "priceMinor": 500,
+      "tip": false
+    },
+    {
+      "id": "6999",
+      "name": "Bakshish",
+      "priceMinor": 0,
+      "tip": true
+    }
+  ],
+  "paymentTypes": [
+    {
+      "id": "1",
+      "name": "В брой",
+      "kind": "cash"
+    },
+    {
+      "id": "2",
+      "name": "Карта",
+      "kind": "card"
+    }
+  ],
+  "logins": [
+    {
+      "id": "restro",
+      "password": "sim-pos-local",
+      "kind": "api",
+      "name": "Restro",
+      "bars": []
+    },
+    {
+      "id": "vesela",
+      "password": "sim-pos-local",
+      "kind": "waiter",
+      "name": "Весела",
+      "bars": ["5001"]
+    },
+    {
+      "id": "martin",
+      "password": "sim-pos-local",
+      "kind": "waiter",
+      "name": "Мартин",
+      "bars": ["5002"]
+    },
+    {
+      "id": "nikola",
+      "password": "sim-pos-local",
+      "kind": "waiter",
+      "name": "Никола",
+      "bars": ["5003"]
+    }
+  ],
+  "bills": [
+    {
+      "table": "50027",
+      "by": "vesela",
+      "minutesAgo": 70,
+      "rows": [
+        {
+          "article": "6102",
+          "quantity": "1"
+        },
+        {
+          "article": "6605",
+          "quantity": "4"
+        },
+        {
+          "article": "6601",
+          "quantity": "2"
+        }
+      ]
+    },
+    {
+      "table": "50067",
+      "by": "nikola",
+      "minutesAgo": 35,
+      "rows": [
+        {
+          "article": "6201",
+          "quantity": "2"
+        },
+        {
+          "article": "6202",
+          "quantity": "2"
+        },
+        {
+          "article": "6604",
+          "quantity": "1"
+        }
+      ]
+    },
+    {
+      "table": "50013",
+      "by": "martin",
+      "minutesAgo": 15,
+      "rows": [
+        {
+          "article": "6501",
+          "quantity": "3"
+        },
+        {
+          "article": "6301",
+          "quantity": "4"
+        }
+      ]
+    }
+  ],
+  "menu": {
+    "sections": [
+      {
+        "id": "6010",
+        "title": {
+          "bg_BG": "Бутилки",
+          "en_US": "Bottles"
+        },
+        "items": [
+          {
+            "article": "6101",
+            "name": {
+              "bg_BG": "Absolut Vodka 0.7",
+              "en_US": "Absolut Vodka 0.7"
+            },
+            "payment": "pay_first"
+          },
+          {
+            "article": "6102",
+            "name": {
+              "bg_BG": "Jack Daniel’s 0.7",
+              "en_US": "Jack Daniel’s 0.7"
+            },
+            "payment": "pay_first"
+          },
+          {
+            "article": "6103",
+            "name": {
+              "bg_BG": "Grey Goose 0.7",
+              "en_US": "Grey Goose 0.7"
+            },
+            "payment": "pay_first"
+          },
+          {
+            "article": "6104",
+            "name": {
+              "bg_BG": "Jägermeister 0.7",
+              "en_US": "Jägermeister 0.7"
+            },
+            "payment": "pay_first"
+          },
+          {
+            "article": "6105",
+            "name": {
+              "bg_BG": "Moët & Chandon Brut 0.75",
+              "en_US": "Moët & Chandon Brut 0.75"
+            },
+            "payment": "pay_first"
+          },
+          {
+            "article": "6106",
+            "name": {
+              "bg_BG": "Просеко 0.75",
+              "en_US": "Prosecco 0.75"
+            }
+          }
+        ]
+      },
+      {
+        "id": "6020",
+        "title": {
+          "bg_BG": "Коктейли",
+          "en_US": "Cocktails"
+        },
+        "items": [
+          {
+            "article": "6201",
+            "name": {
+              "bg_BG": "Мохито",
+              "en_US": "Mojito"
+            }
+          },
+          {
+            "article": "6202",
+            "name": {
+              "bg_BG": "Аперол Спритц",
+              "en_US": "Aperol Spritz"
+            }
+          },
+          {
+            "article": "6203",
+            "name": {
+              "bg_BG": "Еспресо Мартини",
+              "en_US": "Espresso Martini"
+            }
+          },
+          {
+            "article": "6204",
+            "name": {
+              "bg_BG": "Пина Колада",
+              "en_US": "Piña Colada"
+            }
+          },
+          {
+            "article": "6205",
+            "name": {
+              "bg_BG": "Космополитън",
+              "en_US": "Cosmopolitan"
+            }
+          },
+          {
+            "article": "6206",
+            "name": {
+              "bg_BG": "Джин-тоник",
+              "en_US": "Gin and tonic"
+            },
+            "optionGroups": [
+              {
+                "id": "gin",
+                "name": {
+                  "bg_BG": "Джин",
+                  "en_US": "Gin"
+                },
+                "min": 1,
+                "max": 1,
+                "options": [
+                  {
+                    "id": "bombay",
+                    "name": {
+                      "bg_BG": "Bombay Sapphire",
+                      "en_US": "Bombay Sapphire"
+                    },
+                    "priceDeltaMinor": 0
+                  },
+                  {
+                    "id": "tanqueray",
+                    "name": {
+                      "bg_BG": "Tanqueray",
+                      "en_US": "Tanqueray"
+                    },
+                    "priceDeltaMinor": 150
+                  },
+                  {
+                    "id": "hendricks",
+                    "name": {
+                      "bg_BG": "Hendrick’s",
+                      "en_US": "Hendrick’s"
+                    },
+                    "priceDeltaMinor": 300
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "6030",
+        "title": {
+          "bg_BG": "Шотове",
+          "en_US": "Shots"
+        },
+        "items": [
+          {
+            "article": "6301",
+            "name": {
+              "bg_BG": "Текила",
+              "en_US": "Tequila"
+            }
+          },
+          {
+            "article": "6302",
+            "name": {
+              "bg_BG": "Йегермайстер",
+              "en_US": "Jägermeister"
+            }
+          },
+          {
+            "article": "6303",
+            "name": {
+              "bg_BG": "Б-52",
+              "en_US": "B-52"
+            }
+          },
+          {
+            "article": "6304",
+            "name": {
+              "bg_BG": "Самбука",
+              "en_US": "Sambuca"
+            }
+          }
+        ]
+      },
+      {
+        "id": "6040",
+        "title": {
+          "bg_BG": "Спиртни напитки",
+          "en_US": "Spirits"
+        },
+        "items": [
+          {
+            "article": "6401",
+            "name": {
+              "bg_BG": "Уиски 50 мл",
+              "en_US": "Whisky 50ml"
+            },
+            "optionGroups": [
+              {
+                "id": "serve",
+                "name": {
+                  "bg_BG": "Как да е",
+                  "en_US": "How to serve"
+                },
+                "min": 1,
+                "max": 1,
+                "options": [
+                  {
+                    "id": "neat",
+                    "name": {
+                      "bg_BG": "Чисто",
+                      "en_US": "Neat"
+                    },
+                    "priceDeltaMinor": 0
+                  },
+                  {
+                    "id": "ice",
+                    "name": {
+                      "bg_BG": "С лед",
+                      "en_US": "On the rocks"
+                    },
+                    "priceDeltaMinor": 0
+                  },
+                  {
+                    "id": "cola",
+                    "name": {
+                      "bg_BG": "С кола",
+                      "en_US": "With cola"
+                    },
+                    "priceDeltaMinor": 100
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "article": "6402",
+            "name": {
+              "bg_BG": "Водка 50 мл",
+              "en_US": "Vodka 50ml"
+            },
+            "optionGroups": [
+              {
+                "id": "mixer",
+                "name": {
+                  "bg_BG": "С какво",
+                  "en_US": "Mixer"
+                },
+                "min": 0,
+                "max": 1,
+                "options": [
+                  {
+                    "id": "tonic",
+                    "name": {
+                      "bg_BG": "Тоник",
+                      "en_US": "Tonic"
+                    },
+                    "priceDeltaMinor": 150
+                  },
+                  {
+                    "id": "cola",
+                    "name": {
+                      "bg_BG": "Кола",
+                      "en_US": "Cola"
+                    },
+                    "priceDeltaMinor": 150
+                  },
+                  {
+                    "id": "juice",
+                    "name": {
+                      "bg_BG": "Сок",
+                      "en_US": "Juice"
+                    },
+                    "priceDeltaMinor": 150
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "article": "6403",
+            "name": {
+              "bg_BG": "Джин 50 мл",
+              "en_US": "Gin 50ml"
+            }
+          },
+          {
+            "article": "6404",
+            "name": {
+              "bg_BG": "Ракия 50 мл",
+              "en_US": "Rakia 50ml"
+            }
+          }
+        ]
+      },
+      {
+        "id": "6050",
+        "title": {
+          "bg_BG": "Бира",
+          "en_US": "Beer"
+        },
+        "items": [
+          {
+            "article": "6501",
+            "name": {
+              "bg_BG": "Стела Артоа 0.33",
+              "en_US": "Stella Artois 0.33"
+            }
+          },
+          {
+            "article": "6502",
+            "name": {
+              "bg_BG": "Корона 0.33",
+              "en_US": "Corona 0.33"
+            }
+          },
+          {
+            "article": "6503",
+            "name": {
+              "bg_BG": "Хайнекен 0.0 0.33",
+              "en_US": "Heineken 0.0 0.33"
+            }
+          },
+          {
+            "article": "6504",
+            "name": {
+              "bg_BG": "Гинес 0.44",
+              "en_US": "Guinness 0.44"
+            },
+            "soldOut": true
+          }
+        ]
+      },
+      {
+        "id": "6060",
+        "title": {
+          "bg_BG": "Безалкохолни",
+          "en_US": "Soft drinks"
+        },
+        "items": [
+          {
+            "article": "6601",
+            "name": {
+              "bg_BG": "Кока-Кола 0.25",
+              "en_US": "Coca-Cola 0.25"
+            }
+          },
+          {
+            "article": "6602",
+            "name": {
+              "bg_BG": "Фанта 0.25",
+              "en_US": "Fanta 0.25"
+            }
+          },
+          {
+            "article": "6603",
+            "name": {
+              "bg_BG": "Тоник 0.25",
+              "en_US": "Tonic 0.25"
+            }
+          },
+          {
+            "article": "6604",
+            "name": {
+              "bg_BG": "Вода 0.5",
+              "en_US": "Still water 0.5"
+            }
+          },
+          {
+            "article": "6605",
+            "name": {
+              "bg_BG": "Ред Бул 0.25",
+              "en_US": "Red Bull 0.25"
+            }
+          },
+          {
+            "article": "6606",
+            "name": {
+              "bg_BG": "Прясно изцеден портокал",
+              "en_US": "Freshly squeezed orange"
+            }
+          }
+        ]
+      },
+      {
+        "id": "6070",
+        "title": {
+          "bg_BG": "Други",
+          "en_US": "Other"
+        },
+        "items": [
+          {
+            "article": "6701",
+            "name": {
+              "bg_BG": "Куверт",
+              "en_US": "Cover charge"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

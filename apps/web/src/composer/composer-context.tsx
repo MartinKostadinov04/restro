@@ -3,7 +3,7 @@
 // What the composer's parts share: the view, which section is open, and what each row can do.
 // One context instead of a dozen props through the tree and its rows. The stub of the item sheet
 // reads the item's name from here; the real sheet (S2-06b) loads its own data from the id.
-import type { Locale, NodeId, SectionLayout, TagId } from '@restro/core'
+import type { Locale, NodeId, PaymentMode, SectionLayout, TagId } from '@restro/core'
 import { createContext, type ReactNode, useContext } from 'react'
 
 import type { TagDraft } from '@/fields/environment'
@@ -69,6 +69,10 @@ export interface ComposerActions {
   ) => void
   readonly openTagsPanel: () => void
 
+  // --- payment mode (D113, #218) -----------------------------------------------------------------
+  /** Sets the payment mode of a selection of items (`null` = same as the venue), one atomic change. */
+  readonly setPaymentMode: (itemIds: readonly NodeId[], mode: PaymentMode | null) => void
+
   // --- sold out tonight (D46) --------------------------------------------------------------------
   /**
    * Marks items sold out tonight (`true`) or takes OUR mark off (`false`: "back on sale" only
@@ -99,6 +103,13 @@ export interface ComposerState extends ComposerActions {
   readonly selected: ReadonlySet<NodeId>
   /** The tags the list is filtered by (an item with any of them shows); empty = no filter. */
   readonly tagFilter: ReadonlySet<TagId>
+  /**
+   * The person may change the menu here (owner or admin, `canEditMenu`; RR-70). Without it the
+   * Structure is read-only: no drag handle, switch, section "…" menu, rename, ticking or "New" is
+   * drawn, and an item's "…" menu only opens the item (docs/guides/operational-screens.md: a role
+   * that may not act is never shown a disabled control; RR-90).
+   */
+  readonly canEdit: boolean
   /** The person may mark items sold out tonight and take the mark off (owner or admin). */
   readonly canMarkSoldOut: boolean
   /**
@@ -113,6 +124,11 @@ export interface ComposerState extends ComposerActions {
    * items made by hand. Owners and admins.
    */
   readonly canDelete: boolean
+  /**
+   * The venue's item default, where pay first can take effect (D122 §8); null hides "Payment
+   * mode…" on the selection bar.
+   */
+  readonly payFirstDefault: PaymentMode | null
   /** The name being edited in place, or null. */
   readonly renaming: RenameTarget | null
 }

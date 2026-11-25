@@ -51,6 +51,7 @@ export function ItemMenu({ itemId, sectionId }: { itemId: NodeId; sectionId: Nod
     setSoldOut,
     hasTill,
     canDelete,
+    canEdit,
     startRename,
     deleteItem,
   } = useComposer()
@@ -68,6 +69,7 @@ export function ItemMenu({ itemId, sectionId }: { itemId: NodeId; sectionId: Nod
   // Items made by hand are renamed in place and deleted here (D89); a till's item keeps its name
   // in the till, with ours over it in the sheet, and leaves only when the till drops it.
   const handMade = !hasTill && item?.origin === 'owned'
+  // A member opens the item and, with the right, marks it sold out; the rest are menu edits (RR-70).
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -86,7 +88,7 @@ export function ItemMenu({ itemId, sectionId }: { itemId: NodeId; sectionId: Nod
         <DropdownMenuItem onSelect={() => openItem(itemId)}>
           {t('actions.open', { name })}
         </DropdownMenuItem>
-        {handMade ? (
+        {canEdit && handMade ? (
           <DropdownMenuItem
             data-testid="item-rename"
             onSelect={() => startRename({ kind: 'item', id: itemId })}
@@ -104,23 +106,25 @@ export function ItemMenu({ itemId, sectionId }: { itemId: NodeId; sectionId: Nod
             {soldOutControl === 'mark' ? t('soldOut.mark') : t('soldOut.unmark')}
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger disabled={targets.length === 0}>
-            {t('actions.moveTo')}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="max-h-80 min-w-52 overflow-y-auto">
-            {targets.map(({ id, depth }) => (
-              <DropdownMenuItem
-                key={id}
-                data-testid="move-target"
-                onSelect={() => moveItemToSection(itemId, sectionId, id)}
-              >
-                <Indent depth={depth}>{sectionTitle(view, id, t('untitledSection'))}</Indent>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-        {sectionId !== null ? (
+        {canEdit ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger disabled={targets.length === 0}>
+              {t('actions.moveTo')}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="max-h-80 min-w-52 overflow-y-auto">
+              {targets.map(({ id, depth }) => (
+                <DropdownMenuItem
+                  key={id}
+                  data-testid="move-target"
+                  onSelect={() => moveItemToSection(itemId, sectionId, id)}
+                >
+                  <Indent depth={depth}>{sectionTitle(view, id, t('untitledSection'))}</Indent>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ) : null}
+        {canEdit && sectionId !== null ? (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => moveItemToSection(itemId, sectionId, null)}>
@@ -128,7 +132,7 @@ export function ItemMenu({ itemId, sectionId }: { itemId: NodeId; sectionId: Nod
             </DropdownMenuItem>
           </>
         ) : null}
-        {handMade && canDelete ? (
+        {canEdit && handMade && canDelete ? (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem

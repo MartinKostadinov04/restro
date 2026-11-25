@@ -10,12 +10,19 @@ import {
   type CommandResult,
   EMPTY_SERVICE_STATE,
   type GuestCommand,
-  type PayQuote,
-  type ReceiptView,
+  type GuestScreen,
+  type OrderLineView,
+  type PayFormSlot,
+  type PayingView,
+  type PaymentView,
   type RequestView,
   SERVICE_KINDS,
+  type SentOrderView,
   type ServiceBinding,
   type ServiceState,
+  type TableBillLineView,
+  type TableBillView,
+  type TableOrderView,
   type ViewItem,
   type ViewModel,
   type ViewMoney,
@@ -55,7 +62,7 @@ const both = (en: string, bg: string) => ({ en_US: en, bg_BG: bg })
 export function orderingFixture(): Fixture {
   return {
     name: 'ordering',
-    note: 'Every service on; a plain dish, a dish with a required and an optional group, a sold-out dish, an ask-the-waiter dish.',
+    note: 'Every service on; a plain dish, a dish with a required and an optional group, a sold-out dish (off the menu, D131), an ask-the-waiter dish.',
     snapshot: snapshotFromSpec({
       locales: { default: 'en_US', available: ['en_US', 'bg_BG'] },
       menuTitle: both('Late Menu', 'Късно меню'),
@@ -178,40 +185,83 @@ export function request(
   return { id, actionId, kind, status, note: '' }
 }
 
-export function quoteOf(changes: Partial<PayQuote> = {}): PayQuote {
+/** One line of the table's bill for paying: the POS's own amount. */
+export function tableLine(
+  id: number,
+  name: string,
+  amountMinor: number,
+  options: { beingPaid?: boolean; quantity?: string } = {},
+): TableBillLineView {
   return {
-    id: 'q-1',
-    scope: 'full',
-    people: null,
-    subtotal: eur(2000),
-    tipOptions: [
-      { percent: 5, amount: eur(100) },
-      { percent: 10, amount: eur(200) },
-      { percent: 15, amount: eur(300) },
-    ],
-    tip: eur(200),
-    vat: [{ rate: '20%', amount: eur(333) }],
-    total: eur(2200),
-    methods: ['apple', 'google', 'card', 'waiter'],
-    promo: null,
+    id: `bn_${String(id).padStart(22, '0')}`,
+    name: { en_US: name, bg_BG: name },
+    quantity: options.quantity ?? '1',
+    amountMinor,
+    beingPaid: options.beingPaid ?? false,
+  }
+}
+
+/** The table's bill for paying, with one bill part holding the lines. */
+export function tableBillOf(
+  lines: readonly TableBillLineView[] = [
+    tableLine(1, 'House wine', 1250),
+    tableLine(2, 'Mojito', 1000),
+  ],
+  changes: Partial<TableBillView> = {},
+): TableBillView {
+  const total = lines.reduce((sum, line) => sum + line.amountMinor, 0)
+  return {
+    readAgoSeconds: 4,
+    complete: true,
+    currency: 'EUR',
+    totalMinor: total,
+    paidMinor: 0,
+    owedMinor: total,
+    parts: [{ id: 'bill-1', beingPaid: false, totalMinor: total, paidMinor: 0, lines }],
+    paidLines: [],
     ...changes,
   }
 }
 
-export function receiptOf(changes: Partial<ReceiptView> = {}): ReceiptView {
+/** Paying at the venue: on, with the smallest card payment of €0.50. */
+export function payingOf(changes: Partial<PayingView> = {}): PayingView {
   return {
-    id: 'rc-1',
-    reference: 'R-0001',
-    fiscalReference: 'FR-123',
-    venueName: 'Test venue',
-    tableLabel: '12',
-    issuedAt: '07.10.2026 21:00',
-    lines: [billLine('l1', 'Hummus', 2, 1400, 'served')],
-    vat: [{ rate: '20%', amount: eur(233) }],
-    tip: eur(140),
-    total: eur(1540),
-    method: 'card',
-    actions: { pdf: true, email: true, print: true },
+    state: 'on',
+    minCardMinor: 50,
+    processor: 'The processor',
+    venueName: 'Club X',
+    legal: {
+      name: 'Club X EOOD',
+      eik: '123456789',
+      address: 'Sofia, 1 Vitosha Blvd',
+      privacyUrl: 'https://club-x.example/privacy',
+    },
+    electronicReceipt: false,
+    recent: null,
+    ...changes,
+  }
+}
+
+/** This phone's payment as the host reads it. */
+export function paymentOf(changes: Partial<PaymentView> = {}): PaymentView {
+  return {
+    id: 'py_1',
+    mode: 'bill',
+    number: 'K7Q4M',
+    state: 'awaiting_guest',
+    reason: null,
+    currency: 'EUR',
+    amountMinor: 2250,
+    tipMinor: 0,
+    lines: [
+      { name: { en_US: 'House wine', bg_BG: 'Домашно вино' }, quantity: '1', amountMinor: 1250 },
+      { name: { en_US: 'Mojito', bg_BG: 'Мохито' }, quantity: '1', amountMinor: 1000 },
+    ],
+    paidAt: null,
+    receiptEmailed: null,
+    receiptEmail: null,
+    timeZone: 'Europe/Sofia',
+    form: { confirmSeconds: 120 },
     ...changes,
   }
 }
@@ -234,6 +284,23 @@ export interface FakeHost {
   readonly calls: Call[]
   /** The binding to give the face, with the state as it is now. */
   readonly binding: () => ServiceBinding
+  /** The card form slot's mounts: the element it was given, its props, and whether it is still up. */
+  readonly forms: {
+    target: object
+    label: string
+    buttonClass: string
+    locale: string
+    failedText: string
+    mounted: boolean
+  }[]
+  /** How many times the payment's screen was dismissed ("Back to the bill"). */
+  readonly dismissed: () => number
+  /** The location controls the guest used, by name, in order ("allow", "decline", "stop"…). */
+  readonly located: string[]
+  /** The screens the face told the host it had open, in order (RR-52). */
+  readonly screens: GuestScreen[]
+  /** How many times the guest asked for the state now ("Try again", #542). */
+  readonly refreshed: () => number
   readonly state: () => ServiceState
   readonly set: (patch: Partial<ServiceState>) => void
   /** The calls of one kind. */
@@ -246,6 +313,32 @@ export interface FakeHost {
 export function fakeHost(initial: Partial<ServiceState> = {}): FakeHost {
   let state: ServiceState = { ...EMPTY_SERVICE_STATE, ...initial }
   const calls: Call[] = []
+  const forms: FakeHost['forms'] = []
+  let dismissed = 0
+  let refreshed = 0
+  const located: string[] = []
+  const screens: GuestScreen[] = []
+  const payForm: PayFormSlot = {
+    mount(target, props) {
+      const form = {
+        target,
+        label: props.label,
+        buttonClass: props.buttonClass,
+        locale: props.locale,
+        failedText: props.failedText,
+        mounted: true,
+      }
+      forms.push(form)
+      return {
+        update: (next) => {
+          form.label = next.label
+        },
+        unmount: () => {
+          form.mounted = false
+        },
+      }
+    },
+  }
   const dispatch = (command: GuestCommand) =>
     new Promise<CommandResult>((resolve, reject) => {
       calls.push({
@@ -263,7 +356,35 @@ export function fakeHost(initial: Partial<ServiceState> = {}): FakeHost {
     })
   return {
     calls,
-    binding: () => ({ state, dispatch }),
+    binding: () => ({
+      state,
+      dispatch,
+      payForm,
+      payControls: {
+        dismiss: () => {
+          dismissed += 1
+        },
+      },
+      location: {
+        allow: async () => {
+          located.push('allow')
+          return null
+        },
+        decline: () => void located.push('decline'),
+        reopen: () => void located.push('reopen'),
+        dismiss: () => void located.push('dismiss'),
+        stop: () => void located.push('stop'),
+      },
+      setScreen: (screen) => void screens.push(screen),
+      refresh: () => {
+        refreshed += 1
+      },
+    }),
+    refreshed: () => refreshed,
+    located,
+    screens,
+    forms,
+    dismissed: () => dismissed,
     state: () => state,
     set: (patch) => {
       state = { ...state, ...patch }
@@ -295,4 +416,68 @@ export function drawFace(
       act(() => result.rerender(element(nextView)))
     },
   }
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * The table's shared order, built by hand
+ * ------------------------------------------------------------------------------------------- */
+
+let lineCounter = 0
+
+/** One line of the table's order for an item (its id, a quantity), free and on the bill unless told otherwise. */
+export function orderLine(
+  item: ViewItem,
+  qty = 1,
+  changes: Partial<OrderLineView> = {},
+): OrderLineView {
+  lineCounter += 1
+  return {
+    id: `ol_${String(lineCounter).padStart(22, '0')}`,
+    itemId: item.id,
+    optionIds: [],
+    qty,
+    note: '',
+    mode: 'on_bill',
+    held: false,
+    pending: false,
+    ...changes,
+  }
+}
+
+/** The table's order as the host has it. */
+export function orderOf(
+  lines: readonly OrderLineView[] = [],
+  changes: Partial<TableOrderView> = {},
+): TableOrderView {
+  return { lines, removed: [], earlier: null, ...changes }
+}
+
+/** A sent order of the table, `minutesAgo` minutes ago by the phone's clock. */
+export function sentOrderOf(
+  id: string,
+  state: SentOrderView['state'],
+  items: readonly { readonly item: ViewItem; readonly qty: number }[],
+  changes: Partial<SentOrderView> & { readonly minutesAgo?: number } = {},
+): SentOrderView {
+  const { minutesAgo = 0, ...rest } = changes
+  return {
+    id,
+    state,
+    reason: null,
+    ref: 'K7Q',
+    lines: items.map(({ item, qty }) => ({ itemId: item.id, optionIds: [], qty })),
+    sentAt: Date.now() - minutesAgo * 60_000,
+    sentClock: '19:42',
+    mine: false,
+    ...rest,
+  }
+}
+
+/** A host with a table's order (empty unless told otherwise) on a POS ticket that takes choices and notes. */
+export function orderHost(initial: Partial<ServiceState> = {}): FakeHost {
+  return fakeHost({
+    order: orderOf(),
+    ordering: { state: 'on', notesAndOptions: true },
+    ...initial,
+  })
 }

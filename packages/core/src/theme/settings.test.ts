@@ -1,22 +1,22 @@
-// Venue settings v2 (brief SH-01 §8): the theme, the presentation and the guest features as
-// stored in `venues.settings`, their readers, and what the publisher derives from the theme.
+// The look in theme terms (brief SH-01 §8): what `VenueThemeSchema` accepts and what the publisher
+// derives from a theme; the presentation's shape (no longer stored, D129, kept for old snapshots);
+// and the guest features as stored in `venues.settings`.
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_THEME } from '../snapshot/build'
 import { deriveRoles, generatePalette, paletteRoles } from './derive'
 import {
   canonicalFeatures,
+  DEFAULT_CALL_WAITER_KINDS,
   DEFAULT_GUEST_FEATURES,
   GuestFeaturesSchema,
   PresentationSchema,
   readGuestFeatures,
-  readPresentation,
 } from './presentation'
 import { THEME_PRESETS } from './presets'
 import { validateRoles } from './roles'
 import {
   paletteList,
-  readVenueTheme,
   snapshotPalette,
   themePaletteOf,
   themeRolesOf,
@@ -38,22 +38,22 @@ const V2 = {
 } as const
 
 describe('the venue theme v2', () => {
-  it('reads a stored v1 row exactly as before', () => {
-    expect(readVenueTheme({ theme: { brand: '#3366CC', logo_asset_id: LOGO } })).toEqual({
+  it('accepts a v1 shape exactly as before', () => {
+    expect(VenueThemeSchema.parse({ brand: '#3366CC', logo_asset_id: LOGO })).toEqual({
       brand: '#3366cc',
       logo_asset_id: LOGO,
     })
   })
 
-  it('reads a v2 row, lower-casing every colour', () => {
-    expect(readVenueTheme({ theme: V2 })).toEqual({
+  it('accepts a v2 shape, lower-casing every colour', () => {
+    expect(VenueThemeSchema.parse(V2)).toEqual({
       ...V2,
       colors: { primary: '#f5f1ea', secondary: '#e7e0d4', tertiary: '#e0a43a' },
       overrides: { dark: { accent_text: '#f0b656' } },
     })
     // Every v2 field is optional; the logo key stays required, as in v1.
-    expect(readVenueTheme({ theme: { logo_asset_id: null } })).toEqual({ logo_asset_id: null })
-    expect(readVenueTheme({ theme: { logo_asset_id: null, preset: null } })).toEqual({
+    expect(VenueThemeSchema.parse({ logo_asset_id: null })).toEqual({ logo_asset_id: null })
+    expect(VenueThemeSchema.parse({ logo_asset_id: null, preset: null })).toEqual({
       logo_asset_id: null,
       preset: null,
     })
@@ -84,23 +84,20 @@ describe('the venue theme v2', () => {
     ['an unknown role', { logo_asset_id: null, overrides: { light: { link: '#000000' } } }],
     ['an unknown scheme of overrides', { logo_asset_id: null, overrides: { sepia: {} } }],
     ['a short override colour', { logo_asset_id: null, overrides: { dark: { text: '#fff' } } }],
-  ])('treats %s as no theme', (_label, theme) => {
+  ])('refuses %s', (_label, theme) => {
     expect(VenueThemeSchema.safeParse(theme).success).toBe(false)
-    expect(readVenueTheme({ theme })).toBeNull()
   })
 
-  it('stores each preset as it is', () => {
+  it('takes each preset as it is', () => {
     for (const preset of THEME_PRESETS) {
-      const stored = readVenueTheme({
-        theme: {
-          logo_asset_id: null,
-          preset: preset.id,
-          colors: preset.colours,
-          overrides: preset.overrides,
-          radius: preset.radius,
-        },
+      const stored = VenueThemeSchema.parse({
+        logo_asset_id: null,
+        preset: preset.id,
+        colors: preset.colours,
+        overrides: preset.overrides,
+        radius: preset.radius,
       })
-      expect(stored?.colors).toEqual(preset.colours)
+      expect(stored.colors).toEqual(preset.colours)
       // The eight base roles as the preset says; the extended roles (D93) come with them.
       expect(themeRolesOf(stored)).toMatchObject(preset.overrides)
     }
@@ -145,49 +142,37 @@ describe('what the publisher derives from a theme', () => {
   })
 })
 
-describe('the presentation', () => {
+describe('the presentation (old snapshots only)', () => {
   it('reads a template and its options', () => {
     const presentation = { face: 'editorial-market', options: { layout: 'two', compact: true } }
-    expect(readPresentation({ presentation })).toEqual(presentation)
-    expect(readPresentation({ presentation: { face: 'qr-phone', options: {} } })).toEqual({
+    expect(PresentationSchema.parse(presentation)).toEqual(presentation)
+    expect(PresentationSchema.parse({ face: 'qr-phone', options: {} })).toEqual({
       face: 'qr-phone',
       options: {},
     })
   })
 
   it.each([
-    ['absent', {}],
     ['not an object', null],
-    ['an upper-case face', { presentation: { face: 'Editorial', options: {} } }],
-    [
-      'a face name over 64 characters',
-      { presentation: { face: `a${'-b'.repeat(32)}`, options: {} } },
-    ],
-    ['no options', { presentation: { face: 'editorial-market' } }],
-    ['an unknown key', { presentation: { face: 'editorial-market', options: {}, theme: 'x' } }],
-    ['a snake_case option key', { presentation: { face: 'f', options: { list_layout: 'two' } } }],
-    [
-      'an option key over 32 characters',
-      { presentation: { face: 'f', options: { [`a${'b'.repeat(32)}`]: true } } },
-    ],
-    ['an upper-case option value', { presentation: { face: 'f', options: { layout: 'Two' } } }],
-    ['a value with a space', { presentation: { face: 'f', options: { layout: 'two up' } } }],
-    ['a number value', { presentation: { face: 'f', options: { columns: 2 } } }],
-    [
-      'a value shaped like an id',
-      { presentation: { face: 'f', options: { pick: `nd_${'a'.repeat(22)}` } } },
-    ],
+    ['an upper-case face', { face: 'Editorial', options: {} }],
+    ['a face name over 64 characters', { face: `a${'-b'.repeat(32)}`, options: {} }],
+    ['no options', { face: 'editorial-market' }],
+    ['an unknown key', { face: 'editorial-market', options: {}, theme: 'x' }],
+    ['a snake_case option key', { face: 'f', options: { list_layout: 'two' } }],
+    ['an option key over 32 characters', { face: 'f', options: { [`a${'b'.repeat(32)}`]: true } }],
+    ['an upper-case option value', { face: 'f', options: { layout: 'Two' } }],
+    ['a value with a space', { face: 'f', options: { layout: 'two up' } }],
+    ['a number value', { face: 'f', options: { columns: 2 } }],
+    ['a value shaped like an id', { face: 'f', options: { pick: `nd_${'a'.repeat(22)}` } }],
     [
       'seventeen options',
       {
-        presentation: {
-          face: 'f',
-          options: Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`o${i}`, true])),
-        },
+        face: 'f',
+        options: Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`o${i}`, true])),
       },
     ],
-  ])('treats %s as none', (_label, settings) => {
-    expect(readPresentation(settings)).toBeNull()
+  ])('refuses %s', (_label, presentation) => {
+    expect(PresentationSchema.safeParse(presentation).success).toBe(false)
   })
 
   it('allows sixteen options', () => {
@@ -212,14 +197,14 @@ describe('the guest features', () => {
   it('reads what a venue switched on, request kinds in vocabulary order', () => {
     const features = {
       filters: false,
-      call_waiter: { enabled: true, kinds: ['other', 'bill', 'waiter'] },
+      call_waiter: { enabled: true, kinds: ['terminal', 'bill', 'waiter'] },
       bill: true,
       ordering: true,
       pay: false,
     }
     expect(readGuestFeatures({ guest_features: features })).toEqual({
       ...features,
-      call_waiter: { enabled: true, kinds: ['waiter', 'bill', 'other'] },
+      call_waiter: { enabled: true, kinds: ['waiter', 'bill', 'terminal'] },
     })
   })
 
@@ -243,8 +228,41 @@ describe('the guest features', () => {
     expect(readGuestFeatures({ guest_features: features })).toEqual(DEFAULT_GUEST_FEATURES)
   })
 
-  it('accepts all six request kinds, once each', () => {
-    const kinds = ['waiter', 'bill', 'water', 'cutlery', 'terminal', 'other'] as const
+  it('reads a list that still holds a dropped kind without it, never as a failed parse (#180)', () => {
+    const stored = {
+      ...DEFAULT_GUEST_FEATURES,
+      call_waiter: { enabled: true, kinds: ['waiter', 'cutlery', 'water', 'other'] },
+    }
+    expect(GuestFeaturesSchema.safeParse(stored).success).toBe(true)
+    expect(readGuestFeatures({ guest_features: stored }).call_waiter).toEqual({
+      enabled: true,
+      kinds: ['waiter', 'water'],
+    })
+  })
+
+  it('keeps `waiter` in the list while Call a waiter is on, and only then (#180)', () => {
+    const only = (enabled: boolean, kinds: string[]) =>
+      readGuestFeatures({
+        guest_features: { ...DEFAULT_GUEST_FEATURES, call_waiter: { enabled, kinds } },
+      }).call_waiter
+    expect(only(true, ['water'])).toEqual({ enabled: true, kinds: ['waiter', 'water'] })
+    expect(only(true, ['other'])).toEqual({ enabled: true, kinds: ['waiter'] })
+    expect(only(false, ['water'])).toEqual({ enabled: false, kinds: ['water'] })
+  })
+
+  it('offers the card terminal off when the feature is switched on (#180)', () => {
+    expect(DEFAULT_CALL_WAITER_KINDS).toEqual([
+      'waiter',
+      'bill',
+      'ice',
+      'water',
+      'glasses',
+      'clean_table',
+    ])
+  })
+
+  it('accepts all seven request kinds, once each', () => {
+    const kinds = ['waiter', 'bill', 'ice', 'water', 'glasses', 'clean_table', 'terminal'] as const
     const features = {
       ...DEFAULT_GUEST_FEATURES,
       call_waiter: { enabled: true, kinds: [...kinds] },

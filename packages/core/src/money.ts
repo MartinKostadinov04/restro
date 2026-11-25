@@ -109,6 +109,20 @@ export function minorToDecimal(minor: number, scale = 2): string {
 }
 
 /**
+ * Converts signed integer minor units to an exact decimal string: `1250` → `"12.50"`, `-400` →
+ * `"-4.00"`. For the POS's own signed amounts only (a waiter's discount line, a bill's total):
+ * everything Restro prices goes through `minorToDecimal`, which refuses a negative amount (rule 8,
+ * check V2). Throws `MoneyError` for anything but a safe integer.
+ */
+export function signedMinorToDecimal(minor: number, scale = 2): string {
+  assertScale(scale)
+  if (!Number.isSafeInteger(minor)) {
+    throw new MoneyError(`minor units must be a safe integer, got ${minor}`)
+  }
+  return minor < 0 ? `-${minorToDecimal(-minor, scale)}` : minorToDecimal(minor, scale)
+}
+
+/**
  * Adds two amounts of integer minor units (rule 8): `addMinor(1250, 150)` → `1400`. Throws
  * `MoneyError` unless both are non-negative safe integers (prices, deltas and totals are never
  * negative, check V2) and the sum is a safe integer too, so a total can never turn into a float
@@ -123,6 +137,25 @@ export function addMinor(a: number, b: number): number {
   const sum = a + b
   if (!Number.isSafeInteger(sum)) throw new MoneyError(`sum too large: ${a} + ${b}`)
   return sum
+}
+
+/**
+ * Sums signed amounts of integer minor units (rule 8), for the POS's own amounts, which can be
+ * negative (a discount line, a bill's total): `sumSignedMinor([3600, -100])` → `3500`. Throws
+ * `MoneyError` unless every amount and the sum are safe integers.
+ */
+export function sumSignedMinor(amounts: readonly number[]): number {
+  let sum = 0n
+  for (const amount of amounts) {
+    if (!Number.isSafeInteger(amount)) {
+      throw new MoneyError(`minor units must be a safe integer, got ${amount}`)
+    }
+    sum += BigInt(amount)
+  }
+  if (sum > BigInt(Number.MAX_SAFE_INTEGER) || sum < BigInt(Number.MIN_SAFE_INTEGER)) {
+    throw new MoneyError(`sum too large: ${amounts.join(' + ')}`)
+  }
+  return Number(sum)
 }
 
 /** Throws unless `amount` is a non-negative safe integer (prices, deltas and totals, check V2). */
@@ -189,6 +222,49 @@ export function percentOfMinor(minor: number, percent: number): number {
   return ratioOfMinor(minor, percent, 100)
 }
 
+/**
+ * Why one guest's part of a group payment is refused (D160 §3, 2.2, 2.11, 2.12):
+ *   - `above_share`: it would take the parts above the shared amount;
+ *   - `below_minimum`: it is below the smallest card payment;
+ *   - `rest_below_minimum`: it would leave a rest above zero but below the smallest card payment,
+ *     which nobody could then pay.
+ */
+export const SHARE_PART_PROBLEMS = ['above_share', 'below_minimum', 'rest_below_minimum'] as const
+export type SharePartProblem = (typeof SHARE_PART_PROBLEMS)[number]
+
+/**
+ * What is left of a group payment's shared amount once the parts already claimed are taken off
+ * (`sharedMinor − claimedMinor`): "the rest", one guest's part as one tap (2.11). Throws
+ * `MoneyError` when the parts claimed are above the shared amount, which the limits never allow.
+ */
+export function shareRestMinor(sharedMinor: number, claimedMinor: number): number {
+  return subtractMinor(sharedMinor, claimedMinor)
+}
+
+/**
+ * Checks one guest's part of a group payment against the limits (D160 §3; rule 8): never above
+ * what is left of the shared amount, never below the smallest card payment, and never leaving a
+ * rest that is above zero and below it. Null when the part may be held. Every amount is integer
+ * minor units; the part is the guest's share of the bill, without the tip.
+ */
+export function sharePartProblem(input: {
+  readonly sharedMinor: number
+  /** The parts of the holds that are not let go: asked for, at the card form, or held. */
+  readonly claimedMinor: number
+  readonly partMinor: number
+  /** The smallest card payment: the venue's own floor or the provider's minimum, the higher. */
+  readonly minimumMinor: number
+}): SharePartProblem | null {
+  assertMinor(input.partMinor, 'the part')
+  assertMinor(input.minimumMinor, 'the minimum')
+  const left = shareRestMinor(input.sharedMinor, input.claimedMinor)
+  if (input.partMinor > left) return 'above_share'
+  if (input.partMinor < Math.max(input.minimumMinor, 1)) return 'below_minimum'
+  const rest = subtractMinor(left, input.partMinor)
+  if (rest > 0 && rest < input.minimumMinor) return 'rest_below_minimum'
+  return null
+}
+
 const formatters = new Map<string, Intl.NumberFormat>()
 
 /**
@@ -210,4 +286,28 @@ export function formatMoney(minor: number, currency: Currency, locale: Locale): 
     formatters.set(cacheKey, formatter)
   }
   return formatter.format(minorToDecimal(minor, scale) as Intl.StringNumericLiteral)
+}
+
+/**
+ * Formats signed minor units for display, for the POS's own signed amounts alone: a waiter's
+ * discount line shows as `"-4,00 €"`. Like `formatMoney`, the amount reaches Intl as an exact
+ * decimal string, never a float. Everything Restro prices uses `formatMoney`, which refuses a
+ * negative amount.
+ */
+export function formatSignedMoney(minor: number, currency: Currency, locale: Locale): string {
+  if (minor >= 0) return formatMoney(minor, currency, locale)
+  const scale = CURRENCY_SCALE[currency]
+  const cacheKey = `signed|${locale}|${currency}`
+  let formatter = formatters.get(cacheKey)
+  if (formatter === undefined) {
+    formatter = new Intl.NumberFormat(localeToBcp47(locale), {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: scale,
+      maximumFractionDigits: scale,
+      signDisplay: 'auto',
+    })
+    formatters.set(cacheKey, formatter)
+  }
+  return formatter.format(signedMinorToDecimal(minor, scale) as Intl.StringNumericLiteral)
 }

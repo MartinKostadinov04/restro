@@ -1,0 +1,157 @@
+'use client'
+
+// Parts the Tonight tabs share (#86): the heading, the still "{k} new · show" line, the "Show
+// earlier" button, the failed-to-load block and the loading rows.
+import { useTranslations } from 'next-intl'
+import { createContext, type ReactNode, useContext } from 'react'
+
+import { Button } from '@/components/ui/button'
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
+
+/**
+ * The X of a Tonight side sheet or dialog, as a 44 px target at every width (S3, S11): shadcn's is
+ * a 16 px icon on a wide screen with a fine pointer. Passed as the content's className; the header
+ * keeps clear of it.
+ */
+export const CLOSE_44 =
+  '[&>button:last-child]:top-1 [&>button:last-child]:right-1 [&>button:last-child]:flex [&>button:last-child]:size-11 [&>button:last-child]:items-center [&>button:last-child]:justify-center'
+
+/**
+ * The section switch of a phone (S2): Tonight's tabs pass it down and each section draws it in its
+ * heading row, in place of the section's name. Null where there is one section only. A section
+ * with no heading gets it on a row of its own from the tabs (`data-tonight-heading` tells them).
+ */
+export const SectionSwitch = createContext<ReactNode>(null)
+
+/**
+ * "Tonight" and the tab's own name, as screen 1 heads its panel. Below 1024 px, where Tonight has
+ * more than one section, the section switch stands in for the name; `children` stand on the right
+ * of the same row.
+ */
+export function TabHeading({ name, children }: { name: string; children?: ReactNode }) {
+  const t = useTranslations('tonight')
+  const switcher = useContext(SectionSwitch)
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2" data-tonight-heading="">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <h2 className="text-xl font-semibold tracking-tight">
+          {t('title')}
+          <span
+            className={cn(
+              'ml-2 text-base font-normal text-muted-foreground',
+              switcher === null ? '' : 'max-lg:sr-only',
+            )}
+          >
+            {name}
+          </span>
+        </h2>
+        {switcher}
+      </div>
+      {children === undefined ? null : (
+        <div className="flex flex-wrap items-center gap-2">{children}</div>
+      )}
+    </div>
+  )
+}
+
+/** Rows that came while the list was read further down: one still line, one tap shows them. */
+export function NewLine({ k, onShow }: { k: number; onShow: () => void }) {
+  const t = useTranslations('tonight')
+  if (k === 0) return null
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      className="h-11 w-full"
+      data-testid="new-line"
+      onClick={onShow}
+    >
+      {t('so_new', { k })}
+    </Button>
+  )
+}
+
+export function ShowEarlier({ onClick }: { onClick: () => void }) {
+  const t = useTranslations('tonight')
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      className="h-11 w-full"
+      data-testid="show-earlier"
+      onClick={onClick}
+    >
+      {t('so_earlier')}
+    </Button>
+  )
+}
+
+/**
+ * A list that cannot load: what to do, in place of the list. A list that polls tries again by
+ * itself; a one-shot read passes `onRetry` and gets the button instead (D72: say what is true).
+ */
+export function FailedBlock({ text, onRetry }: { text: string; onRetry?: () => void }) {
+  const t = useTranslations('tonight')
+  return (
+    <Empty className="p-6 md:p-6" role="alert" data-testid="load-failed">
+      <EmptyHeader>
+        <EmptyDescription>{text}</EmptyDescription>
+      </EmptyHeader>
+      {onRetry === undefined ? null : (
+        <Button type="button" variant="outline" className="h-11" onClick={onRetry}>
+          {t('retry')}
+        </Button>
+      )}
+    </Empty>
+  )
+}
+
+/** A sheet whose read did not get through: what to do, and one button to read again (RR-O32). */
+export function ReadFailed({ onRetry }: { onRetry: () => void }) {
+  const t = useTranslations('tonight')
+  return (
+    <Empty className="p-6 md:p-6" role="alert" data-testid="read-failed">
+      <EmptyHeader>
+        <EmptyDescription>{t('sh_fail')}</EmptyDescription>
+      </EmptyHeader>
+      <Button type="button" variant="outline" className="h-11" onClick={onRetry}>
+        {t('retry')}
+      </Button>
+    </Empty>
+  )
+}
+
+/** A block with a title and a line, and optionally one button. */
+export function NothingHere({
+  title,
+  text,
+  action,
+}: {
+  title?: string
+  text: string
+  action?: ReactNode
+}) {
+  return (
+    <Empty className="p-6 md:p-6" data-testid="nothing-here">
+      <EmptyHeader>
+        {title === undefined ? null : <EmptyTitle>{title}</EmptyTitle>}
+        <EmptyDescription>{text}</EmptyDescription>
+      </EmptyHeader>
+      {action}
+    </Empty>
+  )
+}
+
+/** Skeleton rows while the first rows load: no spinner, no text over it. */
+export function RowsSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div aria-hidden className="space-y-2">
+      {Array.from({ length: rows }, (_, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: identical placeholders
+        <Skeleton key={index} className="h-16 w-full motion-reduce:animate-none" />
+      ))}
+    </div>
+  )
+}

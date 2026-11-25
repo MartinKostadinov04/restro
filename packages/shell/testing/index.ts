@@ -3,6 +3,7 @@
 // `faceContractSuite`, which every face's test calls, and `stubServices`, the empty services
 // binding a face is rendered with.
 
+export { BASIC_DESIGN_VALUES } from '@restro/core'
 export {
   ADD_SLOT,
   assertFaceContract,
@@ -22,6 +23,37 @@ export {
 } from './contract'
 export { assertFaceScopedCss, assertThemeOnlyCss, NAMED_COLOURS } from './css'
 export {
+  type CssRule,
+  cssRules,
+  fontSizePx,
+  resolvedCss,
+  rulesFor,
+  valuesOf,
+  withCalc,
+  withTokens,
+} from './css-rules'
+export {
+  assertTextFloors,
+  type DesignCase,
+  type DesignContractOptions,
+  type DesignFailure,
+  type DesignReport,
+  type DrawnOptions,
+  designCases,
+  designView,
+  fingerprint,
+  firstDesignAttributes,
+  firstRootAttributes,
+  INPUT_FLOOR_PX,
+  neverListFixtures,
+  PART_ATTRIBUTE,
+  runDesignContract,
+  storedRendering,
+  styleCases,
+  TEXT_FLOOR_PX,
+  withDesign,
+} from './design-contract'
+export {
   CUSTOM_ROLES,
   type Fixture,
   fixture,
@@ -34,5 +66,18 @@ export {
   snapshotFromSpec,
 } from './fixtures'
 export { type HtmlElement, parseHtml, textOf, withAttribute } from './html'
+export {
+  PAID_LINES,
+  PAYING_LEGAL,
+  type PayScenario,
+  payingBill,
+  payingState,
+  payingView,
+  payment as payScenarioPayment,
+  payScenarios,
+  RECEIPT_LOOK,
+  recordSaving,
+  type SaveRecord,
+} from './paying'
 export { stubServices } from './services'
 export { type FaceContractSuiteOptions, faceContractSuite } from './suite'

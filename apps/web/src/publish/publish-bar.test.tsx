@@ -8,8 +8,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BusyView, PublishBarView } from '@/server/publish/view'
 import { renderWithIntl } from '@/test-utils'
 import { PublishBar } from './publish-bar'
-import { PublisherProvider } from './publisher-context'
-import { barMenu, barView, NO_CHANGES, VENUE_ID } from './test-view'
+import { PublisherProvider, PublisherStateSync, PublishOutcome } from './publisher-context'
+import { barMenu, barView, NO_CHANGES, ONE_PRICE_CHANGE, VENUE_ID } from './test-view'
 
 const actions = vi.hoisted(() => ({
   publishNowAction: vi.fn(),
@@ -25,10 +25,13 @@ beforeEach(() => {
   actions.publishNowAction.mockResolvedValue({ ok: true, queued: true })
 })
 
-function render(view: PublishBarView, options: { busy?: BusyView; locale?: 'bg' } = {}) {
+function render(
+  view: PublishBarView,
+  options: { busy?: BusyView; locale?: 'bg'; onlyWhatWorks?: boolean } = {},
+) {
   renderWithIntl(
     <PublisherProvider venueId={VENUE_ID} state={{ lastRun: null, busy: options.busy ?? null }}>
-      <PublishBar view={view} />
+      <PublishBar view={view} onlyWhatWorks={options.onlyWhatWorks ?? false} />
     </PublisherProvider>,
     options.locale === undefined ? {} : { locale: options.locale },
   )
@@ -59,7 +62,11 @@ describe('the Publish bar with one menu', () => {
     const dialog = screen.getByTestId('publish-confirm-dialog')
     expect(within(dialog).getByText('Publish the menu?')).toBeTruthy()
     expect(within(dialog).getByTestId('changes-count').textContent).toBe('1 change waiting')
-    expect(within(dialog).getByTestId('change-summary').textContent).toBe('1 with a new price')
+    // Said once: the count, then the named list under a heading in the right number (S6).
+    expect(within(dialog).queryByTestId('change-summary')).toBeNull()
+    expect(within(dialog).getByTestId('change-list-prices').querySelector('h4')?.textContent).toBe(
+      'New price',
+    )
     expect(within(dialog).getByTestId('change-list-prices').textContent).toContain(
       'Negroni: €12.50 → €14.00',
     )
@@ -71,11 +78,11 @@ describe('the Publish bar with one menu', () => {
     expect(screen.queryByTestId('publish-confirm-dialog')).toBeNull()
   })
 
-  it('Cancel publishes nothing', async () => {
+  it('"Don’t publish" publishes nothing', async () => {
     const user = userEvent.setup()
     render(barView())
     await user.click(button())
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await user.click(screen.getByRole('button', { name: 'Don’t publish' }))
     expect(actions.publishNowAction).not.toHaveBeenCalled()
   })
 
@@ -118,13 +125,123 @@ describe('the Publish bar with one menu', () => {
       barView({ menus: [barMenu({ changes: null, list: null, blocked: 'no_visible_items' })] }),
     )
     expect(button().disabled).toBe(true)
-    expect(reason()).toBe('Nothing visible to publish: show at least one item in the composer.')
+    expect(reason()).toBe('Nothing visible to publish: show at least one item in Structure.')
   })
 
-  it('says who may publish', () => {
+  it('draws no Publish for a role that may not publish, and no sentence on why (RR-90)', () => {
     render(barView({ canPublish: false }))
-    expect(button().disabled).toBe(true)
-    expect(reason()).toBe('Only an owner or admin can publish.')
+    expect(screen.queryByTestId('publish-button')).toBeNull()
+    expect(screen.queryByText('Only an owner or admin can publish.')).toBeNull()
+    expect(document.querySelector(':disabled')).toBeNull()
+    // What they can do stays: the guest page, when there is one.
+    expect(screen.getByTestId('guest-link').getAttribute('href')).toBe('/m/demo-org/demo-club')
+  })
+
+  it('tells that role where the venue stands, without the button (S27)', () => {
+    render(barView({ canPublish: false }))
+    expect(reason()).toBe('1 change waiting')
+  })
+
+  const upToDate = () =>
+    barView({
+      canPublish: false,
+      menus: [barMenu({ changes: 0, list: NO_CHANGES, identical: true })],
+    })
+
+  it('tells that role the venue is up to date (S27)', () => {
+    render(upToDate())
+    expect(reason()).toBe('Up to date: guests see the latest version.')
+    expect(screen.queryByTestId('publish-button')).toBeNull()
+  })
+
+  it('tells that role the venue is up to date in Bulgarian (S27)', () => {
+    render(upToDate(), { locale: 'bg' })
+    expect(reason()).toBe('Актуално: гостите виждат последната версия.')
+  })
+
+  describe('the state line for a role that may not publish, branch by branch (S27)', () => {
+    const SAME = { changes: 0, identical: true, list: NO_CHANGES } as const
+    const member = (overrides: Partial<PublishBarView> = {}) =>
+      barView({ canPublish: false, ...overrides })
+    const cases: readonly [string, PublishBarView, BusyView, string][] = [
+      ['no menu', member({ menus: [] }), null, 'This venue has no menu yet.'],
+      ['busy', member(), 'publish', 'Publishing. It usually takes a few seconds.'],
+      [
+        'a draft that cannot go out',
+        member({ menus: [barMenu({ changes: null, list: null, blocked: 'no_visible_items' })] }),
+        null,
+        'Nothing visible to publish: show at least one item in Structure.',
+      ],
+      [
+        'several menus, all up to date',
+        member({ menus: [barMenu(SAME), barMenu({ ...SAME, menuId: 'nd_other', live: false })] }),
+        null,
+        'Up to date: every menu is published as it is.',
+      ],
+      [
+        'never published',
+        member({ menus: [barMenu({ published: false, changes: 2, list: TWO_ADDED })] }),
+        null,
+        'Nothing is published yet.',
+      ],
+      [
+        'nothing new, automatic publishing paused',
+        member({ paused: true, menus: [barMenu(SAME)] }),
+        null,
+        'Nothing new; automatic publishing is paused.',
+      ],
+      [
+        'nothing new, the address switched off',
+        member({ addressServed: false, menus: [barMenu(SAME)] }),
+        null,
+        'Nothing new; the menu address is switched off.',
+      ],
+      [
+        'small changes waiting',
+        member({ menus: [barMenu({ changes: 0, identical: false })] }),
+        null,
+        'Small changes waiting',
+      ],
+    ]
+    for (const [name, view, busy, text] of cases) {
+      it(name, () => {
+        render(view, { busy })
+        expect(reason()).toBe(text)
+        expect(screen.queryByTestId('publish-button')).toBeNull()
+        expect(screen.queryByText('Only an owner or admin can publish.')).toBeNull()
+        // Never what publishing would do: that is for a role that may publish.
+        expect(reason()).not.toMatch(/publishing (resumes|switches)|until you publish/)
+      })
+    }
+
+    it('says the paused state in Bulgarian', () => {
+      render(member({ paused: true, menus: [barMenu(SAME)] }), { locale: 'bg' })
+      expect(reason()).toBe('Нищо ново; автоматичното публикуване е спряно.')
+    })
+  })
+
+  it('keeps the state line for that role when there is no guest page to open (S27)', () => {
+    render(barView({ canPublish: false, guestPath: null }))
+    expect(screen.queryByTestId('guest-link')).toBeNull()
+    expect(screen.queryByTestId('publish-button')).toBeNull()
+    expect(reason()).toBe('1 change waiting')
+  })
+
+  it('draws nothing for that role on Tonight’s way with no guest page (RR-80)', () => {
+    render(barView({ canPublish: false, guestPath: null }), { onlyWhatWorks: true })
+    expect(screen.queryByTestId('publish-bar')).toBeNull()
+  })
+
+  it('draws no Publish for that role with several menus either (RR-90)', () => {
+    render(
+      barView({
+        canPublish: false,
+        menus: [barMenu(), barMenu({ menuId: 'nd_other', live: false })],
+      }),
+    )
+    expect(screen.queryByTestId('publish-button')).toBeNull()
+    expect(document.querySelector(':disabled')).toBeNull()
+    expect(reason()).toBe('2 changes waiting')
   })
 
   it('before the first publish: everything is new', async () => {
@@ -167,10 +284,11 @@ describe('"Open the guest page"', () => {
     )
   })
 
-  it('is off before anything is published', () => {
+  it('is off before anything is published, and the state is said once (S5)', () => {
     render(barView({ menus: [barMenu({ published: false })] }))
     expect((screen.getByTestId('guest-link') as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByTestId('guest-link-hint').textContent).toBe('Nothing is published yet.')
+    expect(reason()).toBe('Not published yet: guests see nothing until you publish.')
+    expect(screen.queryByTestId('guest-link-hint')).toBeNull()
   })
 })
 
@@ -208,7 +326,7 @@ describe('the Publish bar with several menus', () => {
     expect(rows.map((row) => row.textContent)).toEqual([
       'Main (venue address, Terrace)1 change',
       'Brunch (Garden, Bar)Not published yet: guests see nothing until you publish.2 changes',
-      'Late nightThe menu cannot be published yet. Check the composer.',
+      'Late nightThe menu cannot be published yet. Check Structure in the Studio.',
     ])
     expect(rows[2]?.getAttribute('data-disabled')).not.toBeNull()
     expect(rows[0]?.getAttribute('data-disabled')).toBeNull()
@@ -250,11 +368,129 @@ describe('the Publish bar with several menus', () => {
   })
 })
 
+describe('on Tonight, only what works (RR-80)', () => {
+  const tonight = (view: PublishBarView, busy?: BusyView) =>
+    render(view, { onlyWhatWorks: true, ...(busy === undefined ? {} : { busy }) })
+
+  it('draws the working link and button, and the words on what waits', () => {
+    tonight(barView())
+    expect(screen.getByTestId('guest-link').getAttribute('href')).toBe('/m/demo-org/demo-club')
+    expect(button().disabled).toBe(false)
+    expect(reason()).toBe('1 change waiting')
+  })
+
+  it('has no Publish when nothing waits, and still the guest page', () => {
+    tonight(barView({ menus: [barMenu({ changes: 0, identical: true, published: true })] }))
+    expect(screen.getByTestId('guest-link')).toBeTruthy()
+    expect(screen.queryByTestId('publish-button')).toBeNull()
+    expect(screen.queryByTestId('publish-block-reason')).toBeNull()
+  })
+
+  it('draws nothing at all when nothing can be pressed', () => {
+    tonight(barView({ menus: [] }))
+    expect(screen.queryByTestId('publish-bar')).toBeNull()
+    expect(document.querySelector(':disabled')).toBeNull()
+  })
+
+  it('says it is publishing, with no greyed button', () => {
+    tonight(barView(), 'publish')
+    expect(screen.queryByTestId('publish-button')).toBeNull()
+    expect(screen.getByTestId('publish-block-reason').getAttribute('data-block')).toBe('busy')
+    expect(document.querySelector(':disabled')).toBeNull()
+  })
+
+  it('lists only the menus that can be published in the dropdown', async () => {
+    const user = userEvent.setup()
+    tonight(
+      barView({
+        menus: [
+          barMenu({ menuId: 'nd_a', name: 'Drinks' }),
+          barMenu({ menuId: 'nd_b', name: 'Food', changes: 0, identical: true, published: true }),
+        ],
+      }),
+    )
+    await user.click(button())
+    const rows = await screen.findAllByTestId('publish-menu-row')
+    expect(rows.map((row) => row.getAttribute('data-menu'))).toEqual(['nd_a'])
+  })
+})
+
 describe('in Bulgarian', () => {
   it('words the button and the count', () => {
     render(barView(), { locale: 'bg' })
     expect(button().textContent).toContain('Публикувай')
     expect(reason()).toBe('1 промяна чака')
     expect(screen.getByTestId('guest-link').textContent).toBe('Отвори страницата за гости')
+  })
+})
+
+describe('"Version N is live" after a publish (S5)', () => {
+  const run = { id: 'run_1', state: 'published', version: 1, refusal: null } as const
+  const upToDate = barView({
+    menus: [barMenu({ changes: 0, identical: true, list: NO_CHANGES })],
+  })
+
+  function page(view: PublishBarView, lastRun: typeof run | null) {
+    return (
+      <PublisherProvider venueId={VENUE_ID}>
+        <PublisherStateSync state={{ lastRun, busy: null }} />
+        <PublishBar view={view} />
+        <PublishOutcome />
+      </PublisherProvider>
+    )
+  }
+
+  it('says the version once, and goes when a new change waits', async () => {
+    const user = userEvent.setup()
+    const { rerender } = renderWithIntl(page(barView(), null))
+    await user.click(button())
+    await user.click(screen.getByTestId('publish-confirm'))
+
+    rerender(page(upToDate, run))
+    expect((await screen.findByTestId('publish-outcome-title')).textContent).toBe(
+      'Version 1 is live',
+    )
+    expect(screen.getByTestId('publish-outcome').textContent).not.toContain('Guests see it now')
+    expect(reason()).toBe('Up to date: guests see the latest version.')
+
+    rerender(page(barView(), run))
+    expect(reason()).toBe('1 change waiting')
+    expect(screen.queryByTestId('publish-outcome')).toBeNull()
+  })
+
+  it('stays when only another menu of the venue gets a change', async () => {
+    const user = userEvent.setup()
+    const brunch = (changes: number) =>
+      barMenu({
+        menuId: 'nd_brunchMenuForTests',
+        name: 'Brunch',
+        live: false,
+        changes,
+        identical: changes === 0,
+        list: changes === 0 ? NO_CHANGES : TWO_ADDED,
+      })
+    const main = (changes: number) =>
+      barMenu({
+        changes,
+        identical: changes === 0,
+        list: changes === 0 ? NO_CHANGES : ONE_PRICE_CHANGE,
+      })
+    const { rerender } = renderWithIntl(page(barView({ menus: [main(1), brunch(0)] }), null))
+    await user.click(button())
+    const [live] = await screen.findAllByTestId('publish-menu-row')
+    if (live === undefined) throw new Error('the live menu row is missing')
+    await user.click(live)
+    await user.click(await screen.findByTestId('publish-confirm'))
+
+    rerender(page(barView({ menus: [main(0), brunch(0)] }), run))
+    expect((await screen.findByTestId('publish-outcome-title')).textContent).toBe(
+      'Version 1 is live',
+    )
+    // Someone changes the Brunch menu: the live menu's version is still the latest.
+    rerender(page(barView({ menus: [main(0), brunch(2)] }), run))
+    expect(screen.getByTestId('publish-outcome-title').textContent).toBe('Version 1 is live')
+    // Then the live menu itself: the note goes.
+    rerender(page(barView({ menus: [main(1), brunch(2)] }), run))
+    expect(screen.queryByTestId('publish-outcome')).toBeNull()
   })
 })

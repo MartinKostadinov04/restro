@@ -2,7 +2,8 @@
 //
 //   seed     the demo venue gets a barsy venue (if it has none) with eight tables in four halls
 //            (`Главна зала`, `Тераса`, `VIP зона` and one with no hall), no codes, no names and the
-//            default QR address; the token files of any codes an earlier run made are removed; and
+//            default QR address, the areas called what the till calls them, the tables shown or
+//            hidden as the till says and in the till's order; the token files of any codes an earlier run made are removed; and
 //            the job queue the tab sends to exists (pg-boss tables and the queue, as the worker would
 //            create them). Idempotent.
 //   worker   waits for the REAL worker, which runs beside the e2e servers (since S3-05), to take
@@ -12,6 +13,10 @@
 //            that the test can check it. If no worker takes the jobs within 30 s it runs the real
 //            `writeTableTokenFiles` itself, as before.
 //
+//   serve    the `worker` command kept running: a `worker` line on stdin is answered as `worker`
+//            answers, then `{"done":true}`. The test starts it once, so a call skips the seconds
+//            the script takes to load.
+//
 //   second-menu         the demo venue gets a second, published menu ("Late night") so that a menu
 //                       route (S5) has something to point at, and prints its id. The venue has a
 //                       till, so the menu is made with the owner's SQL, then filled and published
@@ -19,14 +24,26 @@
 //   second-menu-remove  takes that menu and everything it made away again, so that the other
 //                       specs see the demo venue with its one menu. Both are idempotent, and `seed`
 //                       does the removal too and clears the venue's menu routes.
+//   areas-restore       puts the areas back under the till's names and shows them (what `seed` does
+//                       for them, alone), for the test's `afterAll`.
+//   member              the demo organisation gets a plain member (`tables-member@demo-club.test`,
+//                       the demo password), to read the tab as someone who may not see the codes.
+//                       Idempotent, and left in place: the seed's role may not delete a membership,
+//                       and no other spec counts the demo organisation's people.
 //
 // Like the other seeds it refuses to run unless NODE_ENV is development and the database is on
 // this machine.
 import { readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { createInterface } from 'node:readline'
 
-import { createPublishStore, publishStoreConfig, tableTokenPath } from '@restro/assets'
+import {
+  createPublishStore,
+  publishStoreConfig,
+  readTableTokenFile,
+  tableTokenPath,
+} from '@restro/assets'
 import {
   type ChangeSet,
   JOB_NAMES,
@@ -42,14 +59,23 @@ import {
   upsertBarsyVenues,
   upsertPlaces,
 } from '@restro/core/apply'
-import { authOrganization, barsyVenues, integrations, venues, withTenant } from '@restro/db'
-import { eq } from 'drizzle-orm'
+import {
+  authMember,
+  authOrganization,
+  barsyVenues,
+  integrations,
+  venues,
+  withTenant,
+} from '@restro/db'
+import { and, eq } from 'drizzle-orm'
 import pg from 'pg'
 import { PgBoss } from 'pg-boss'
 
 import { writeTableTokenFiles } from '../../worker/src/publish/table-tokens'
+import { createAuth } from '../src/server/auth'
 import { getAuthDb, getPool } from '../src/server/db'
-import { assertDevEnvironment } from './lib/guard'
+import { authModelId } from '../src/server/ids'
+import { assertDevEnvironment, readAdminCredentials } from './lib/guard'
 
 const BID = 77
 const PLACES = [
@@ -92,9 +118,89 @@ async function ensureQueue(): Promise<void> {
   boss.on('error', () => undefined)
   await boss.start()
   try {
-    await boss.createQueue(JOB_NAMES.publishTableTokens, { policy: 'stately' })
+    await boss.createQueue(JOB_NAMES.publishTableTokens, { policy: 'short' })
   } finally {
     await boss.stop({ graceful: false })
+  }
+}
+
+/**
+ * The areas under the names the till gave them (the source key is `name:<hall>`, or `none` for the
+ * tables in no hall, which the tab calls "Tables"): a test that renamed or hid one and did not get to
+ * put it back (a timeout) would otherwise leave it for the next attempt and for the other specs.
+ */
+async function restoreAreas(owner: pg.Pool, venueId: string): Promise<void> {
+  await owner.query(
+    `update restro.areas
+        set name = case when source_key = 'none' then 'Tables' else substr(source_key, 6) end,
+            hidden = false
+      where venue_id = $1 and archived_at is null
+        and (source_key = 'none' or source_key like 'name:%')`,
+    [venueId],
+  )
+}
+
+/** `areas-restore`: only that, for the test's `afterAll` (the test's own page may be gone by then). */
+/** The plain member of the demo organisation the tab is read as (S25): an account, no venue role. */
+const MEMBER = { email: 'tables-member@demo-club.test', name: 'Tables Member' }
+
+/**
+ * `member`: the demo organisation gets a plain member (organisation role `member`, so neither owner
+ * nor admin) with the demo password, for the test of what a person who may not see the codes gets.
+ * Idempotent; the membership stays (no row is deleted), and no other spec counts the demo
+ * organisation's people.
+ */
+async function member(): Promise<void> {
+  assertDevEnvironment(process.env)
+  const { password } = readAdminCredentials(process.env)
+  const { tenantId } = await demo()
+  const auth = createAuth({ scripts: true })
+  const context = await auth.$context
+  const hash = await context.password.hash(password)
+  const existing = await context.internalAdapter.findUserByEmail(MEMBER.email)
+  let userId: string
+  if (existing) {
+    await context.internalAdapter.updatePassword(existing.user.id, hash)
+    userId = existing.user.id
+  } else {
+    const user = await context.internalAdapter.createUser(
+      { email: MEMBER.email, name: MEMBER.name, emailVerified: true },
+      { method: 'admin' },
+    )
+    await context.internalAdapter.linkAccount({
+      userId: user.id,
+      providerId: 'credential',
+      accountId: user.id,
+      password: hash,
+    })
+    userId = user.id
+  }
+  const db = getAuthDb()
+  const [membership] = await db
+    .select({ id: authMember.id, role: authMember.role })
+    .from(authMember)
+    .where(and(eq(authMember.organizationId, tenantId), eq(authMember.userId, userId)))
+    .limit(1)
+  if (!membership) {
+    await db
+      .insert(authMember)
+      .values({ id: authModelId('member'), organizationId: tenantId, userId, role: 'member' })
+  } else if (membership.role !== 'member') {
+    await db.update(authMember).set({ role: 'member' }).where(eq(authMember.id, membership.id))
+  }
+  console.log(JSON.stringify({ member: MEMBER.email }))
+}
+
+async function areasRestore(): Promise<void> {
+  assertDevEnvironment(process.env)
+  const ownerUrl = process.env.DATABASE_URL_OWNER
+  if (!ownerUrl) throw new Error('seed-tables-e2e needs DATABASE_URL_OWNER (see .env.example).')
+  const { venueId } = await demo()
+  const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 })
+  try {
+    await restoreAreas(owner, venueId)
+  } finally {
+    await owner.end()
   }
 }
 
@@ -130,17 +236,49 @@ async function seed(): Promise<void> {
   const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 })
   const store = await createPublishStore(publishStoreConfig(process.env))
   try {
-    const old = await owner.query<{ qr_token: string }>(
-      'select qr_token from restro.tables where tenant_id = $1 and qr_token is not null',
+    // A file is named after the code's hash; one from before #70 after the code itself.
+    const old = await owner.query<{ qr_token: string | null; qr_code_hash: string }>(
+      'select qr_token, qr_code_hash from restro.tables where tenant_id = $1 and qr_code_hash is not null',
       [tenantId],
     )
-    for (const { qr_token } of old.rows) await store.delete(tableTokenPath(qr_token))
-    await owner.query('update restro.tables set qr_token = null, name = null where venue_id = $1', [
-      venueId,
-    ])
+    for (const row of old.rows) {
+      for (const name of [row.qr_code_hash, row.qr_token]) {
+        if (name !== null) await store.delete(tableTokenPath(name))
+      }
+    }
+    await owner.query(
+      `update restro.tables set qr_token = null, qr_code_hash = null, qr_code_sealed = null,
+                                name = null
+       where venue_id = $1`,
+      [venueId],
+    )
     await owner.query(`update restro.venues set settings = settings - 'qr' where id = $1`, [
       venueId,
     ])
+    await restoreAreas(owner, venueId)
+    // Hidden follows the till (`is_public`): the manager's hidden flag outlives a sync, so a test
+    // that hid a table and then failed would leave it hidden for the next attempt.
+    await owner.query(
+      `update restro.tables t set hidden = not p.is_public
+         from restro.places p
+        where p.table_id = t.id and t.venue_id = $1 and t.hidden <> not p.is_public`,
+      [venueId],
+    )
+    // Tables go back to the till's order within their area (by number): a failure between a move
+    // up and its move down leaves two swapped. Each table takes the existing key whose rank by key
+    // equals its own rank by number; one statement, as `sort_key` has no unique index.
+    await owner.query(
+      `with ranked as (
+         select id, area_id, sort_key,
+                row_number() over (partition by area_id order by sort_key, id) as by_key,
+                row_number() over (partition by area_id order by number collate "C", id) as by_number
+           from restro.tables where venue_id = $1
+       )
+       update restro.tables t set sort_key = k.sort_key
+         from ranked n join ranked k on k.area_id = n.area_id and k.by_key = n.by_number
+        where t.id = n.id and t.sort_key <> k.sort_key`,
+      [venueId],
+    )
     // No menu routes of an earlier run, and no second menu left behind by one that failed.
     await removeSecondMenu(owner)
     await owner.query('delete from restro.menu_routes where venue_id = $1', [venueId])
@@ -275,21 +413,56 @@ function readMark(): Date {
   }
 }
 
+/**
+ * Do the venue's files in the store say what its codes say (name and menu of every code that has a
+ * file), and are the codes the finished jobs retired gone? True when the store has caught up.
+ */
+async function filesLanded(
+  queue: pg.Pool,
+  store: Awaited<ReturnType<typeof createPublishStore>>,
+  since: Date,
+): Promise<boolean> {
+  const { tenantId, venueId } = await demo()
+  const wanted = await loadTokenFiles(getPool(), tenantId, venueId)
+  if (wanted === null || wanted.archived || wanted.unpublished) return true
+  const active = new Set<string>()
+  for (const file of wanted.files) {
+    active.add(file.codeHash)
+    const stored = await readTableTokenFile(store, file.codeHash)
+    if (stored === null || stored.table_label !== file.tableLabel) return false
+    if ((stored.menu_id ?? null) !== file.menuId) return false
+  }
+  const { rows } = await queue.query<{ data: unknown }>(
+    `select data from pgboss.job where name = $1 and state = 'completed' and completed_on > $2`,
+    [JOB_NAMES.publishTableTokens, since],
+  )
+  for (const row of rows) {
+    for (const name of PublishTableTokensJobSchema.parse(row.data).retired) {
+      if (!active.has(name) && (await store.get(tableTokenPath(name))) !== null) return false
+    }
+  }
+  return true
+}
+
 async function worker(): Promise<void> {
   assertDevEnvironment(process.env)
   const queue = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 })
   const store = await createPublishStore(publishStoreConfig(process.env))
   try {
     const since = readMark()
-    // The real worker takes the jobs (polling every second): wait until none is waiting or running.
+    // The real worker takes the jobs (polling every second): wait until none is waiting or running
+    // and the files in the store are what the database says (a job can still be on its way to the
+    // store when the queue looks empty, and the test reads the files next).
     const deadline = Date.now() + 30_000
+    const landedBy = Date.now() + 10_000
     for (;;) {
       const waiting = await queue.query<{ n: number }>(
         `select count(*)::int as n from pgboss.job where name = $1 and state in ('created', 'retry', 'active')`,
         [JOB_NAMES.publishTableTokens],
       )
-      if ((waiting.rows[0]?.n ?? 0) === 0) break
-      if (Date.now() > deadline) {
+      if ((waiting.rows[0]?.n ?? 0) === 0) {
+        if ((await filesLanded(queue, store, since)) || Date.now() > landedBy) break
+      } else if (Date.now() > deadline) {
         await runWaitingJobsHere(queue, store)
         break
       }
@@ -305,11 +478,11 @@ async function worker(): Promise<void> {
       const wanted = await loadTokenFiles(getPool(), payload.tenantId, payload.venueId)
       let written = 0
       for (const file of wanted?.files ?? []) {
-        if ((await store.get(tableTokenPath(file.token))) !== null) written += 1
+        if ((await store.get(tableTokenPath(file.codeHash))) !== null) written += 1
       }
       let removed = 0
-      for (const token of payload.retired) {
-        if ((await store.get(tableTokenPath(token))) === null) removed += 1
+      for (const name of payload.retired) {
+        if ((await store.get(tableTokenPath(name))) === null) removed += 1
       }
       console.log(
         JSON.stringify({
@@ -345,16 +518,41 @@ async function runWaitingJobsHere(
   }
 }
 
+/**
+ * Stays running and answers each `worker` line on stdin with what the `worker` command prints,
+ * then `{"done":true}` (after `{"error":…}` if it failed), so that a test does not pay the start-up
+ * of the platform's code (several seconds) on every call. Ends when stdin does.
+ */
+async function serve(): Promise<void> {
+  assertDevEnvironment(process.env)
+  console.log(JSON.stringify({ ready: true }))
+  for await (const line of createInterface({ input: process.stdin })) {
+    if (line.trim() !== 'worker') continue
+    try {
+      await worker()
+    } catch (error) {
+      console.log(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
+    }
+    console.log(JSON.stringify({ done: true }))
+  }
+  process.exit(0)
+}
+
 const commands = {
   seed,
   worker,
+  serve,
   'second-menu': secondMenu,
   'second-menu-remove': secondMenuRemove,
+  'areas-restore': areasRestore,
+  member,
 } as const
 const command = process.argv[2] as keyof typeof commands | undefined
 
 if (command === undefined || !(command in commands)) {
-  console.error('usage: seed-tables-e2e.ts seed|worker|second-menu|second-menu-remove')
+  console.error(
+    'usage: seed-tables-e2e.ts seed|worker|serve|second-menu|second-menu-remove|areas-restore|member',
+  )
   process.exit(2)
 }
 

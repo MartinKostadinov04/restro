@@ -5,8 +5,8 @@ D107 says what an operational screen must be (the admin, the composer, settings,
 **The persona** for every check: an owner or manager on a phone at 03:00, one-handed, who has never read a manual. The manager's phone is a supported admin device (D123), so a screen is checked at 390 px. The admin's screens and how they are reached are in `admin-map.md`.
 
 **The persona on Tonight and any screen used at the bar** (D122; the Tonight plan, `docs/deliverables/2026-10-21-tonight-screen-1-plan.md` §7): a bartender at the shared bar tablet, a metre away, wet hands, a guest waiting, who glances, taps once and looks away; or a waiter on a phone in one hand. Neither has time to read a sentence. Such a screen is checked at 1180 × 820 and at 390 px. The tablet changes these rules:
-- **Undo:** an answer that moves money is confirmed by the PIN sheet, which names the consequence, and gets no Undo toast; every other write keeps the 8-second toast.
-- **Frequency:** nothing moves, a new alert included; it is announced to a screen reader. (Whether a new alert may also play one short sound is Martin's open question, Q10 of the plan; until he answers, no sound.)
+- **Undo:** an answer that moves money is confirmed by the PIN sheet, which names the consequence, and gets no Undo toast; every other write keeps the 8-second toast. On Tonight the Undo also has a time window in core (30 seconds): the write answers with a token (its Log entry and time), the Undo sends it back, and core refuses it as «Too late to undo.» (`undo_expired`) or, when someone changed the same thing meanwhile, «Someone else has changed this since.» (`undo_stale`) (#219).
+- **Frequency:** nothing moves, a new alert included; it is announced to a screen reader. (Martin 10-26, Q10 of the plan: a new alert also plays one short sound, which staff can mute on the device; never animation.)
 - **How do I get out:** a bar tablet stays on this screen all night and has no back button to lean on; a sheet or dialog closes with a visible control and Esc and loses nothing.
 - **Targets and text:** 44 px stays the floor; answer buttons are 48 px and PIN keys 56 to 60 px on the tablet; text is 14 px at the least and 16 px for what is read at arm's length; a reference a waiter reads is at least 40 px at 7:1 (D122 §9).
 - **Who did it:** a signed-in personal phone names the person; a shared device asks for a PIN, so the log names a person (D122 §7).
@@ -72,7 +72,8 @@ The same job looks the same on every screen (D107): one pattern per job, chosen 
 
 | Job | The pattern | Divergences today |
 |---|---|---|
-| A single reversible write (hide or show, sold out, a layout or look option, a guest feature) | The control saves at once; the undo toast is the feedback (Undo, above). No Save button. | Guest features: switches plus Save. |
+| A single reversible write (hide or show, sold out) | The control saves at once; the undo toast is the feedback (Undo, above). No Save button. | Guest features: switches plus Save. |
+| The Design page (the Style, colours, fonts, layout, every Advanced option; D129) | A draft on its own page: Undo steps back, **Done** saves the whole design, **Cancel** throws the draft away. My styles (save, update, delete) are the organisation's and save at once. | none |
 | Rename | A pencil opens the name in place; Enter saves, Escape cancels. | Menus: an inline form with Save; areas and tables: an always-open field saved on blur; the venue name and the header name: a field plus Save. |
 | Reorder | A drag handle with the keyboard alternative, plus "…" → Move up / Move down for one hand on a phone (WCAG 2.5.7). | Menus: up and down arrows; sections and tags: the handle alone. |
 | Move a thing elsewhere | Drag onto its new place, or "…" → "Move to…" with the places listed. | Tables: flat "…" items. |
@@ -80,9 +81,11 @@ The same job looks the same on every screen (D107): one pattern per job, chosen 
 | A list of records (sync runs, versions, deleted venues) | A list newest first, each row with its state and its time in the venue's zone; nothing yet is the empty-state block. | none |
 | Remove a thing that can come back | One tap, no dialog; the undo toast, or a bin with Restore where the thing has a life after removal (menus, venues). | Items and sections made by hand: a red-button dialog, three taps (a candidate only if `apply()` can put them back). |
 | Remove a thing for good, or take a venue down | A dialog that names the consequence (`copy-rules.md` rule 11); the typed-name dialog only for what takes a menu down or erases data (D107, D83). | Unpublish takes a menu down with a one-tap confirmation and no typed name; every dialog's dismiss button says "Cancel" (about 21 strings) against rule 11. |
+| A write the person must accept the consequence of (an action nothing can take back, or one with a cost the person has to knowingly take: cancelling a booking, an open bill at an arrival) | A dialog that names the consequence in one sentence, with buttons that say the action and the way out, two answers at equal weight where neither is safer. Never a disabled control instead, and never OK / Cancel. | none (new with Reservations, #328). A booking's Cancel is this row, with no Undo: Cancelled has no way back, so Cancel asks once in this dialog. A booking's No-show (one tap) and Delete (its dialog, then the night's bin) are the ones whose toast carries the Undo. The swap and the open bill of Change tables (#331) are this row too. |
 | The secondary actions of a row | A "…" menu; the primary action stays visible on the row. Nothing appears only on hover: a phone has none. | The help line of the composer's name and conflict badges sits in a hover card a tap does not open. |
 | Pick one of a few | Two to five options, each a word: a segmented control. More, or options with names to read: a Select. Options whose consequence needs a sentence: radio cards. A continuous value: a slider with its value shown. | none (each case has its own control today) |
 | Everything about one thing | A side sheet (a bottom drawer on a phone), with tabs when it has more than one page. | The item sheet and the Tags panel: a side sheet at every width; only the field editor becomes a drawer. |
+| Many groups of settings (the Design panel's parts) | A list of rows, each the group's name, a one-line summary of what is set and ›; a row opens its group in place, with ‹ back to the list and the address remembering it (Back returns to the list) (D159). | none (new with the Design panel) |
 | Several things at once | Tick them; the floating selection bar holds the actions. | none |
 | A state of the whole page (held, paused, address off, live version) | One banner at the top, dismissible only when the state is. | none |
 | What happened after a write | In place when the control shows it, else a toast; a failure is the error toast that stays and names the fix (Undo, above). | Inline red text in cards and dialogs beside toasts; one job, two voices. |
@@ -92,6 +95,7 @@ The same job looks the same on every screen (D107): one pattern per job, chosen 
 | The state of many things at a glance (tables tonight) | A grid of status tiles, each an icon and one word (closed, open, needs you, money); a tap opens the thing. | none (new with Tonight) |
 | Who is acting on a shared device | The PIN sheet over the screen: the action as its title, its consequence in one sentence, "Enter your PIN" or "Enter a manager's PIN", a 3 × 4 pad, "Leave it"; it submits on the last digit; a wrong PIN clears and says what to do. | none (new with Tonight) |
 | A choice that is also the action (the scope of a pause) | A button that opens a menu of the options; the pick does it: two taps, no Select and no second button. | none (new with Tonight) |
+| Suggest an existing record while typing | A combobox over the field: three letters, the matches listed, the tap fills the rest, every filled field still editable, and a keyboard way through the list (2.1.1). | none (new with Guests, #333) |
 
 Checked by: the screen plan's Pattern line against this table before the ticket; the screenshot at review.
 

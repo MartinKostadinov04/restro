@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  addDaysToDay,
   isoInTimeZone,
   liveEditions,
+  localInstant,
   serviceDate,
+  serviceDayStartsAt,
   serviceEditionId,
   serviceEditionLayer,
   snapshotEditions,
@@ -27,6 +30,18 @@ describe('serviceDate (D45: the night belongs to the evening it started)', () =>
   it('refuses a malformed end of day or time zone', () => {
     expect(() => serviceDate(new Date(), SOFIA, '7am')).toThrow(RangeError)
     expect(() => serviceDate(new Date(), 'Mars/Olympus', '07:00')).toThrow(RangeError)
+  })
+})
+
+describe('serviceDayStartsAt (#77: a bill from last night is never joined)', () => {
+  it.each([
+    ['2026-10-09T21:30:00Z', '07:00', '2026-10-09T04:00:00.000Z'], // 00:30 local: began 07:00 the 9th
+    ['2026-10-10T04:00:00Z', '07:00', '2026-10-10T04:00:00.000Z'], // the first second of a day
+    ['2026-10-10T03:59:59Z', '07:00', '2026-10-09T04:00:00.000Z'],
+    ['2026-10-10T12:00:00Z', '00:00', '2026-10-09T21:00:00.000Z'], // midnight local
+    ['2026-03-29T10:00:00Z', '07:00', '2026-03-29T04:00:00.000Z'], // after spring-forward (EEST)
+  ])('at %s with the day ending at %s, the day began at %s', (at, endsAt, expected) => {
+    expect(serviceDayStartsAt(new Date(at), SOFIA, endsAt).toISOString()).toBe(expected)
   })
 })
 
@@ -57,5 +72,62 @@ describe('the editions of a service day (S3-08)', () => {
     expect(liveEditions('vn_x', '2026-10-09')).toEqual(['venue:vn_x', 'service:2026-10-09'])
     // A snapshot never names a service day, whatever the day is.
     expect(snapshotEditions('vn_x').some((id) => id.startsWith('service:'))).toBe(false)
+  })
+})
+
+describe('localInstant (a wall-clock time of a service day, as an instant)', () => {
+  it('reads an evening time on the day itself', () => {
+    expect(localInstant('2026-10-09', '22:00', SOFIA, '07:00').toISOString()).toBe(
+      '2026-10-09T19:00:00.000Z', // 22:00 EEST
+    )
+  })
+
+  it('puts a time before the end of the day on the next calendar date', () => {
+    expect(localInstant('2026-10-09', '02:30', SOFIA, '07:00').toISOString()).toBe(
+      '2026-10-09T23:30:00.000Z', // 02:30 EEST on the 10th
+    )
+  })
+
+  it('follows the offset of that date, across the autumn change', () => {
+    // A time the spring change skips lands where the clocks jump to, 04:00 EEST: never past a
+    // later time of the night (RR-65), and every skipped time lands on the same instant.
+    for (const skipped of ['03:00', '03:30', '03:59']) {
+      expect(localInstant('2027-03-27', skipped, SOFIA, '07:00').toISOString()).toBe(
+        '2027-03-28T01:00:00.000Z',
+      )
+    }
+    expect(localInstant('2027-03-27', '02:59', SOFIA, '07:00').toISOString()).toBe(
+      '2027-03-28T00:59:00.000Z',
+    )
+    expect(localInstant('2027-03-27', '04:00', SOFIA, '07:00').toISOString()).toBe(
+      '2027-03-28T01:00:00.000Z',
+    )
+    // 2026-10-25 03:30 local is after the clocks went back (EET, +02:00).
+    expect(localInstant('2026-10-24', '03:30', SOFIA, '07:00').toISOString()).toBe(
+      '2026-10-25T01:30:00.000Z',
+    )
+    expect(localInstant('2026-10-25', '23:00', SOFIA, '07:00').toISOString()).toBe(
+      '2026-10-25T21:00:00.000Z',
+    )
+  })
+})
+
+describe('addDaysToDay (a service day is named by its calendar date, D45)', () => {
+  it.each([
+    ['2026-11-09', 1, '2026-11-10'],
+    ['2026-11-30', 1, '2026-12-01'], // over the end of a month
+    ['2026-12-31', 1, '2027-01-01'], // over the end of a year
+    ['2028-02-28', 1, '2028-02-29'], // a leap year
+    ['2027-02-28', 1, '2027-03-01'],
+    ['2026-03-28', 1, '2026-03-29'], // the night the clocks go forward: still one date on
+    ['2026-10-25', 1, '2026-10-26'], // and the night they go back
+    ['2026-01-01', -1, '2025-12-31'], // and back over a year
+    ['2026-11-09', 0, '2026-11-09'],
+  ])('%s + %i days is %s', (day, days, expected) => {
+    expect(addDaysToDay(day, days)).toBe(expected)
+  })
+
+  it('steps a month back, which is as far as the floor plan reads (#327)', () => {
+    expect(addDaysToDay('2026-11-09', -30)).toBe('2026-10-10')
   })
 })

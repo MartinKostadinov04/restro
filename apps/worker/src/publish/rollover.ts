@@ -13,8 +13,8 @@
 // Why memory is enough. `publish-live` is idempotent (it writes only when the file differs), so
 // asking too often is harmless and asking again is always right. After a restart the memory is
 // empty, so the first tick asks for every venue once: a worker that was down across 07:00 repairs
-// the file as soon as it is back. Two workers each ask; `publish-live` is `stately` per menu +
-// venue, so the second ask folds into the first. The tick also asks again every
+// the file as soon as it is back. Two workers each ask; `publish-live` keeps one waiting job per
+// menu + venue, so the second ask folds into the first. The tick also asks again every
 // `REASSERT_AFTER_MS` whatever the date, which repairs the cases memory cannot see: a
 // `publish-live` that failed after its retries, or a mark whose job the web app could not queue.
 import { JOB_NAMES, prepareJob, serviceDate } from '@restro/core'
@@ -44,7 +44,7 @@ export interface RolloverDeps {
   readonly enqueue: (
     name: string,
     data: object,
-    options: { singletonKey: string },
+    options: { singletonKey: string; group?: { readonly id: string } | undefined },
   ) => Promise<string | null>
   readonly asks: LiveAsks
 }
@@ -99,7 +99,10 @@ export async function queueLiveRollovers(deps: RolloverDeps): Promise<RolloverRe
         })
         // A null answer means a `publish-live` for this menu is already waiting: it will resolve
         // with the day that is current when it runs, so the ask counts as made.
-        await deps.enqueue(JOB_NAMES.publishLive, job.data, { singletonKey: job.singletonKey })
+        await deps.enqueue(JOB_NAMES.publishLive, job.data, {
+          singletonKey: job.singletonKey,
+          ...(job.group === undefined ? {} : { group: job.group }),
+        })
         deps.asks.set(key, { lastLiveServiceDate: day, askedAt: now.getTime() })
         if (dayChanged) rolledOver += 1
         else reasserted += 1

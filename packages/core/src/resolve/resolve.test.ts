@@ -74,6 +74,7 @@ describe('a complete till item', () => {
       'tags',
       'availability',
       'order_mode',
+      'payment_mode',
       'for_sale',
       'visible',
     ])
@@ -445,19 +446,24 @@ describe('computed priceFrom (required modifier groups)', () => {
 })
 
 describe('computed badges', () => {
-  it('`new` for 14 days after the first publish, then dietary labels and tags', () => {
+  it('are the composer’s dietary labels and tags, and nothing Restro adds (D152)', () => {
     const builder = oneItemMenu()
       .set(ITEM, 'dietary', 'manual', ['vegan'])
       .set(ITEM, 'tags', 'manual', ['signature', 'vegan'])
-    expect(
-      item(run(builder, { firstPublishedAt: { [ITEM]: '2026-10-01T12:00:00+03:00' } })).computed
-        .badges,
-    ).toEqual(['new', 'vegan', 'signature'])
-    expect(
-      item(run(builder, { firstPublishedAt: { [ITEM]: '2026-09-20T12:00:00+03:00' } })).computed
-        .badges,
-    ).toEqual(['vegan', 'signature'])
-    expect(item(run(builder)).computed.badges).toEqual(['vegan', 'signature'])
+    // An item published seconds ago reads the same as one published a year ago: no clock moves
+    // an item’s badges, because Restro no longer puts a `new` badge on one itself.
+    expect(item(run(builder, { now: '2026-10-01T12:00:00+03:00' })).computed.badges).toEqual([
+      'vegan',
+      'signature',
+    ])
+    expect(item(run(builder, { now: '2027-05-01T12:00:00+03:00' })).computed.badges).toEqual([
+      'vegan',
+      'signature',
+    ])
+  })
+
+  it('are empty when the composer set none', () => {
+    expect(item(run(oneItemMenu())).computed.badges).toEqual([])
   })
 })
 

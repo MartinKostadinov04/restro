@@ -20,6 +20,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel,
   onConfirm,
   pending,
   testId,
@@ -29,6 +30,8 @@ export function ConfirmDialog({
   title: string
   description: string
   confirmLabel: string
+  /** The button that leaves things as they are; "Cancel" when not given. */
+  cancelLabel?: string
   onConfirm: () => void
   pending: boolean
   testId: string
@@ -43,7 +46,7 @@ export function ConfirmDialog({
         </DialogHeader>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            {t('cancel')}
+            {cancelLabel ?? t('cancel')}
           </Button>
           <Button type="button" variant="destructive" disabled={pending} onClick={onConfirm}>
             {confirmLabel}

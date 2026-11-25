@@ -23,10 +23,10 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D16](decisions/D16.md) | Sync a copy of barsy's data into our own model | applied |
 | [D17](decisions/D17.md) | Architecture = the Menu Engine doc including its nine rules | applied |
 | [D18](decisions/D18.md) | The waiter must learn of every app order inside the venue's existing barsy setup,… | firm |
-| [D19](decisions/D19.md) | Payment route: barsy's payment link if it supports Apple/Google Pay, split payments… | pending (Q39, Q55, Q58) |
+| [D19](decisions/D19.md) | Payment route: barsy's payment link if it supports Apple/Google Pay, split payments… | superseded by D126 and D125 |
 | [D20](decisions/D20.md) | Our own section map, generated from barsy's category tree, editable per venue | firm; see D47 |
 | [D21](decisions/D21.md) | New barsy items publish automatically | firm; see D50 |
-| [D22](decisions/D22.md) | Sold-out items are greyed out with no order button | firm; source is D46 |
+| [D22](decisions/D22.md) | Sold-out items are greyed out with no order button | firm; source is D46; superseded by D131 (sold-out items are hidden) |
 | [D23](decisions/D23.md) | TypeScript end to end | firm |
 | [D24](decisions/D24.md) | A missing language is added by hand in the translations tab | firm |
 | [D25](decisions/D25.md) | Legal checks per country | firm |
@@ -45,7 +45,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D38](decisions/D38.md) | Channel: QR to phone only | firm |
 | [D39](decisions/D39.md) | Staged proof of concept on one venue | firm |
 | [D40](decisions/D40.md) | Build the doc's document model plus a generic shell/face contract | firm |
-| [D41](decisions/D41.md) | barsy freshness by polling | firm; refined by D110 |
+| [D41](decisions/D41.md) | barsy freshness by polling | firm; refined by D110 and D125 (POS webhooks only) |
 | [D42](decisions/D42.md) | Allergens are a plain EU-14 enum_set attribute | firm |
 | [D43](decisions/D43.md) | Supabase Postgres only, free plan, restro-staging and restro-prod, Data API off | refined by D54 |
 | [D44](decisions/D44.md) | E:\Restro is the repo | firm |
@@ -62,7 +62,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D55](decisions/D55.md) | Stage 2 plan approved | firm |
 | [D56](decisions/D56.md) | Read public catalogue data only | firm; refined by D88 (a venue's menus are barsy's designated roots) |
 | [D57](decisions/D57.md) | Menu photos in private R2 bucket restro-assets-staging | applied |
-| [D58](decisions/D58.md) | Haiku for simple exactly specified tasks, Sonnet by default, Opus only for genuinely… | firm; refined by D104 (planning tiers) |
+| [D58](decisions/D58.md) | Haiku for simple exactly specified tasks, Sonnet by default, Opus only for genuinely… | firm; refined by D104 (planning tiers) and D133 |
 | [D59](decisions/D59.md) | Publishing is a sync setting | firm; refined by D82 (allergen key per instance) and D77 (languages) |
 | [D60](decisions/D60.md) | Venue-defined tags and dietary labels are assigned in the composer and shown on the… | firm |
 | [D61](decisions/D61.md) | QR links: ours (/t/<token>, default) or the venue's own link, both supported with a… | firm; refined by D80 (custom domains) |
@@ -73,12 +73,12 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D66](decisions/D66.md) | In a venue with a till, the till is the only source of items | firm |
 | [D67](decisions/D67.md) | Guardrails only tighten | applied |
 | [D68](decisions/D68.md) | Public address <base>/m/<slug>-<code> | refined by D84 (clean addresses; the code is internal only) |
-| [D69](decisions/D69.md) | Template gallery: a venue picks a face in the Design tab | firm |
+| [D69](decisions/D69.md) | Template gallery: a venue picks a face in the Design tab | firm; superseded in part by D128 (a template is a Style preset, not a code package) |
 | [D70](decisions/D70.md) | Venue colours: Primary ~60%, Secondary ~30%, Tertiary ~10% | firm |
 | [D71](decisions/D71.md) | Guest features are venue settings in the composer | firm; refined by D100 |
 | [D72](decisions/D72.md) | Faces stay pure: a face draws the host's service state and sends commands with an… | firm |
 | [D73](decisions/D73.md) | What is set once for the organisation and what per venue | firm |
-| [D74](decisions/D74.md) | The sidebar lists the venues and the organisation's Settings | firm |
+| [D74](decisions/D74.md) | The sidebar lists the venues and the organisation's Settings | superseded by D161 (off a venue it keeps this list) |
 | [D75](decisions/D75.md) | When barsy has no public name for an item, option or category, Restro shows barsy's… | firm |
 | [D76](decisions/D76.md) | Deleting a venue (owners, after typing its name) archives it | firm |
 | [D77](decisions/D77.md) | A venue's menu languages come from one core function every workflow calls | firm |
@@ -96,25 +96,25 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D89](decisions/D89.md) | Hand-made venues: full create/edit/delete of menus, sections and items | firm |
 | [D90](decisions/D90.md) | Restore re-links a POS venue's till venue if still free, else refused | firm |
 | [D91](decisions/D91.md) | Organisation › General | firm |
-| [D92](decisions/D92.md) | Composer has Structure and Design subtabs | firm |
+| [D92](decisions/D92.md) | Composer has Structure and Design subtabs | firm; revised by D128 and D129 (Style presets; the Studio tab; Simple and Advanced; the layout moves into the designer) |
 | [D93](decisions/D93.md) | Colour upgrades with D92 | firm |
 | [D94](decisions/D94.md) | Tables & QR shows the codes' address read-only | firm |
 | [D95](decisions/D95.md) | Areas and tables: barsy's halls and tables | firm |
 | [D96](decisions/D96.md) | Versions: live + up to 2 restorable, non-live purged after 30 days, change log 2 months | firm |
-| [D97](decisions/D97.md) | Venue page tabs: Composer | firm |
-| [D98](decisions/D98.md) | Payments are a connector kind; the venue is the merchant; Restro never holds money | firm |
-| [D99](decisions/D99.md) | Song requests: a paid priority queue the DJ runs, holds captured on accept | direction; prototype to be ported (T82), access to be grilled (T81) |
-| [D100](decisions/D100.md) | A guest feature declares whether it needs a table code | firm; refines D71 |
+| [D97](decisions/D97.md) | Venue page tabs: Composer | firm; refined by D156, D157 and D161 |
+| [D98](decisions/D98.md) | Payments are a connector kind; the venue is the merchant; Restro never holds money | firm; refined by D126 (Stripe first) and D125 (its open line closed) |
+| [D99](decisions/D99.md) | Song requests, the first direction: the paid bidding queue it describes is superseded by D162 to D171 | superseded in part by D162 to D171; the bidding queue is dead and must not be built; what survives is listed in the file |
+| [D100](decisions/D100.md) | A guest feature declares whether it needs a table code | firm; refines D71; refined by D170 (song requests declare no, and the way in is the venue's menu) |
 | [D101](decisions/D101.md) | Reservations become a module of the platform on Areas and Tables, hosted page first | direction; after ordering from the menu (T83) |
 | [D102](decisions/D102.md) | The night promise: the menu never goes down; everything else degrades to paused and alerts | firm; refined by D120 (push alerts, the outside watchdog) |
 | [D103](decisions/D103.md) | Keep the D43 hosting split through 10 clubs; agent time goes into portability, not moves | firm |
-| [D104](decisions/D104.md) | Fable plans the heavy zone; "I don't know" gets a higher model's proposal | firm; refines D58; refined by D108 |
-| [D105](decisions/D105.md) | Templates are designed by agents in the repo, from the menu functionality file | firm; supersedes D63; refines D69 |
-| [D106](decisions/D106.md) | The design-skill set in force: frontend-design vendored for templates, Vercel rules pinned, UI UX Pro Max rejected | firm; refined by D109 |
+| [D104](decisions/D104.md) | Fable plans the heavy zone; "I don't know" gets a higher model's proposal | firm; refines D58; refined by D108 and D133 |
+| [D105](decisions/D105.md) | Templates are designed by agents in the repo, from the menu functionality file | firm; supersedes D63; refines D69; refined by D128 (a template is a Style preset; how a Style is made) |
+| [D106](decisions/D106.md) | The design-skill set in force: frontend-design vendored for templates, Vercel rules pinned, UI UX Pro Max rejected | firm; refined by D109, D123, D146 |
 | [D107](decisions/D107.md) | Operational screens are for an owner who is not a tech person: plain words, undo, few taps | firm |
-| [D108](decisions/D108.md) | Planning climbs one rung at a time; the rung is sticky; the lead switches itself | firm; refines D104 |
+| [D108](decisions/D108.md) | Planning climbs one rung at a time; the rung is sticky; the lead switches itself | firm; refines D104; refined by D133 |
 | [D109](decisions/D109.md) | What enters from Emil Kowalski's skills, where, and what stays out | firm; refines D106, D105, D107 |
-| [D110](decisions/D110.md) | Restro writes into a POS only as a waiter would | firm; rewrites rule 7; refines D41 |
+| [D110](decisions/D110.md) | Restro writes into a POS only as a waiter would | firm; rewrites rule 7; refines D41; refined by D125 (scope line, provider notices) |
 | [D111](decisions/D111.md) | A bill is the table's view of the POS's bills; Restro keeps only its own orders and payments | firm; supersedes D5 with D112 and D113; refined by D115 (no visit, no bar counter) and D120 (table and venue pauses); refined by D122 |
 | [D112](decisions/D112.md) | How an order reaches the POS and how a bill is paid | firm; supersedes D5 with D111 and D113; refines D14; reopens D30; refined by D115 (rounds on the table's POS bill), D116 and D117 (the shared bag; a mixed bag no longer waits); refined by D122 |
 | [D113](decisions/D113.md) | Payment mode per item, with one switch per table; Restro is the gatekeeper | firm; supersedes D5 with D111 and D112; refines D29; refined by D122 |
@@ -126,8 +126,59 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D119](decisions/D119.md) | The location check's consent screen, its proof and paperwork, and Turnstile's settings | firm; refines D118; refined by D121 (a shorter consent screen); refined by D122 |
 | [D120](decisions/D120.md) | Failure and pause during service: a table pause and a venue pause, how each starts and lifts, alerts to everyone, and the venue's Log | firm; refines D102, D111, D116 and D117; refined by D122 |
 | [D121](decisions/D121.md) | How the guest page talks to the platform: two endpoints, the table code in a header, polling, the guards on each request, and the location pass | firm; refines D117, D118 and D119; refined by D122 |
-| [D122](decisions/D122.md) | Ordering at a one-bill POS like the pilot's Mistral: sent orders, tables open for phones, sittings, payment tables, staff roles and the connector capabilities | firm; refines D111, D112, D113, D115–D121 |
-| [D123](decisions/D123.md) | Operational screens are designed before they are coded (the screen plan, the admin map, the pattern list); what enters from Anthropic's design skills as lines, where, and what stays out; the manager's phone is supported | firm; refines D106, D107; closes D109's open question |
+| [D122](decisions/D122.md) | Ordering at a one-bill POS like the pilot's Mistral: sent orders, tables open for phones, sittings, payment tables, staff roles and the connector capabilities | firm; refines D111, D112, D113, D115–D121; refined by D126; refined by D129 (the guest-feature screens are pages of the designer from the start); refined by D131 (a sold-out item leaves the guest menu) |
+| [D123](decisions/D123.md) | Operational screens are designed before they are coded (the screen plan, the admin map, the pattern list); what enters from Anthropic's design skills as lines, where, and what stays out; the manager's phone is supported | firm; refines D106, D107; closes D109's open question; refined by D146 |
+| [D124](decisions/D124.md) | Fitting any POS: an optional bar, never yesterday's bill, a fallback when a waiter's bill is closed to outside apps, card holds for paying, training mode only on a test installation, the POS's stock replaces the owner's sold-out switch | firm; refines D112, D115, D122 |
+| [D125](decisions/D125.md) | How a venue connects Stripe, and how Restro uses it | firm; refines D98, D126, D41 and D110; supersedes D19; closes D98's open line |
+| [D126](decisions/D126.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122; refined by D125 |
+| [D127](decisions/D127.md) | How the guest page pays: the commands, the route with its failure rules, Stripe's notices, tips only on the same receipt, the smallest card payment, the bank's check on every payment, where each call runs | firm; refines D98, D121, D122 and D125 |
+| [D128](decisions/D128.md) | One renderer draws every guest menu from one option list; a Style is a preset of it | firm; supersedes D69 in part and D105's "how a template is made"; revises D92's "no presets" |
+| [D129](decisions/D129.md) | The Studio: one design per venue, Simple and Advanced, Done saves the whole design | firm; refines D128; revises D92; refines D122; refined by D159 |
+| [D130](decisions/D130.md) | The design option set: 48 options on 14 pages, and the never-list | firm; refines D128 and D129; refined by D159 |
+| [D131](decisions/D131.md) | Sold-out and unavailable items are hidden; scheduled items are out of scope | firm; supersedes D22 |
+| [D132](decisions/D132.md) | Three wordings settled: a stamped new bill is never resent, a payment's return address, refunds are read and never made | firm; refines D112, D116 and D127 |
+| [D133](decisions/D133.md) | The model follows the job, not the session; Opus checks the heavy zone, Sonnet builds and keeps the books, sessions stay short | firm; refines D58, D104 and D108 |
+| [D134](decisions/D134.md) | The floor plan: spots a venue owns rather than Tables, its own kinds and shapes, who may edit it, and that reservations never touch the POS | firm; refines D101, D95 and D107 |
+| [D135](decisions/D135.md) | A reservation and its life: the seven statuses, who may work another hostess's booking, the read-only past, the turn time, and the pay rule a reservation carries | firm; refines D101, D122 and D107 |
+| [D136](decisions/D136.md) | Booking online, and money on a reservation: the hosted booking page and what guests may do on it, the email of every change, the prepayment held on the venue's own Stripe, and the fiscal receipt behind it | firm; refines D38, D101, D98, D125, D126 and D127 |
+| [D137](decisions/D137.md) | The night on the plan: one-tap arrivals that open the table, walk-ins, the waiting list, one Change tables screen, the bill move, and blocks as reservations | firm; refines D122, D107 and D110 |
+| [D138](decisions/D138.md) | Ending the night: the closing hour that closes every code, the admin's early end with its open-bills warning, no bulk undo, and the three moments named apart | firm; refines D122, D45 and D107 |
+| [D139](decisions/D139.md) | Linked groups: one party across several tables, cumulated inside Restro with no lead table and no common POS bill | firm; refines D117 and D122 |
+| [D140](decisions/D140.md) | Guests and regulars: the venue's own list, what is kept and what erasing clears, and why the visit counts are for audits and never for accounting | firm; refines D83 |
+| [D141](decisions/D141.md) | Who may do what in reservations, where the PIN falls on a shared device, sessions on remembered devices, and one Log for the night | firm; refines D122 and D123; refined by D157; extended by D158 |
+| [D142](decisions/D142.md) | The event model: the minimal key set of what a night can be measured by, with no personal data anywhere in it | firm; refines D122; serves #321 and #323 |
+| [D143](decisions/D143.md) | The database backup connects as its own read-only role with BYPASSRLS, the second approved exception to the never-list | firm; refines D83 and D103 |
+| [D144](decisions/D144.md) | What the analytics answer: the measurement is already complete, the night writes its own numbers down, and Restro is never a second answer to the till | firm; refines D142 |
+| [D145](decisions/D145.md) | The guest's card form offers no Link account and asks the guest to save nothing | firm; refines D127 |
+| [D146](decisions/D146.md) | Screens are reviewed in rounds by an explorer and an independent reviewer, with Anthropic's design-critique, accessibility-review and ux-copy vendored whole; the design plugins switched off in Restro | firm; refines D106, D109, D123; contradicts D123 on vendoring |
+| [D147](decisions/D147.md) | Staff mark an item sold out, and it is sold out for the whole club that night | firm; narrows D124 |
+| [D148](decisions/D148.md) | If a payment went through Restro and staff mark the line undeliverable, Restro sends the money back | firm on the rule; the guardrail change waits on Martin |
+| [D149](decisions/D149.md) | Prices are kept right by asking the POS often, and a till-only happy hour waits | firm |
+| [D150](decisions/D150.md) | No POS is connected without first being tested in a test environment | firm |
+| [D151](decisions/D151.md) | Carrying a printed receipt to the guest is not Restro's work | firm |
+| [D152](decisions/D152.md) | Restro never puts a badge on a menu item by itself | firm |
+| [D153](decisions/D153.md) | A bar tablet is paired with a one-time code, not with an account | firm; refines D141 |
+| [D154](decisions/D154.md) | A bill move between tables is the staff’s, at the POS, and a close carries our reference and nothing about the guest | §1 withdrawn by Martin 11-24; §2 firm on the lead’s side; refines D122 and D127; §1’s “settling on its own” refined by D160 |
+| [D155](decisions/D155.md) | Ordering, reservations and song requests are modules, switched on per venue | firm |
+| [D156](decisions/D156.md) | Each module has its own Settings | firm; refines D97 |
+| [D157](decisions/D157.md) | A person opens only what their role at that venue works | firm; refines D141 and D97 |
+| [D158](decisions/D158.md) | Restro opens inside the venue | firm; extends D141 |
+| [D159](decisions/D159.md) | The Design panel opens on a list of parts, and an option's picture draws the part alone | firm; refines D129 and D130 |
+| [D160](decisions/D160.md) | A party’s tables can be paid in one payment, and guests can share a bill by amount, settling together | firm; refines D139 (13.13), D154 §1 and D127; part payment waits on Mistral |
+| [D161](decisions/D161.md) | The admin is organised around the open venue | firm; supersedes D74; refines D97 |
+| [D162](decisions/D162.md) | A song request has one price the venue sets, and no amounts are shown to anyone | firm; supersedes D99's bidding model (ordering by amount, visible amounts, backers, boosts, the minimum paid request) |
+| [D163](decisions/D163.md) | The guest's money is held when he asks and taken only when the DJ marks the song played | firm; supersedes D99's capture on accept and its night-end-only release |
+| [D164](decisions/D164.md) | One timestamped queue, and the few in front of the DJ have no order among them | firm; supersedes D99's lock window |
+| [D165](decisions/D165.md) | A guest is told his place, and never a time Restro has not measured | firm; supersedes D99's “every guest sees the whole queue” |
+| [D166](decisions/D166.md) | A second guest asking for the same song pays the same price and moves it up: popularity, not bidding | firm; supersedes D99's boosts and its ordering by total amount |
+| [D167](decisions/D167.md) | The DJ refuses a request with one tap from a short fixed list, and his eyes are release 1's only screening | firm; refines D99 |
+| [D168](decisions/D168.md) | The DJ opens and closes the door to new requests, there is no automatic cap, and the same song cannot be asked again at once | firm; refines D99 |
+| [D169](decisions/D169.md) | Paid greetings come in two kinds, are approved or refused with no revision loop, and settle on their song's marker | firm |
+| [D170](decisions/D170.md) | A song request carries no table, and the way in is the venue's own menu | firm; refines D100; closes D99's and D100's deferral of the entry point (T81) |
+| [D171](decisions/D171.md) | The venue's settings for song requests, and the defaults an owner never has to think about | firm; supersedes D99's venue settings |
+| [D173](decisions/D173.md) | A cache of an outside system's own objects is written by one narrow writer beside the two write paths | firm; refines rule 1 and D122 §9 by naming the third kind of data; replaces the lead's provisional ruling of 11-25 on #520 |
+| [D174](decisions/D174.md) | A song row is kept only while something refers to it and refreshed by its id before its thirty days are up | firm; settles #522's retention and source, replacing "keeps songs permanently"; the imported catalogue becomes #567 |
+| [D175](decisions/D175.md) | A prepayment's receipt is due when the money is taken: the POS issues it, emailed where it can, and the till to-do is the fallback | pending (proposed to Martin 11-25); refines D136 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

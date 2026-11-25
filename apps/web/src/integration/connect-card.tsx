@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { renameInstanceAction, saveConnectionAction } from '@/server/integration/actions'
 import type { InstanceView, IntegrationErrorCode } from '@/server/integration/view'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 import { ErrorNote, Notice } from './error-note'
 import { useClearWhenIdle } from './use-clear-when-idle'
@@ -121,6 +122,7 @@ export function ConnectCard({ instance, canManage, sealReady }: ConnectCardProps
   const [password, setPassword] = useState('')
   const [error, setError] = useState<IntegrationErrorCode | null>(null)
   const [notice, setNotice] = useState<'queued' | 'notQueued' | null>(null)
+  const again = useSignInAgain()
   const [pending, startTransition] = useTransition()
   useClearWhenIdle(instance.activeJob, () => setNotice(null))
 
@@ -134,17 +136,25 @@ export function ConnectCard({ instance, canManage, sealReady }: ConnectCardProps
     const sent = { integrationId: instance.id, host, user, password }
     // The password leaves the form the moment it is sent, whatever comes back.
     setPassword('')
-    startTransition(async () => {
-      const result = await saveConnectionAction(sent)
-      setUser('')
-      if (!result.ok) {
-        setError(result.error)
-        return
-      }
-      setJustSaved(true)
-      setEditing(false)
-      setNotice(result.queued === false ? 'notQueued' : 'queued')
-    })
+    // Sent again as it was after the password dialog (D122 §7); dropped if it is closed.
+    const send = () =>
+      startTransition(async () => {
+        const result = await saveConnectionAction(sent)
+        if (!result.ok && result.error === 'sign_in_again') {
+          // The API user stays in the form if the dialog is closed; the password does not.
+          again.ask(send)
+          return
+        }
+        setUser('')
+        if (!result.ok) {
+          setError(result.error)
+          return
+        }
+        setJustSaved(true)
+        setEditing(false)
+        setNotice(result.queued === false ? 'notQueued' : 'queued')
+      })
+    send()
   }
 
   function cancel() {
@@ -159,6 +169,7 @@ export function ConnectCard({ instance, canManage, sealReady }: ConnectCardProps
 
   return (
     <FormSection title={t('title')} description={t('description', { source: instance.source })}>
+      {again.dialog}
       <NameRow instance={instance} canManage={canManage} />
 
       {canManage && !sealReady ? (

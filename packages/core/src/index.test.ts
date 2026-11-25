@@ -29,6 +29,7 @@ describe('@restro/core public surface', () => {
       'RESERVED_FIELD_KEYS',
       'VENUE_MENU_TEMPLATE',
       'ORDER_MODES',
+      'PAYMENT_MODES',
       // 9 change sets and write validation
       'ChangeSetSchema',
       'FieldWriteSchema',

@@ -6,7 +6,7 @@
 // a note, a quantity and "Add to bag" (services/dish-order.tsx).
 
 import type { ViewItem } from '@restro/shell'
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 
 import { InfoIcon } from './icons'
 import { langOf, localeLang } from './model'
@@ -28,16 +28,19 @@ function DishBody({
   const { locale, strings, assetBase } = ctx
   const services = useServices()
   const ordering = services?.canOrder(item) === true
+  // A photo that does not load leaves a dark empty box: the page then reads as a dish without one.
+  const [photoFailed, setPhotoFailed] = useState(false)
   return (
-    <div className="rm-detail">
-      {item.image !== null ? (
-        <div className="rm-detail-photo">
+    <div className="rm-detail" data-design-part="dish">
+      {item.image !== null && !photoFailed ? (
+        <div className="rm-detail-photo" data-design-part="dish.photo">
           <Photo
             image={item.image}
             assetBase={assetBase}
             page={locale}
             sizes="min(100vw, 640px)"
             loading="eager"
+            onError={() => setPhotoFailed(true)}
           />
         </div>
       ) : null}
@@ -108,11 +111,14 @@ function DishBody({
 export function DishPage({
   item,
   ctx,
+  kind,
   leaving,
   onClose,
 }: {
   readonly item: ViewItem
   readonly ctx: PageContext
+  /** The Dish page's kind (D130): a tall sheet over the menu, or a full page with Back. */
+  readonly kind: 'sheet' | 'page'
   /** The page is on its way out (the exit animation is playing). */
   readonly leaving: boolean
   readonly onClose: () => void
@@ -124,7 +130,8 @@ export function DishPage({
       titleLang={langOf(item.name, ctx.locale)}
       closeLabel={strings.back}
       onClose={onClose}
-      detail
+      detail={kind === 'page'}
+      dish={kind === 'sheet'}
       leaving={leaving}
       extra={
         item.allergens.length > 0 ? (
@@ -138,7 +145,7 @@ export function DishPage({
         ) : null
       }
     >
-      <DishBody item={item} ctx={ctx} onDone={onClose} />
+      <DishBody key={item.id} item={item} ctx={ctx} onDone={onClose} />
     </Overlay>
   )
 }

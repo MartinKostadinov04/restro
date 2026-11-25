@@ -84,40 +84,57 @@ export function SaleBadge({
 }
 
 /**
- * The way out of a name that is the till's own: fill in the public name in the till, or type a
- * name here (an item in its sheet, a section in its header, brief S6).
+ * The way out of a name that is the till's own: fill in the public name in the POS, or type a
+ * name here (an item in its sheet, a section in its header, brief S6). A member (`readOnly`,
+ * RR-70) has no rename: the line says who can.
  */
-const helpKey = (target: 'item' | 'section') =>
-  target === 'section' ? 'nameFromTillHelpSection' : 'nameFromTillHelp'
+const helpKey = (target: 'item' | 'section', readOnly: boolean) =>
+  readOnly
+    ? 'nameFromTillHelpReadOnly'
+    : target === 'section'
+      ? 'nameFromTillHelpSection'
+      : 'nameFromTillHelp'
 
 /**
  * The name shown is the till's own, because the till has no public name for it (D75): "Menu name
  * missing in {source}: its own name is shown", with the way out as a help line on hover or focus.
  * A warning only; it never keeps anything off the menu.
  */
-export function NameFromTillBadge({ target = 'item' }: { target?: 'item' | 'section' }) {
+export function NameFromTillBadge({
+  target = 'item',
+  readOnly = false,
+}: {
+  target?: 'item' | 'section'
+  readOnly?: boolean
+}) {
   const t = useTranslations('composer.badges')
   const source = useTillLabel()
   return (
     <HoverCard openDelay={150}>
       <HoverCardTrigger asChild>
+        {/* The sentence is long: it wraps inside the screen rather than widen it (WCAG 1.4.10). */}
         <button
           type="button"
-          className="rounded-full focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="max-w-full min-w-0 rounded-[0.75rem] text-left focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           data-testid="name-from-till-badge"
         >
-          <Badge variant="warning">{t('nameFromTill', { source })}</Badge>
+          <Badge
+            variant="warning"
+            className="max-w-full shrink justify-start rounded-[0.75rem] whitespace-normal"
+          >
+            {t('nameFromTill', { source })}
+          </Badge>
         </button>
       </HoverCardTrigger>
       <HoverCardContent className="w-72 text-sm">
-        <p data-testid="name-from-till-help">{t(helpKey(target), { source })}</p>
+        <p data-testid="name-from-till-help">{t(helpKey(target, readOnly), { source })}</p>
       </HoverCardContent>
     </HoverCard>
   )
 }
 
 /** The same warning in full, with its help line, for the item sheet. */
-export function NameFromTillNotice() {
+export function NameFromTillNotice({ readOnly = false }: { readOnly?: boolean }) {
   const t = useTranslations('composer.badges')
   const source = useTillLabel()
   return (
@@ -129,7 +146,7 @@ export function NameFromTillNotice() {
       <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
       <div className="grid gap-0.5">
         <p className="font-medium">{t('nameFromTill', { source })}</p>
-        <p className="text-muted-foreground">{t('nameFromTillHelp', { source })}</p>
+        <p className="text-muted-foreground">{t(helpKey('item', readOnly), { source })}</p>
       </div>
     </section>
   )
@@ -137,9 +154,10 @@ export function NameFromTillNotice() {
 
 /**
  * "Overrides to review" (V12): the till changed a value we wrote over since we wrote it, and a
- * person should keep ours or take the till's (in the item's sheet). Hover or focus says so.
+ * person should keep ours or take the till's (in the item's sheet). Hover or focus says so; to a
+ * member (`readOnly`, RR-70), who has neither button, it says who decides.
  */
-export function ReviewBadge({ count }: { count: number }) {
+export function ReviewBadge({ count, readOnly = false }: { count: number; readOnly?: boolean }) {
   const t = useTranslations('composer.badges')
   const source = useTillLabel()
   return (
@@ -155,7 +173,9 @@ export function ReviewBadge({ count }: { count: number }) {
         </button>
       </HoverCardTrigger>
       <HoverCardContent className="w-72 text-sm">
-        <p data-testid="review-help">{t('reviewHelp', { source })}</p>
+        <p data-testid="review-help">
+          {t(readOnly ? 'reviewHelpReadOnly' : 'reviewHelp', { source })}
+        </p>
       </HoverCardContent>
     </HoverCard>
   )

@@ -33,6 +33,14 @@ describe('the barsy system settings card (an instance, the whole installation)',
     expect(screen.queryByText(/category/i)).toBeNull()
   })
 
+  it('lets its two selects shrink inside their grid cells (#59: min-w-0, no sideways scroll at 390 px in Bulgarian)', () => {
+    card()
+    for (const name of ['Allergen characteristic', 'Language of untagged text']) {
+      const cell = screen.getByRole('combobox', { name }).closest('div') as HTMLElement
+      expect(cell.className).toContain('min-w-0')
+    }
+  })
+
   it('shows what automatic detection finds for the allergen characteristic', () => {
     card()
     expect(screen.getByRole('combobox', { name: 'Allergen characteristic' }).textContent).toBe(
