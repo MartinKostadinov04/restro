@@ -18,6 +18,12 @@ import { type APIRequestContext, expect, test } from '@playwright/test'
 /** Cloudflare's dummy token, which its test secret passes (playwright.config.ts). */
 const HUMAN_TOKEN = 'XXXX.DUMMY.TOKEN.XXXX'
 const SETTLED = { timeout: 90_000, intervals: [500, 1_000] }
+/**
+ * A phone's gap between two pay-like starts (`payGap`, core's `guest-limits.ts`). `share.start` and
+ * `share.hold` are both starts, so the phone that opens the share waits it out before it can take
+ * its own part — which is why this story sits still for a quarter of a minute. See the report.
+ */
+const PAY_GAP_MS = 15_500
 
 let harness: ChildProcessWithoutNullStreams
 let code = ''
@@ -170,6 +176,7 @@ test('split the amount: two parts cover one bill, and a third phone sees the sam
     { humanToken: HUMAN_TOKEN },
   )
   expect(started.result).toMatchObject({ status: 'accepted', code: null })
+  const startedAt = Date.now()
   const paymentId = started.result.subjectId as string
   // The share is the table's: its handle is never given to a phone (rule 3, D160 2.1).
   expect(started.handle).toBeNull()
@@ -187,7 +194,11 @@ test('split the amount: two parts cover one bill, and a third phone sees the sam
   const minimum = seen?.minimumMinor ?? 0
   expect(minimum).toBeGreaterThan(0)
 
-  // The first phone takes half. Both halves must clear the smallest card payment (D160 2.6).
+  // The first phone takes half. Both halves must clear the smallest card payment (D160 2.6), and
+  // this phone's own gap since it opened the share has to pass before it may start a part.
+  await new Promise((resolve) =>
+    setTimeout(resolve, Math.max(0, startedAt + PAY_GAP_MS - Date.now())),
+  )
   const partMinor = Math.floor(total / 2)
   expect(partMinor).toBeGreaterThanOrEqual(minimum)
   expect(total - partMinor).toBeGreaterThanOrEqual(minimum)
