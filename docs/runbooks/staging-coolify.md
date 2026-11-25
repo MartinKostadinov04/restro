@@ -79,9 +79,11 @@ Turnstile keys) are left as named blanks for you to fill from their source. Then
    tick **Is Multiline**, and paste the certificate text again (the same text as the GitHub
    secret of the same name).
 5. **Build time:** only the variables starting `NEXT_PUBLIC_` are needed while the image is
-   built (they are public values the web app carries to phones). If Coolify shows a **Build
-   time** tick on each variable, untick it on every other one, so no secret goes into a build.
-   Tell the lead if the screen looks different from this.
+   built (they are public values the web app carries to phones). Coolify makes every new
+   variable available at build time by default; on every other variable switch that to
+   **Not available during build**, so no secret is handed to a build. (The images would ignore
+   them anyway, but they should not be passed at all.) Tell the lead if the screen looks
+   different from this.
 
 What goes where, so you can check the lead's file. You paste one list; the Compose file hands
 each value only to the services that name it, which is how the private seal key reaches the
@@ -89,7 +91,7 @@ worker and never the web app.
 
 | Variable | web | worker | sim-pos | Value |
 | --- | --- | --- | --- | --- |
-| `DATABASE_URL` | ✓ | ✓ | | the app role's pooler string (`supabase-setup.md` §4), ending `sslrootcert=/tmp/supabase-ca.crt`; never the owner's |
+| `DATABASE_URL` | ✓ | ✓ | | the app role's pooler string (`supabase-setup.md` §4), ending `sslmode=verify-full&sslrootcert=/tmp/supabase-ca.crt` (the container writes the certificate to that file at start); never the owner's |
 | `DATABASE_URL_PURGE` | | ✓ | | the purge role's string, the same way |
 | `SUPABASE_CA_CERT` | ✓ | ✓ | | the certificate text, as in the GitHub secret |
 | `BETTER_AUTH_URL` | ✓ | | | `https://restro.synexcloud.com` |
@@ -105,10 +107,17 @@ worker and never the web app.
 | `STRIPE_SECRET_KEY` | | ✓ | | the `rk_test_…` key |
 | `SIM_POS_CONTROL_TOKEN` | | | ✓ | a fresh random value |
 
+Optional, and left blank on staging unless the lead says otherwise: `PUBLIC_BASE_URL` and
+`VAPID_PUBLIC_KEY` (web); `STRIPE_REFUND_KEY`, `BARSY_PRODUCTION_HOSTS`, the Telegram,
+Healthchecks, Web Push and receipt-email settings (worker); `SIM_POS_SCENARIO` (the simulator's
+starting scenario, `quiet-night` when blank).
+
 Already written in the Compose file, so not in your paste: `ASSET_STORE` and `PUBLISH_STORE`
 (`local`), the shared folder they use, `PAYMENTS_ENV=staging`, `PAYMENTS_PROVIDER=stripe`,
 `BARSY_ENV=staging`, `WORKER_HEALTH_PORT=8081`, the worker's private address
-`http://worker:8081`, the simulator's allowed host, and `LOG_LEVEL=info`.
+`http://worker:8081` and the name it answers on, the simulator's allowed host, and `LOG_LEVEL=info`.
+The worker runs without `NODE_ENV=production` on purpose: that setting would refuse the
+simulated POS.
 
 The exact list is the Compose file's. If the merged file differs from this table, the lead
 corrects this table in the same pull request that changes the file.
