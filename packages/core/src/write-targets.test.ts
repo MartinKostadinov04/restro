@@ -41,6 +41,7 @@ const SERVICE_TABLES: Readonly<Record<string, string>> = {
   // SERVICE_WRITE_TARGETS.
   payments: 'payments',
   paymentLines: 'payment_lines',
+  paymentHolds: 'payment_holds',
   paymentSteps: 'payment_steps',
   paymentRefunds: 'payment_refunds',
   paymentAccounts: 'payment_accounts',
@@ -81,6 +82,7 @@ const RESERVATION_TABLES = [
 const PAYING_TABLES = [
   'payments',
   'paymentLines',
+  'paymentHolds',
   'paymentSteps',
   'paymentRefunds',
   'paymentAccounts',
@@ -127,6 +129,8 @@ const SERVICE_WRITE_TARGETS: readonly string[] = [
   // recorded `attempting` before each provider call.
   'paymentLines',
   'paymentSteps',
+  // #543: a group payment's holds, one per guest's card.
+  'paymentHolds',
   // #222: a refund the venue made in its provider's dashboard, and its storno.
   'paymentRefunds',
   // #109: a venue's payment account: connect, read back, lose, disconnect.
