@@ -116,6 +116,14 @@ export const RESERVATION_REFUSALS = [
    * (D137, #331). The form may still change everything else about the party.
    */
   'seated_use_change_tables',
+  /** The venue's booking page takes no online bookings: an owner has not switched it on (#577). */
+  'booking_off',
+  /** The venue closed that one night (#577; D136's one-off closed dates). */
+  'closed_night',
+  /** The venue keeps that weekday closed, so a guest cannot ask for it online (#577). */
+  'outside_hours',
+  /** The night lies past how far ahead the booking page takes requests (#577). */
+  'too_far',
 ] as const
 
 /** One reservation refusal code. */

@@ -1,6 +1,6 @@
 // The paths of the publish store and the rules that go with them, in one place (brief S3-01b and
 // S3-03; doc "Files on the CDN"). The publish store holds the files a guest page reads: public by
-// design, nothing internal. Only six shapes exist, and every store and the `/cdn` route accept
+// design, nothing internal. Only eight shapes exist, and every store and the `/cdn` route accept
 // those and nothing else, so a path from a URL can never reach another file, and an original
 // photo or a private file has no path to be stored under.
 //
@@ -12,6 +12,7 @@
 //                                      from an old organisation name: where `/m/<organisation>/<venue>` starts (D84)
 //   v/<venue public code>.json         {venue_id, menu_id, slug, organization}: what the old address `/m/<slug>-<code>` shows (S3-03, D68)
 //   t/<code's SHA-256>.json            {venue_public_id, venue_slug, organization_slug, table_label, menu_id}: what a table's QR code means
+//   b/<vn_ id>.json                    what the venue's booking page shows (#577): name, switch, hours, closed dates
 //
 // Pure: no I/O.
 import {
@@ -34,6 +35,7 @@ export type PublishPathKind =
   | 'organization_index'
   | 'venue_index'
   | 'table_token'
+  | 'booking'
 
 /** What a publish-store path says. */
 export type ParsedPublishPath =
@@ -44,6 +46,7 @@ export type ParsedPublishPath =
   | { readonly kind: 'organization_index'; readonly slug: string }
   | { readonly kind: 'venue_index'; readonly publicId: string }
   | { readonly kind: 'table_token'; readonly token: string }
+  | { readonly kind: 'booking'; readonly venueId: VenueId }
 
 /** Thrown for a path that is not one of the shapes. */
 export class InvalidPublishPathError extends Error {
@@ -80,6 +83,11 @@ export function parsePublishPath(path: string): ParsedPublishPath | null {
     const token = /^(.+)\.json$/.exec(parts[1] ?? '')?.[1]
     if (token !== undefined && TABLE_TOKEN_PATTERN.test(token))
       return { kind: 'table_token', token }
+    return null
+  }
+  if (parts.length === 2 && parts[0] === 'b') {
+    const venueId = /^(vn_[0-9A-Za-z]+)\.json$/.exec(parts[1] ?? '')?.[1]
+    if (isId('vn', venueId)) return { kind: 'booking', venueId }
     return null
   }
   if (parts.length === 4 && parts[0] === 'm') {
@@ -128,13 +136,15 @@ export const organizationIndexPath = (slug: string): string => `o/${slug}.json`
  * worker's `seal-table-codes` job; the same path shape still names them for that.)
  */
 export const tableTokenPath = (codeHash: string): string => `t/${codeHash}.json`
+/** The path of a venue's booking file (#577): what its booking page shows. */
+export const bookingPath = (venueId: VenueId): string => `b/${venueId}.json`
 
 const IMMUTABLE = 'public, max-age=31536000, immutable'
 
 /**
  * The `Cache-Control` of a file, by its path (doc "Files on the CDN"): snapshots and variants never
- * change under their path (a year, immutable); the pointer, the venue index and a table's file are
- * read every 30 seconds; the live overlay every 15. Throws for a path that is not one of the shapes.
+ * change under their path (a year, immutable); the pointer, the venue index, a table's file and a
+ * venue's booking file are read every 30 seconds; the live overlay every 15. Throws for a path that is not one of the shapes.
  */
 export function publishCacheControl(path: string): string {
   switch (assertPublishPath(path).kind) {
@@ -145,6 +155,7 @@ export function publishCacheControl(path: string): string {
     case 'organization_index':
     case 'venue_index':
     case 'table_token':
+    case 'booking':
       return 'public, max-age=30'
     case 'live':
       return 'public, max-age=15'

@@ -80,6 +80,7 @@ const QUEUES: readonly [string, ProducedJobName, Payload][] = [
     JOB_NAMES.publishOrganizationIndex,
     () => ({ tenantId: newId('tn') }),
   ],
+  ["a venue's booking file", JOB_NAMES.publishBooking, venue],
   ["a venue's purge", JOB_NAMES.purgeVenue, venue],
   [
     "a connection's probe",

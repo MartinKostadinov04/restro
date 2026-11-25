@@ -66,6 +66,7 @@ import { changeTables } from './change-tables'
 import { addClosedDate, ClosedDateSchema, removeClosedDate } from './closed-dates'
 import { eraseGuest, saveGuest, setGuestPrivateNote } from './guests'
 import { sweepPassedNight } from './night'
+import { requestReservation, setOnlineBooking } from './online'
 import { TurnMinutesSchema } from './overlap'
 import { SetPayRuleSchema, setReservationPayRule } from './pay-rule'
 import { PinActionsSchema } from './pin-fall'
@@ -285,6 +286,21 @@ export const RESERVATION_COMMANDS = {
     idempotency: 'by_nature',
     handle: setReservationSettings,
   }),
+  // The booking page on or off (#577; spec #322 story 26). A settings-class switch like the rest of
+  // the reservation settings: the person's own sign-in, the password again after a stale one. It
+  // locks the venue's row because `online` is written back whole.
+  'reservation_online.set': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation_online.set'),
+      bookingPage: z.boolean(),
+    }),
+    origins: ['staff'],
+    permission: 'settings.reservations',
+    freshSignIn: true,
+    venueLock: 'update',
+    idempotency: 'by_nature',
+    handle: setOnlineBooking,
+  }),
   // --- The guest records (D140) ----------------------------------------------------------------
   'guest.save': defineCommand({
     schema: z.strictObject({
@@ -424,6 +440,28 @@ export const RESERVATION_COMMANDS = {
     permission: 'reservations.tonight',
     idempotency: 'by_nature',
     handle: declineReservation,
+  }),
+  // A guest's request from the booking page (#577; D136): the one reservation command a guest
+  // sends. It names the night, the party and how to reach him, never a status, a spot, a time or
+  // an id: it arrives as Requested and a hostess answers it. No permission (a guest holds none);
+  // what guards it is Turnstile, checked by its caller before it reaches here (`requestBooking`),
+  // and the venue's own switch, checked inside.
+  'reservation.request': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation.request'),
+      /** The page's own id for this tap: a retry of the same request is answered the same. */
+      actionId: z.uuid(),
+      serviceDate,
+      partySize: z.number().int().min(1).max(50),
+      guestName: z.string().trim().min(1).max(80),
+      phone: z.string().trim().min(6).max(40),
+      email: z.email().max(200),
+      note: z.string().trim().max(500).nullable().optional(),
+    }),
+    origins: ['guest'],
+    permission: null,
+    idempotency: 'by_nature',
+    handle: requestReservation,
   }),
   // D135's "delete": the line leaves the night's list without becoming a cancellation nobody made.
   // The row stays (app code deletes nothing), so Restore can put it back and the Log still names it.
