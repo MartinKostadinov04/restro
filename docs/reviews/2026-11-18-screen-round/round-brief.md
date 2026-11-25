@@ -37,7 +37,7 @@ Follow `.claude/skills/screen-review/SKILL.md` (on `or/foundation`) steps 2 to 6
 ## Shared limits
 
 - CLAUDE.md applies in full: the nine rules, the never list, stop-and-ask (an open question goes in your report with a recommendation; you carry on with the rest, you do not stop the lane).
-- **Decision numbers:** only lane 6 writes decisions (numbers 154 to 158). Other lanes cite, never create.
+- **Decision numbers:** only lane 6 writes decisions (numbers 155 to 158 and 161). Other lanes cite, never create.
 - **Open PR #451** (Not served refunds a paid line) is in flight: lane 3 leaves its code alone and files overlaps as notes.
 - **Issues:** findings that you will not fix tonight are filed as issues with the `walkthrough` label (`docs/agents/triage-labels.md`), linked from the ledger.
 - **Your final report** (CLAUDE.md format): the READY PRs, the *Skills run* table, the ledger path, the rows by status, what each vendored skill found that Restro's checks did not (D146), open questions with recommendations. End your session's work only when every confirmed row is `re-verified`, or filed with the reason.

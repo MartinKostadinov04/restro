@@ -27,7 +27,9 @@ import {
   billReadings,
   logEntries,
   pauses,
+  paymentLines,
   payments,
+  type ReadTx,
   sentOrders,
   sittings,
   tableOrders,
@@ -612,12 +614,33 @@ export async function sittingsWithOpenPayment(
   stx: ServiceTx,
   sittingIds: readonly string[],
 ): Promise<Set<string>> {
+  return openPaymentSittings(stx.tx, sittingIds)
+}
+
+/**
+ * `sittingsWithOpenPayment` on any transaction: a sitting's own payment that is not final, or one
+ * made at another table of its linked group that covers a line of this sitting's table (#542).
+ */
+export async function openPaymentSittings(
+  tx: Pick<ReadTx, 'selectDistinct'>,
+  sittingIds: readonly string[],
+): Promise<Set<string>> {
   if (sittingIds.length === 0) return new Set()
-  const rows = await stx.tx
+  const ids = [...sittingIds]
+  const own = await tx
     .selectDistinct({ sittingId: payments.sittingId })
     .from(payments)
-    .where(and(inArray(payments.sittingId, [...sittingIds]), isNull(payments.settledAt)))
-  return new Set(rows.map((row) => row.sittingId))
+    .where(and(inArray(payments.sittingId, ids), isNull(payments.settledAt)))
+  const covered = await tx
+    .selectDistinct({ sittingId: sittings.id })
+    .from(sittings)
+    .innerJoin(
+      paymentLines,
+      and(eq(paymentLines.tableId, sittings.tableId), eq(paymentLines.open, true)),
+    )
+    .innerJoin(payments, eq(payments.id, paymentLines.paymentId))
+    .where(and(inArray(sittings.id, ids), isNull(payments.settledAt)))
+  return new Set([...own, ...covered].map((row) => row.sittingId))
 }
 
 /**

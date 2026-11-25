@@ -19,7 +19,6 @@ import { canEditMenu, canMarkSoldOut } from '../roles'
 import { requireTenant } from '../session'
 import { setItemsSoldOut } from '../sold-out/service'
 import { onSharedDevice } from '../staff/shared-device'
-import { venueHasTill } from '../venues'
 import {
   keepOverride,
   loadHistory,
@@ -93,15 +92,15 @@ async function session(
   if (await onSharedDevice({ tenantId: organization.id, sessionId })) return 'not_allowed'
   const ours = await itemsOfVenue(getPool(), organization.id, ids.venueId, [ids.itemId])
   if (!ours.has(ids.itemId)) return 'not_found'
-  const venueTill = await venueHasTill(organization.id, ids.venueId)
   return {
     scope: {
       pool: getPool(),
       tenantId: organization.id,
       ...ids,
-      // On a POS venue the POS says what ran out: no sold-out switch (D124 §6, #80).
-      canMarkSoldOut: canMarkSoldOut(organization.role) && !venueTill,
-      venueHasTill: venueTill,
+      // Every venue marks, a POS venue included (D147, which decided what D124 §6 left open):
+      // the mark is the cautious direction, so where the menu comes from does not matter. An
+      // item the POS itself has off sale still shows no button at all — that is `offSale`.
+      canMarkSoldOut: canMarkSoldOut(organization.role),
     },
     services: {
       store: await getAssetStore(),

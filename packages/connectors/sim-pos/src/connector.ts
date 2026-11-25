@@ -20,6 +20,7 @@ import {
   addMinor,
   type Currency,
   chooseTargetBill,
+  closePaymentsRefusal,
   decimalToMinor,
   type Floor,
   type FloorBar,
@@ -96,7 +97,12 @@ const TableItem = z.object({
 })
 const BarItem = z.object({ id: Id, name: z.string().min(1) })
 const BillItem = z.object({ id: Id, total: Money, paid: Money })
-const ClosedBillItem = BillItem.extend({ receipt: z.string().min(1).max(200).optional() })
+const ClosedBillItem = BillItem.extend({
+  receipt: z.string().min(1).max(200).optional(),
+  // Each payment the close took, with the caller's reference (Q20). Any caller's are read back;
+  // closeProof matches only the references Restro sent.
+  payments: z.array(z.object({ ref: z.string().nullable().optional() })).optional(),
+})
 const RowItem = z.object({
   id: Id,
   article: Id,
@@ -353,6 +359,13 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
           restroRefs: capabilities.ownLineReference
             ? rows.items.flatMap((row) => (row.ref ? [row.ref] : []))
             : [],
+          ...(capabilities.closeWithSeveralPayments
+            ? {
+                paymentRefs: (head.payments ?? []).flatMap((payment) =>
+                  payment.ref ? [payment.ref] : [],
+                ),
+              }
+            : {}),
         },
       }
     })
@@ -524,20 +537,39 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
           wanted < held ? { row: pick.line.pos, quantity: pick.quantity } : { row: pick.line.pos },
         )
       }
+      // One payment over several tables (D160 §2, #542): these picks join the bill an earlier
+      // isolate of the payment made on the payment table, named, never "the only open bill".
+      const into = request.into
+      if (
+        into !== undefined &&
+        (split || request.paymentTable === null || !samePosRef(into.table, request.paymentTable))
+      ) {
+        return refusal('not_supported', 'bill', 'picks join a bill only on their payment table')
+      }
       let target: PosRef = request.table
       if (paymentTable !== null) {
         const busy = await within(ctx.timings.readTimeoutMs, (signal) =>
           tableBills(paced(ctx), paymentTable, signal),
         )
         if (!busy.complete) return unknown(`the payment table read incomplete: ${busy.reason}`)
-        if (busy.value.bills.length > 0) {
+        const others = busy.value.bills.filter(
+          (held) => into === undefined || !samePosRef(held.ref, into.ref),
+        )
+        if (others.length > 0) {
           return refusal('busy', 'bill', 'the payment table holds another payment')
+        }
+        if (into !== undefined && others.length === busy.value.bills.length) {
+          return refusal('bill_closed', 'bill', "the payment's bill is no longer open")
         }
         target = paymentTable
       }
       const body = {
         rows,
-        to: split ? { table: request.table.pos, bill: 'new' } : { table: target.pos },
+        to: split
+          ? { table: request.table.pos, bill: 'new' }
+          : into !== undefined
+            ? { table: target.pos, bill: into.ref.pos }
+            : { table: target.pos },
       }
       const sent = await within(ctx.timings.writeTimeoutMs, (signal) =>
         write.moveRows(paced(ctx), bill.ref.pos, body, signal),
@@ -550,6 +582,12 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
     },
 
     async payAndClose(ctx, request) {
+      // D160 §3: several card payments on one close only where declared, and only payments that
+      // add up to the close (rule 8). Nothing is written.
+      const paymentsRefusal = closePaymentsRefusal(request, capabilities.closeWithSeveralPayments)
+      if (paymentsRefusal !== null) {
+        return refusal(paymentsRefusal.code, 'bill', paymentsRefusal.detail)
+      }
       // D127: a tip goes on the same bill and receipt, or it isn't taken. Nothing is written.
       if (request.tipMinor > 0 && (!capabilities.recordTipOnClose || tipItem === null)) {
         return refusal('not_supported', 'bill', 'the POS records no tip from Restro')
@@ -609,13 +647,19 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
           if (!ok(added)) return failureOf(added)
         }
       }
+      const type = request.paymentType === null ? {} : { type: request.paymentType.pos }
       const body = {
-        payments: [
-          {
-            ...(request.paymentType === null ? {} : { type: request.paymentType.pos }),
-            amount: minorToDecimal(request.amountMinor),
-          },
-        ],
+        // One payment as before (#541: unchanged); where several are declared, one each with its
+        // reference (Q20: a POS without the switch takes no reference on a payment). The tips are
+        // on the bill as its tip row, so each payment's amount holds its own.
+        payments:
+          request.payments === undefined || !capabilities.closeWithSeveralPayments
+            ? [{ ...type, amount: minorToDecimal(request.amountMinor) }]
+            : request.payments.map((payment) => ({
+                ...type,
+                amount: minorToDecimal(payment.amountMinor),
+                ref: payment.ref,
+              })),
         ...(request.receiptEmail === undefined ? {} : { receiptEmail: request.receiptEmail }),
       }
       const sent = await within(ctx.timings.writeTimeoutMs, (signal) =>
@@ -657,7 +701,18 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
         // A tip row from a close that failed: moved back, it would charge the table a tip.
         return refusal('not_supported', 'bill', 'a tip is on this bill: staff take it off')
       }
-      if (isolated.lines.length > 0) {
+      // Only the named lines go back (one payment over several tables, each line to its own
+      // table, #542); a named line the bill no longer holds is not this undo's to guess.
+      const wanted = request.lines
+      const back =
+        wanted === undefined
+          ? isolated.lines
+          : isolated.lines.filter((line) => wanted.some((ref) => samePosRef(ref, line.ref)))
+      if (wanted !== undefined && back.length !== new Set(wanted.map((ref) => ref.pos)).size) {
+        return refusal('line_refused', 'line', 'a named line is not on the isolated bill')
+      }
+      const rest = isolated.lines.length - back.length
+      if (back.length > 0) {
         let to: { table: string; bill?: string } = { table: request.table.pos }
         if (capabilities.severalBillsPerTable) {
           const real = await within(ctx.timings.readTimeoutMs, (signal) =>
@@ -668,13 +723,13 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
           const open = real.value.bills.some((b) => b.ref.pos === origin)
           to = { table: request.table.pos, bill: open && origin !== undefined ? origin : 'new' }
         }
-        const body = { rows: isolated.lines.map((line) => ({ row: line.ref.pos })), to }
+        const body = { rows: back.map((line) => ({ row: line.ref.pos })), to }
         const sent = await within(ctx.timings.writeTimeoutMs, (signal) =>
           write.moveRows(paced(ctx), isolated.ref.pos, body, signal),
         )
         if (!ok(sent)) return failureOf(sent)
       }
-      inFlight.delete(request.isolated.ref.pos)
+      if (rest === 0) inFlight.delete(request.isolated.ref.pos)
       return { kind: 'done', result: {} }
     },
   }

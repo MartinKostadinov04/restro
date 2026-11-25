@@ -126,6 +126,7 @@ import {
   openTable,
   undoOpenAll,
 } from './sittings'
+import { soldOutMark } from './sold-out-mark'
 import {
   addStaff,
   archiveRole,
@@ -422,6 +423,9 @@ export const SERVICE_COMMANDS = {
   'ordering.undo_pause': undoPause(),
   // #85: staff settle an Unconfirmed sent order: "Found on the bill" or "Not on the bill".
   'sent_order.answer': sentOrderAnswer(),
+  // #437: the night’s Log line of an item marked sold out where orders are reviewed, or put
+  // back on sale (D147). The mark itself is a menu change, through apply().
+  'sold_out.mark': soldOutMark(),
   // #83: Done in Tonight or from the venue's Telegram group (`via`), and what the worker sends.
   'alert.done': defineCommand({
     schema: z.strictObject({ type: z.literal('alert.done'), alertId: idSchema('al') }),

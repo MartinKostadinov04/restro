@@ -173,14 +173,10 @@ test('opens on the Studio tab with the demo menu: sections, items, badges', asyn
 })
 
 test('the Studio holds Structure and the guest features; Design is a page of its own; old links land there', async () => {
-  // The tab bar has no Design tab (D92, D129): Design is the Studio's second subtab.
-  await expect(page.getByRole('tablist').first().getByRole('tab')).toHaveText([
-    'Студио',
-    'Маси и QR',
-    'Тази вечер',
-    'Резервации',
-    'Настройки',
-  ])
+  // The venue's sidebar has no Design entry (D92, D129, D161): Design is the Studio's second subtab.
+  const venueNav = page.getByRole('navigation', { name: 'Навигация в заведението' })
+  await expect(venueNav.getByRole('link', { name: 'Студио' })).toBeVisible()
+  await expect(venueNav.getByRole('link', { name: 'Дизайн' })).toHaveCount(0)
   // The venue's address, kept: the Design page's own address is longer.
   const venue = venuePath()
   await page.goto(`${venue}?tab=studio`)
@@ -203,8 +199,8 @@ test('the Studio holds Structure and the guest features; Design is a page of its
     await expect(page, old).toHaveURL(new RegExp(`${venue}/design`))
   }
   await page.goto(`${venue}?tab=composer&sub=structure`)
-  await expect(page).toHaveURL(/[?&]tab=studio/)
-  await expect(page).not.toHaveURL(/sub=/)
+  // The Studio's own `sub` is kept (D161's one address per screen keeps a screen's parameters).
+  await expect(page).toHaveURL(/[?&]tab=studio&sub=structure$/)
   await expect(page.getByTestId('composer')).toBeVisible()
   await page.goto(`${venue}?tab=composer`)
   await expect(page).toHaveURL(/[?&]tab=studio/)

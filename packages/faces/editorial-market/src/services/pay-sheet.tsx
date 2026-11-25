@@ -10,6 +10,13 @@
 // "Paid" with the payment number, "The venue is checking the payment", or what ended with nothing
 // charged. "Paid" is only a `captured` payment: a refusal, an error or a timeout never says it.
 // The look is the template agent's, later (D122); this is the functional screen.
+//
+// A table of a linked group (#542, D160): where the venue's POS moves lines to a payment table, one
+// payment covers lines of any member tables (`payableBill`). Each table's lines sit under its own
+// heading with a "Whole table" tick, and "The whole bill" ticks every member's free lines. A member
+// table whose bill can't be read now shows its lines unticked, a plain line, "Try again" and "Call
+// a waiter", and "The whole bill" waits for it (log 1.8). Where the POS takes one table's payment at
+// a time, the phone pays its own table and the sheet says so in one line.
 
 import {
   type ConfirmationView,
@@ -17,6 +24,7 @@ import {
   confirmationOf,
   endText,
   freeLines,
+  type GroupTableView,
   type Locale,
   lineNameText,
   NO_TIP,
@@ -31,11 +39,14 @@ import {
   type Picks,
   type PreparedConfirmation,
   paidReceiptText,
+  payAcross,
+  payableBill,
   payBlock,
   payFormLocale,
   payScreen,
   paySignedMoney,
   payStartCommand,
+  pickTable,
   pickWhole,
   prepareConfirmation,
   reconcilePicks,
@@ -44,8 +55,10 @@ import {
   sameAmountAgo,
   saveConfirmation,
   type TableBillLineView,
+  type TableBillPartView,
   type TableBillView,
   type TipChoice,
+  tablePicked,
   togglePick,
 } from '@restro/shell'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
@@ -335,7 +348,14 @@ export function PaySheet() {
   const o = useServicesRequired()
   const { words, state, locale, run, binding } = o
   const w = words.paying
-  const bill = state.tableBill ?? null
+  // This table's bill, or every member table's where one payment covers the group (#542).
+  const { tableBill, tableGroup } = state
+  const bill = useMemo(() => payableBill({ tableBill, tableGroup }), [tableBill, tableGroup])
+  const across = payAcross(state)
+  // A member table whose bill can't be read now: its lines and "The whole bill" wait (log 1.8).
+  const unread = across?.tables.some((table) => !table.complete) === true
+  // A group whose POS takes one table's payment at a time: this phone pays its own table.
+  const oneAtATime = tableGroup != null && across === null
   const paying = state.paying ?? null
   const payment = state.payment ?? null
   const tipsOffered = state.ordering?.tips === true
@@ -375,8 +395,9 @@ export function PaySheet() {
   const offered = offersPay(state)
   useEffect(() => {
     if (bill === null || payment !== null || !offered || freeLines(bill).length === 0) return
-    if (o.takeWholeBill()) setPicks(pickWhole(new Map(), bill))
-  }, [bill, payment, offered, o.takeWholeBill])
+    // While a member table is unread the whole bill can't be ticked: the tap is taken, none ticked.
+    if (o.takeWholeBill() && !unread) setPicks(pickWhole(new Map(), bill))
+  }, [bill, payment, offered, unread, o.takeWholeBill])
 
   const nameOf = (line: TableBillLineView) => lineNameText(line.name, locale, words.otherItem)
 
@@ -490,11 +511,95 @@ export function PaySheet() {
   // totals and Pay go, and the bill shows what was paid (D127 1.2).
   const settled = free.length === 0 && bill.paidLines.length > 0
   const everything = free.length > 0 && free.every((line) => picks.has(line.id))
+  const lineItem = (part: TableBillPartView, line: TableBillLineView, tickable: boolean) => {
+    const greyed = part.beingPaid || line.beingPaid
+    const label = `${nameOf(line)}${mark(line.quantity)} · ${money(line.amountMinor)}`
+    return (
+      <li key={line.id} data-being-paid={greyed ? '' : undefined}>
+        {paying.state === 'off' || greyed || !tickable ? (
+          <span>
+            {label}
+            {greyed ? ` · ${w.beingPaid}` : ''}
+          </span>
+        ) : (
+          <label>
+            <input
+              type="checkbox"
+              checked={picks.has(line.id)}
+              onChange={() => setPicks(togglePick(picks, bill, line.id))}
+            />{' '}
+            {label}
+          </label>
+        )}
+      </li>
+    )
+  }
+  /** One member table under its own heading (#542): "Whole table", its lines, or why they wait. */
+  const memberTable = (table: GroupTableView, index: number) => {
+    const lines = table.parts.flatMap((part) => part.lines.map((line) => ({ part, line })))
+    const pickable = table.complete && offersPay(state) && !settled
+    const hasFree = lines.some(({ part, line }) => !part.beingPaid && !line.beingPaid)
+    return (
+      <section
+        // biome-ignore lint/suspicious/noArrayIndexKey: a member table carries no id (rule 3)
+        key={index}
+        className="ro-round"
+        data-slot="pay.group.table"
+        data-own={table.own ? '' : undefined}
+        data-updating={table.complete ? undefined : ''}
+      >
+        <header>
+          <span>{o.guest.table(table.label)}</span>
+          {table.own ? <em>{w.yourTable}</em> : null}
+        </header>
+        {pickable && hasFree ? (
+          <button
+            type="button"
+            className="ro-ghost"
+            data-slot="pay.group.whole_table"
+            data-design-part="pay.scope"
+            aria-pressed={tablePicked(picks, bill, table)}
+            onClick={() => setPicks(pickTable(picks, bill, table))}
+          >
+            {w.wholeTable}
+          </button>
+        ) : null}
+        {lines.length === 0 ? null : (
+          <ul className="ro-lines">
+            {lines.map(({ part, line }) => lineItem(part, line, table.complete))}
+          </ul>
+        )}
+        {table.complete ? null : (
+          <div data-slot="pay.group.not_read">
+            <p className="ro-notice" role="status">
+              {w.tableNotRead}
+            </p>
+            {binding.refresh === undefined ? null : (
+              <button
+                type="button"
+                className="ro-ghost"
+                data-slot="pay.group.retry"
+                onClick={() => binding.refresh?.()}
+              >
+                {words.retry}
+              </button>
+            )}
+            <CallWaiter />
+          </div>
+        )}
+      </section>
+    )
+  }
 
   return (
     <div className="ro-sheet" data-slot="pay.choose" data-design-part="pay">
       {settled ? null : <h3 className="ro-h">{w.pickTitle}</h3>}
       {paying.state === 'off' && !settled ? <p className="ro-notice">{w.askWaiterToPay}</p> : null}
+      {oneAtATime && !settled ? (
+        <p className="ro-allergy" data-slot="pay.one_table">
+          {w.oneTableAtATime}
+        </p>
+      ) : null}
       {offersPay(state) && !settled ? (
         <button
           type="button"
@@ -502,38 +607,18 @@ export function PaySheet() {
           data-slot="pay.whole"
           data-design-part="pay.scope"
           aria-pressed={everything}
+          // A member table that can't be read now holds back the whole bill (log 1.8).
+          disabled={unread}
           onClick={() => setPicks(pickWhole(picks, bill))}
         >
           {w.wholeBill}
         </button>
       ) : null}
-      {hasLines ? (
+      {across !== null ? (
+        across.tables.map(memberTable)
+      ) : hasLines ? (
         <ul className="ro-lines">
-          {bill.parts.flatMap((part) =>
-            part.lines.map((line) => {
-              const greyed = part.beingPaid || line.beingPaid
-              const label = `${nameOf(line)}${mark(line.quantity)} · ${money(line.amountMinor)}`
-              return (
-                <li key={line.id} data-being-paid={greyed ? '' : undefined}>
-                  {paying.state === 'off' || greyed ? (
-                    <span>
-                      {label}
-                      {greyed ? ` · ${w.beingPaid}` : ''}
-                    </span>
-                  ) : (
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={picks.has(line.id)}
-                        onChange={() => setPicks(togglePick(picks, bill, line.id))}
-                      />{' '}
-                      {label}
-                    </label>
-                  )}
-                </li>
-              )
-            }),
-          )}
+          {bill.parts.flatMap((part) => part.lines.map((line) => lineItem(part, line, true)))}
         </ul>
       ) : null}
       {settled ? null : (

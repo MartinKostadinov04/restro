@@ -113,13 +113,15 @@ test('a staff-only sign-in lands on the first screen its role allows (D141)', as
   const { page } = waiter
   await page.goto('/venues')
   // Its role works tonight's reservations, so the night's list is the first screen it may open;
-  // Tonight is one tab away, after Tables & QR.
+  // Tonight is one entry away in the sidebar, under Ordering (D161).
   await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=reservations/)
-  // The venue's own tabs; Tonight has tabs of its own below them (#86).
-  const tabs = page.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
-  await expect(tabs).toHaveText(['Studio', 'Tables & QR', 'Tonight', 'Reservations', 'Settings'])
-  await page.getByRole('tab', { name: 'Tonight' }).click()
-  await expect(page.getByRole('tab', { name: 'Tonight' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('[data-nav="reservations"]')).toHaveAttribute('aria-current', 'page')
+  // A staff-only sign-in works at one venue: its name, nothing to switch to.
+  await expect(page.getByRole('button', { name: /Switch venue/ })).toHaveCount(0)
+  await page.locator('[data-nav="tonight"]').click()
+  await expect(page).toHaveURL(/\?tab=tonight/)
+  await expect(page.getByRole('heading', { name: 'Tonight', level: 1 })).toBeVisible()
+  await expect(page.locator('[data-nav="tonight"]')).toHaveAttribute('aria-current', 'page')
 })
 
 test('a shared tablet has no Studio or Tables & QR: an old link lands on Tonight (RR-83, RR-84)', async () => {

@@ -222,6 +222,8 @@ export interface Can {
   readonly pause: boolean
   readonly lift: boolean
   readonly answer: boolean
+  /** `sold_out`: marks an item sold out for the night, or puts it back on sale (D147, #437). */
+  readonly soldOut: boolean
   /** `money.follow_up`: answers the payment questions and the owners' money alerts (#115). */
   readonly followUp: boolean
   /** `reservations.end_night`: ends the night before its closing hour (#332). */
@@ -434,6 +436,7 @@ export function buildTonightView(input: {
     pause: held.has('ordering.pause'),
     lift: held.has('ordering.lift'),
     answer: held.has('alerts.answer'),
+    soldOut: held.has('sold_out'),
     followUp: held.has('money.follow_up'),
     endNight: held.has('reservations.end_night'),
   }

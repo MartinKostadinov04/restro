@@ -78,7 +78,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D71](decisions/D71.md) | Guest features are venue settings in the composer | firm; refined by D100 |
 | [D72](decisions/D72.md) | Faces stay pure: a face draws the host's service state and sends commands with an… | firm |
 | [D73](decisions/D73.md) | What is set once for the organisation and what per venue | firm |
-| [D74](decisions/D74.md) | The sidebar lists the venues and the organisation's Settings | firm |
+| [D74](decisions/D74.md) | The sidebar lists the venues and the organisation's Settings | superseded by D161 (off a venue it keeps this list) |
 | [D75](decisions/D75.md) | When barsy has no public name for an item, option or category, Restro shows barsy's… | firm |
 | [D76](decisions/D76.md) | Deleting a venue (owners, after typing its name) archives it | firm |
 | [D77](decisions/D77.md) | A venue's menu languages come from one core function every workflow calls | firm |
@@ -101,7 +101,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D94](decisions/D94.md) | Tables & QR shows the codes' address read-only | firm |
 | [D95](decisions/D95.md) | Areas and tables: barsy's halls and tables | firm |
 | [D96](decisions/D96.md) | Versions: live + up to 2 restorable, non-live purged after 30 days, change log 2 months | firm |
-| [D97](decisions/D97.md) | Venue page tabs: Composer | firm |
+| [D97](decisions/D97.md) | Venue page tabs: Composer | firm; refined by D156, D157 and D161 |
 | [D98](decisions/D98.md) | Payments are a connector kind; the venue is the merchant; Restro never holds money | firm; refined by D126 (Stripe first) and D125 (its open line closed) |
 | [D99](decisions/D99.md) | Song requests: a paid priority queue the DJ runs, holds captured on accept | direction; prototype to be ported (T82), access to be grilled (T81) |
 | [D100](decisions/D100.md) | A guest feature declares whether it needs a table code | firm; refines D71 |
@@ -145,7 +145,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D138](decisions/D138.md) | Ending the night: the closing hour that closes every code, the admin's early end with its open-bills warning, no bulk undo, and the three moments named apart | firm; refines D122, D45 and D107 |
 | [D139](decisions/D139.md) | Linked groups: one party across several tables, cumulated inside Restro with no lead table and no common POS bill | firm; refines D117 and D122 |
 | [D140](decisions/D140.md) | Guests and regulars: the venue's own list, what is kept and what erasing clears, and why the visit counts are for audits and never for accounting | firm; refines D83 |
-| [D141](decisions/D141.md) | Who may do what in reservations, where the PIN falls on a shared device, sessions on remembered devices, and one Log for the night | firm; refines D122 and D123 |
+| [D141](decisions/D141.md) | Who may do what in reservations, where the PIN falls on a shared device, sessions on remembered devices, and one Log for the night | firm; refines D122 and D123; refined by D157; extended by D158 |
 | [D142](decisions/D142.md) | The event model: the minimal key set of what a night can be measured by, with no personal data anywhere in it | firm; refines D122; serves #321 and #323 |
 | [D143](decisions/D143.md) | The database backup connects as its own read-only role with BYPASSRLS, the second approved exception to the never-list | firm; refines D83 and D103 |
 | [D144](decisions/D144.md) | What the analytics answer: the measurement is already complete, the night writes its own numbers down, and Restro is never a second answer to the till | firm; refines D142 |
@@ -158,7 +158,14 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D151](decisions/D151.md) | Carrying a printed receipt to the guest is not Restro's work | firm |
 | [D152](decisions/D152.md) | Restro never puts a badge on a menu item by itself | firm |
 | [D153](decisions/D153.md) | A bar tablet is paired with a one-time code, not with an account | firm; refines D141 |
+| [D154](decisions/D154.md) | A bill move between tables is the staff’s, at the POS, and a close carries our reference and nothing about the guest | §1 withdrawn by Martin 11-24; §2 firm on the lead’s side; refines D122 and D127; §1’s “settling on its own” refined by D160 |
+| [D155](decisions/D155.md) | Ordering, reservations and song requests are modules, switched on per venue | firm |
+| [D156](decisions/D156.md) | Each module has its own Settings | firm; refines D97 |
+| [D157](decisions/D157.md) | A person opens only what their role at that venue works | firm; refines D141 and D97 |
+| [D158](decisions/D158.md) | Restro opens inside the venue | firm; extends D141 |
 | [D159](decisions/D159.md) | The Design panel opens on a list of parts, and an option's picture draws the part alone | firm; refines D129 and D130 |
+| [D160](decisions/D160.md) | A party’s tables can be paid in one payment, and guests can share a bill by amount, settling together | firm; refines D139 (13.13), D154 §1 and D127; part payment waits on Mistral |
+| [D161](decisions/D161.md) | The admin is organised around the open venue | firm; supersedes D74; refines D97 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

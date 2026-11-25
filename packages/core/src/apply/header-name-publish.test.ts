@@ -23,9 +23,9 @@ describe.skipIf(!hasDatabase)('the menu’s header name in a publish', () => {
   let venueId: `vn_${string}`
   let menu: ProvisionedMenu
 
-  // Publishes and drafts share one real clock: the 14-day "new" badge (NEW_BADGE_MS) is worked out
-  // from it, so a fixed past date drops the badge from the draft but not from the live menu and
-  // counts the item as changed once that date is more than 14 days gone.
+  // Publishes and drafts share one real clock, minutes apart, so that nothing time-dependent (an
+  // availability schedule, say) reads differently between the live menu and the draft and shows
+  // up as a change of its own. Badges no longer move with the clock: Restro adds none (D152).
   const base = Date.now()
   const at = (minutes: number) => ({ now: new Date(base + minutes * 60_000) })
   const publish = (minutes: number) =>

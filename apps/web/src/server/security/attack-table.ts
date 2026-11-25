@@ -1063,6 +1063,13 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
   {
+    action: 'markSoldOutAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return tonight.markSoldOutAction({ venueId: x.id, itemId: x.item, soldOut: true })
+    },
+  },
+  {
     action: 'undoOpenAllAction',
     call: (v) => tonight.undoOpenAllAction({ venueId: v.venues[0].id, undo: { entry: 1 } }),
   },
@@ -1542,6 +1549,16 @@ export const MIXED: readonly Attack[] = [
         venueId: a.venues[0].id,
         planId: v.venues[0].plan,
         name: 'Taken over',
+      }),
+  },
+  {
+    action: 'markSoldOutAction',
+    how: "the victim's item at my venue",
+    call: (v, a) =>
+      tonight.markSoldOutAction({
+        venueId: a.venues[0].id,
+        itemId: v.venues[0].item,
+        soldOut: true,
       }),
   },
   {

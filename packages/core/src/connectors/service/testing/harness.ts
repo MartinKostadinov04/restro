@@ -97,6 +97,14 @@ export interface WaiterDriver {
    * closed bill, so the waiter looks.
    */
   closedBill?(bill: PosRef): Promise<PosBill | null>
+  /**
+   * The card payments a closed POS bill's receipt lists, as the till shows them: each one's amount
+   * and the reference it carries, null where the bill is not closed. The several-payments check
+   * needs it where `closeWithSeveralPayments` is declared (D160 §3, #541).
+   */
+  closedPayments?(
+    bill: PosRef,
+  ): Promise<readonly { readonly amountMinor: number; readonly ref: string | null }[] | null>
 }
 
 /** What the write checks need beyond the read checks. */

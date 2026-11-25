@@ -8,7 +8,7 @@
 
 import { z } from 'zod'
 
-import { CurrencySchema } from '../../money'
+import { addMinor, CurrencySchema, MoneyError } from '../../money'
 import { DecimalQuantitySchema } from '../../quantity'
 import { PosRefSchema } from './pos-ref'
 
@@ -297,6 +297,11 @@ export const ClosedBillSchema = z.strictObject({
   receiptNumber: z.string().min(1).max(200).nullable(),
   /** Restro's references on its lines, where the POS keeps them (`ownLineReference`). */
   restroRefs: z.array(z.string().min(1).max(200)),
+  /**
+   * Restro's references on the bill's card payments, where `closeWithSeveralPayments` is declared
+   * (D160 §3); absent elsewhere. One close takes every payment or none, so any one proves it.
+   */
+  paymentRefs: z.array(z.string().min(1).max(200)).optional(),
 })
 export type ClosedBill = z.output<typeof ClosedBillSchema>
 
@@ -368,6 +373,13 @@ export const IsolateLinesRequestSchema = z.strictObject({
   table: PosRefSchema,
   picks: z.array(LinePickSchema).min(1).max(100),
   paymentTable: PosRefSchema.nullable(),
+  /**
+   * One payment over several tables of a linked group (D160 §2, #542): the bill an earlier isolate
+   * of this payment made on `paymentTable`, which these picks join, so the payment closes once.
+   * Only where the POS moves lines to a table; the payment table may then hold that bill and no
+   * other (else `busy`). Left out, the payment table must be empty, as for one table.
+   */
+  into: IsolatedHandleSchema.optional(),
   ref: WriteRefSchema,
 })
 export type IsolateLinesRequest = z.output<typeof IsolateLinesRequestSchema>
@@ -378,17 +390,119 @@ export type IsolateLinesResult = z.output<typeof IsolateLinesResultSchema>
 /** A guest's email for an electronic receipt: one valid address, nothing else (D127, #186). */
 export const ReceiptEmailSchema = z.email().max(254)
 
-/** Close the isolated bill with its payment (D122 §8 step 4). */
+/** The most card payments one close carries: one per guest of a group payment (D160 §3). */
+export const CLOSE_PAYMENTS_MAX = 20
+
+/**
+ * One card payment of a close (D160 §3, #541): one guest's part of a group payment. Its amount
+ * holds its tip; the reference is Restro's own for this payment, read back on the closed bill.
+ */
+export const ClosePaymentSchema = z
+  .strictObject({
+    amountMinor: MinorSchema.positive(),
+    tipMinor: MinorSchema,
+    ref: WriteRefSchema,
+  })
+  .refine((payment) => payment.tipMinor <= payment.amountMinor, {
+    message: "a payment's tip is inside its amount, never above it",
+    path: ['tipMinor'],
+  })
+export type ClosePayment = z.output<typeof ClosePaymentSchema>
+
+/**
+ * The card payments a close carries: its `payments`, or, where it names none (one payment, as
+ * before #541), a list of one made of the close's own amount, tip and reference.
+ */
+export function closePaymentsOf(request: {
+  readonly amountMinor: number
+  readonly tipMinor: number
+  readonly ref: string
+  readonly payments?: readonly ClosePayment[] | undefined
+}): readonly ClosePayment[] {
+  return (
+    request.payments ?? [
+      { amountMinor: request.amountMinor, tipMinor: request.tipMinor, ref: request.ref },
+    ]
+  )
+}
+
+/**
+ * Why a close's payments don't add up, or null when they do (rule 8, D160 §3): the payments'
+ * amounts must sum to the close's amount and their tips to its tip, each tip inside its payment,
+ * each reference once. The isolated bill's own amount is the connector's to check against its
+ * reading. Integer minor units through the money module; a sum past the safe range doesn't add up.
+ */
+export function closePaymentsProblem(request: {
+  readonly amountMinor: number
+  readonly tipMinor: number
+  readonly ref: string
+  readonly payments?: readonly ClosePayment[] | undefined
+}): string | null {
+  const payments = closePaymentsOf(request)
+  if (payments.length === 0) return 'a close needs a payment'
+  if (payments.length > CLOSE_PAYMENTS_MAX) return `more than ${CLOSE_PAYMENTS_MAX} payments`
+  if (new Set(payments.map((payment) => payment.ref)).size !== payments.length) {
+    return 'two payments carry the same reference'
+  }
+  if (payments.some((payment) => payment.tipMinor > payment.amountMinor)) {
+    return "a payment's tip is above its amount"
+  }
+  let amounts: number
+  let tips: number
+  try {
+    amounts = payments.reduce((sum, payment) => addMinor(sum, payment.amountMinor), 0)
+    tips = payments.reduce((sum, payment) => addMinor(sum, payment.tipMinor), 0)
+  } catch (error) {
+    if (error instanceof MoneyError) return `the payments do not add up: ${error.message}`
+    throw error
+  }
+  if (amounts !== request.amountMinor) {
+    return `the payments sum to ${amounts}, not the close's ${request.amountMinor}`
+  }
+  if (tips !== request.tipMinor) {
+    return `the payments' tips sum to ${tips}, not the close's ${request.tipMinor}`
+  }
+  return null
+}
+
+/**
+ * Why a connector refuses a close's payments before any write, or null when it may go on (D160
+ * §3): two or more payments where it doesn't declare `closeWithSeveralPayments` (undeclared means
+ * not claimed, D122 §3), or `payments` that don't add up. A close that names no `payments` is
+ * checked as before #541.
+ */
+export function closePaymentsRefusal(
+  request: Parameters<typeof closePaymentsProblem>[0],
+  closeWithSeveralPayments: boolean,
+): { readonly code: 'not_supported' | 'amount_mismatch'; readonly detail: string } | null {
+  if (closePaymentsOf(request).length > 1 && !closeWithSeveralPayments) {
+    return { code: 'not_supported', detail: 'the POS takes one payment per close from Restro' }
+  }
+  const problem = request.payments === undefined ? null : closePaymentsProblem(request)
+  return problem === null ? null : { code: 'amount_mismatch', detail: problem }
+}
+
+/** Close the isolated bill with its payment (D122 §8 step 4), or its payments (D160 §3). */
 export const PayAndCloseRequestSchema = z
   .strictObject({
     isolated: IsolatedHandleSchema,
-    /** The whole payment: the isolated bill's own amount plus the tip (D127 §The route). */
+    /**
+     * The whole payment: the isolated bill's own amount plus the tip (D127 §The route). With
+     * several `payments`, their amounts' sum.
+     */
     amountMinor: MinorSchema,
     /**
      * The tip inside `amountMinor`, 0 for none. It goes on the same bill and fiscal receipt where
      * `recordTipOnClose` is declared; elsewhere a tip above 0 is refused before any write (D127).
+     * With several `payments`, their tips' sum: every tip goes on the one receipt (D160 §3).
      */
     tipMinor: MinorSchema,
+    /**
+     * The card payments, one per guest of a group payment (D160 §3), where
+     * `closeWithSeveralPayments` is declared; undeclared, two or more are refused before any
+     * write. Absent, the close is one payment of `amountMinor` with `tipMinor` and `ref`.
+     */
+    payments: z.array(ClosePaymentSchema).min(1).max(CLOSE_PAYMENTS_MAX).optional(),
     /** The POS's payment type, where `closeWithPaymentType` is declared; else null. */
     paymentType: PosRefSchema.nullable(),
     /**
@@ -402,6 +516,11 @@ export const PayAndCloseRequestSchema = z
   .refine((request) => request.tipMinor <= request.amountMinor, {
     message: 'the tip is inside the amount, never above it',
     path: ['tipMinor'],
+  })
+  .superRefine((request, issues) => {
+    if (request.payments === undefined) return
+    const problem = closePaymentsProblem(request)
+    if (problem !== null) issues.addIssue({ code: 'custom', message: problem, path: ['payments'] })
   })
 export type PayAndCloseRequest = z.output<typeof PayAndCloseRequestSchema>
 
@@ -493,6 +612,11 @@ export type PayAndCloseResult = z.output<typeof PayAndCloseResultSchema>
 export const UndoIsolateRequestSchema = z.strictObject({
   isolated: IsolatedHandleSchema,
   table: PosRefSchema,
+  /**
+   * Only these lines of the isolated bill go back to `table` (one payment over several tables, each
+   * line to its own, D160 §2, #542); left out, every line on it does.
+   */
+  lines: z.array(PosRefSchema).min(1).max(500).optional(),
   ref: WriteRefSchema,
 })
 export type UndoIsolateRequest = z.output<typeof UndoIsolateRequestSchema>

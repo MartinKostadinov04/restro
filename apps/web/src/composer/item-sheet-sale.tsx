@@ -1,7 +1,8 @@
 'use client'
 
 // The sale state of an item on the Details tab (brief S3-08, D46): on sale, sold out tonight (a
-// manager's mark), or off sale in the till. Managers get "Mark sold out tonight" / "Back on sale".
+// manager's mark), or off sale in the till. Managers get "Mark sold out tonight" / "Back on sale",
+// on a POS venue as well as a hand-made one (D147).
 //
 // Rule 5 shapes this card. "Back on sale" only takes OUR mark off. An item the till has off sale shows
 // "Not on sale in {source}" and has NO button at all, not even a disabled "Back on sale": our layers
@@ -86,9 +87,7 @@ export function ItemSheetSale({ sale, busy, onChange }: ItemSheetSaleProps) {
               ? t('lapsesNote')
               : sale.canMark
                 ? t('markNote')
-                : sale.stockFromTill
-                  ? t('tillStockNote', { source })
-                  : t('managersOnly')}
+                : t('managersOnly')}
       </p>
     </section>
   )

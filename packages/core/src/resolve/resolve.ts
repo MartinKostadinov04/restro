@@ -50,9 +50,6 @@ const KEYS = {
 /** V3: the field that must hold text in the menu's default language, per node type. */
 const V3_FIELD: Partial<Record<NodeType, string>> = { item: KEYS.name, section: KEYS.title }
 
-/** The `new` badge lasts this long after an item is first published. */
-const NEW_BADGE_MS = 14 * 24 * 60 * 60 * 1000
-
 function compareText(a: string, b: string): number {
   if (a < b) return -1
   return a > b ? 1 : 0
@@ -238,8 +235,7 @@ export function resolve(
   const locales = [...new Set(context.locales.filter(isLocale))]
   const defaultLocale = locales[0]
   if (defaultLocale === undefined) menuIssue('no_locales')
-  const now = Date.parse(context.now)
-  if (!Number.isFinite(now)) menuIssue('invalid_context')
+  if (!Number.isFinite(Date.parse(context.now))) menuIssue('invalid_context')
   const activeEditions =
     context.edition === undefined ? null : new Set(context.edition.map((id) => `edition:${id}`))
   const rows: RowIndex = indexRows(
@@ -407,8 +403,6 @@ export function resolve(
               .map((option) => fieldsOf(option.id).fields[KEYS.priceDelta]?.value ?? null),
           })),
         venueScope,
-        now,
-        firstPublishedAt: context.firstPublishedAt?.[item.id],
         book,
       }),
     )
@@ -633,8 +627,6 @@ interface ItemInputs {
   readonly visible: boolean
   readonly requiredGroups: readonly RequiredGroup[]
   readonly venueScope: `venue:${string}`
-  readonly now: number
-  readonly firstPublishedAt: string | undefined
   readonly book: IssueBook
 }
 
@@ -713,11 +705,8 @@ function computeItem(item: DocNode, inputs: ItemInputs): ResolvedItem['computed'
     fields[KEYS.orderMode]?.value === 'orderable' &&
     groupsOk
 
+  // Restro adds no badge of its own (D152): an item's badges are exactly what the composer set.
   const badges: string[] = []
-  const first = inputs.firstPublishedAt === undefined ? NaN : Date.parse(inputs.firstPublishedAt)
-  if (Number.isFinite(first) && Number.isFinite(inputs.now) && inputs.now - first < NEW_BADGE_MS) {
-    badges.push('new')
-  }
   for (const badge of [
     ...stringsOf(fields[KEYS.dietary]?.value),
     ...stringsOf(fields[KEYS.tags]?.value),

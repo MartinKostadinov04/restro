@@ -254,9 +254,9 @@ async function seedRefundsNight(world: PayNightWorld): Promise<void> {
   await payment('4', 'R-000126')
   await owner.query(
     `insert into restro.payment_lines
-       (tenant_id, venue_id, payment_id, position, pos_line_ref, quantity, pos_amount_minor,
-        display_name, source, actor, job_id)
-     values ($1, $2, $3, 1, 'e2e-line-1', 2, 3600, 'Gin tonic', 'worker', 'system', 'e2e-seed')`,
+       (tenant_id, venue_id, payment_id, table_id, position, pos_line_ref, quantity,
+        pos_amount_minor, display_name, source, actor, job_id)
+     values ($1, $2, $3, (select p.table_id from restro.payments p where p.id = $3), 1, 'e2e-line-1', 2, 3600, 'Gin tonic', 'worker', 'system', 'e2e-seed')`,
     [tenantId, venueId, disputed.id],
   )
   for (const [state, minutes] of [

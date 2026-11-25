@@ -65,7 +65,14 @@ export interface SimSwitches {
   readonly electronicReceiptFile: boolean
   /** Q35. On: a close may carry a note. */
   readonly closeCarriesNote: boolean
-  /** Q20. On: one close may carry several payments. */
+  /**
+   * Q20 (S1–S3 and S5 of the 11-24 split-by-amount research). On: one close may carry several
+   * payments, each with the caller's reference, taken all or none and listed on one receipt; a
+   * read of closed bills gives each payment and its reference. A documented POS API has this
+   * shape (several payments on one close, each with a caller's reference read back: see the
+   * connector declarations in this repository); whether a fiscal device prints them on one
+   * receipt, all or none, is documented by none yet.
+   */
   readonly severalPaymentsPerClose: boolean
   /** Q41. On: a tip may be added as a row of the tip article, with its amount. */
   readonly tipAsLine: boolean
@@ -186,6 +193,8 @@ export function capabilitiesOf(switches: SimSwitches): ServiceCapabilities {
     electronicReceiptFile: switches.electronicReceipt && switches.electronicReceiptFile,
     trainingMode: switches.trainingMode,
     closeWithPaymentType: switches.closeWithPaymentType,
+    // Several payments are taken on a close with a payment type, and only there.
+    closeWithSeveralPayments: switches.severalPaymentsPerClose && switches.closeWithPaymentType,
     openPayCloseInOneCall: switches.oneCallSale,
     ownLineReference: switches.lineCarriesCallerRef,
     idempotentAdd: switches.repeatSafeAdd,

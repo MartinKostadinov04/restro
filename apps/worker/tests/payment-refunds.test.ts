@@ -158,9 +158,9 @@ describe.skipIf(!hasDatabase)('the refund job', () => {
     )
     await query(
       `insert into restro.payment_lines
-         (tenant_id, venue_id, payment_id, position, quantity, pos_amount_minor, display_name,
-          closed_minor, closed_quantity, open, source, actor, job_id)
-       values ($1, $2, $3, 1, 2, 1200, 'Jägermeister', 1200, 2, false, 'restro', 'system', 'test-seed')`,
+         (tenant_id, venue_id, payment_id, table_id, position, quantity, pos_amount_minor,
+          display_name, closed_minor, closed_quantity, open, source, actor, job_id)
+       values ($1, $2, $3, (select p.table_id from restro.payments p where p.id = $3), 1, 2, 1200, 'Jägermeister', 1200, 2, false, 'restro', 'system', 'test-seed')`,
       [tenantId, venueId, paymentId],
     )
     const refundId = newId('rf')

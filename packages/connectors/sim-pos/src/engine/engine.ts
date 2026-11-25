@@ -435,6 +435,15 @@ export class SimEngine {
               ...(this.switches.receiptNumberOnClose && bill.receipt !== null
                 ? { receipt: bill.receipt.number }
                 : {}),
+              // Each payment with the caller's reference, as the receipt lists them (Q20, S3).
+              ...(this.switches.severalPaymentsPerClose
+                ? {
+                    payments: bill.payments.map((payment) => ({
+                      amount: payment.amountMinor,
+                      ref: payment.ref,
+                    })),
+                  }
+                : {}),
             })),
             call.page,
             mods,
@@ -799,6 +808,9 @@ export class SimEngine {
     if (payments.length > 1 && !s.severalPaymentsPerClose) {
       throw new UndefinedBehaviour('several payments in one close', 'Q20')
     }
+    if (payments.some((payment) => (payment.ref ?? null) !== null) && !s.severalPaymentsPerClose) {
+      throw new UndefinedBehaviour("the caller's reference on a payment", 'Q20')
+    }
     const at = this.clock.now().toISOString()
     const taken: SimPayment[] = payments.map((payment) => {
       const type =
@@ -807,7 +819,13 @@ export class SimEngine {
           : this.state.paymentTypes.find((t) => t.id === payment.type)
       if (type === undefined)
         throw new UndefinedBehaviour('a payment type the POS does not have', 'Q26')
-      return { type: type.id, amountMinor: payment.amountMinor, by: by.id, at }
+      return {
+        type: type.id,
+        amountMinor: payment.amountMinor,
+        ref: payment.ref ?? null,
+        by: by.id,
+        at,
+      }
     })
     const paying = taken.reduce((sum, payment) => addMinor(sum, payment.amountMinor), 0)
     const balance = subtractMinor(billTotal(bill), paidOf(bill))

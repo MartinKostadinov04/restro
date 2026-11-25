@@ -123,9 +123,11 @@ export function landingBasisOf(input: {
 /**
  * D127's third proof of a close: the bill the close was sent for, now closed, for the amount, and
  * carrying a receipt number or one of Restro's references (`refs`: what Restro put on this table's
- * rounds and this payment's lines; a line may carry another outside app's). Anything else proves
- * nothing: no closed bill (an empty payment table may be a waiter's move), another total, or a
- * closed bill with neither mark. Answers the receipt number to keep, if any.
+ * orders and this payment's lines, and the references of the close's card payments; a line may
+ * carry another outside app's). Anything else proves nothing: no closed bill (an empty payment
+ * table may be a waiter's move), another total, or a closed bill with neither mark. Answers the
+ * receipt number to keep, if any. A close with several card payments (D160 §3) takes all of them
+ * or none, so any one of its payments' references proves the whole close.
  */
 export function closeProof(
   bill: ClosedBill | null,
@@ -133,5 +135,6 @@ export function closeProof(
 ): { readonly receiptNumber: string | null } | null {
   if (bill === null || bill.totalMinor !== close.amountMinor) return null
   if (bill.receiptNumber !== null) return { receiptNumber: bill.receiptNumber }
-  return bill.restroRefs.some((ref) => close.refs.has(ref)) ? { receiptNumber: null } : null
+  const marks = [...bill.restroRefs, ...(bill.paymentRefs ?? [])]
+  return marks.some((ref) => close.refs.has(ref)) ? { receiptNumber: null } : null
 }

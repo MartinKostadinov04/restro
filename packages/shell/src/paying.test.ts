@@ -10,6 +10,8 @@ import {
   offersReceiptEmail,
   PAY_ENDS,
   paidReceiptText,
+  payAcross,
+  payableBill,
   payBlock,
   payFormLocale,
   payingOffHere,
@@ -17,16 +19,20 @@ import {
   payScreen,
   paySignedMoney,
   payStartCommand,
+  pickTable,
   pickWhole,
   receiptEmailOf,
   reconcilePicks,
   refusalText,
   sameAmountAgo,
   TIP_PERCENTS,
+  tablePicked,
   togglePick,
 } from './paying'
 import {
   EMPTY_SERVICE_STATE,
+  type GroupBillView,
+  type GroupTableView,
   GuestCommandSchema,
   PAYMENT_STATES,
   type PayingView,
@@ -287,6 +293,92 @@ describe('choosing what to pay (#45, D127)', () => {
     expect(offersPay({ ...base, tableBill: null })).toBe(false)
     expect(offersPay({ ...base, payment: payment({}) })).toBe(false)
     expect(offersPay(EMPTY_SERVICE_STATE)).toBe(false)
+  })
+})
+
+describe("paying a linked group's bill (#542, D160 §2)", () => {
+  const table = (
+    label: string,
+    lines: Parameters<typeof bill>[0],
+    options: { own?: boolean; complete?: boolean } = {},
+  ): GroupTableView => {
+    const own = bill(lines)
+    return {
+      label,
+      own: options.own ?? false,
+      complete: options.complete ?? true,
+      totalMinor: own.totalMinor,
+      paidMinor: 0,
+      owedMinor: own.owedMinor,
+      parts: own.parts.map((part) => ({ ...part, id: `bill-${label}` })),
+      paidLines: [],
+    }
+  }
+  const group = (paysAcross: boolean, tables: GroupTableView[]): GroupBillView => ({
+    complete: tables.every((member) => member.complete),
+    totalMinor: tables.reduce((sum, member) => sum + member.totalMinor, 0),
+    paidMinor: 0,
+    owedMinor: tables.reduce((sum, member) => sum + member.owedMinor, 0),
+    paysAcross,
+    tables,
+  })
+  const own = bill([{ id: 1, amountMinor: 500 }])
+  const members = [
+    table('111', [{ id: 11, amountMinor: 300 }]),
+    table('112', [{ id: 1, amountMinor: 500 }], { own: true }),
+    table('113', [
+      { id: 31, amountMinor: 200 },
+      { id: 32, amountMinor: 250, beingPaid: true },
+      { id: 33, amountMinor: 100 },
+    ]),
+    table('114', [{ id: 41, amountMinor: 700 }]),
+  ]
+
+  it("pays every member table's lines where the POS moves lines to a payment table", () => {
+    const state = { tableBill: own, tableGroup: group(true, members) }
+    expect(payAcross(state)).toBe(state.tableGroup)
+    const payable = payableBill(state)
+    expect(payable?.owedMinor).toBe(2050)
+    // "The whole bill" ticks every free line of every member table.
+    const whole = pickWhole(new Map(), payable as TableBillView)
+    expect([...whole.keys()].sort()).toEqual([bn(1), bn(11), bn(31), bn(33), bn(41)].sort())
+  })
+
+  it('"Whole table" ticks only that table’s free lines, and clears them again', () => {
+    const state = { tableBill: own, tableGroup: group(true, members) }
+    const payable = payableBill(state) as TableBillView
+    const three = members[2] as GroupTableView
+    // A line of table 111 ticked first stays ticked.
+    const start = togglePick(new Map(), payable, bn(11))
+    const ticked = pickTable(start, payable, three)
+    expect([...ticked.keys()].sort()).toEqual([bn(11), bn(31), bn(33)].sort())
+    expect(tablePicked(ticked, payable, three)).toBe(true)
+    expect(tablePicked(ticked, payable, members[3] as GroupTableView)).toBe(false)
+    const cleared = pickTable(ticked, payable, three)
+    expect([...cleared.keys()]).toEqual([bn(11)])
+  })
+
+  it('leaves out the lines of a member table that did not read well', () => {
+    const unread = members.map((member) =>
+      member.label === '114' ? { ...member, complete: false } : member,
+    )
+    const payable = payableBill({ tableBill: own, tableGroup: group(true, unread) })
+    expect(freeLines(payable as TableBillView).map((line) => line.id)).not.toContain(bn(41))
+    expect(pickTable(new Map(), payable as TableBillView, unread[3] as GroupTableView).size).toBe(0)
+    // Pay reads only what can be ticked, and the bill is not complete while a table is unread.
+    const four = unread[3] as GroupTableView
+    expect(payable?.owedMinor).toBe(2050 - four.owedMinor)
+    expect(payable?.complete).toBe(false)
+    expect(payableBill({ tableBill: own, tableGroup: group(true, members) })?.complete).toBe(true)
+  })
+
+  it('pays only this table where the POS takes one table at a time, or with no group', () => {
+    const split = { tableBill: own, tableGroup: group(false, members) }
+    expect(payAcross(split)).toBeNull()
+    expect(payableBill(split)).toBe(own)
+    expect(payableBill({ tableBill: own, tableGroup: null })).toBe(own)
+    // A group shown before this table's own bill reads has nothing to pay yet.
+    expect(payableBill({ tableBill: null, tableGroup: group(true, members) })).toBeNull()
   })
 })
 

@@ -234,19 +234,55 @@ export const DEMO_CAPABILITIES: ServiceCapabilities = Object.freeze({
 // --- what Restro's own layers add to the POS's menu ----------------------------------------------
 
 /**
- * The allergens of the club's drinks, by the POS's article id (EU codes, `allergens.ts`). Only
- * where they really apply: wine and sparkling wine carry sulphites, beer carries gluten, and the
- * one layered shot with cream liqueur carries milk. Spirits, mixers and soft drinks carry none —
- * an empty list is a statement, so nothing is listed for them.
+ * The allergens of the club's drinks, by the POS's article id (EU codes, `allergens.ts`). Wine
+ * and sparkling wine carry sulphites, beer carries gluten, and the one layered shot with cream
+ * liqueur carries milk. Everything else carries an empty list, which says "none of the
+ * fourteen" — and that is the statement the resolver asks for: an item with no allergen value
+ * at all is a V4 warning in the composer ("1 problem"), which is right on a real venue and only
+ * noise on the demo. Distilled spirits are exempt from the cereal declaration, so vodka, gin,
+ * whisky and rakia list nothing (#434, 11-22).
+ *
+ * Every item of the scenario’s menu has an entry; `demo-club.test.ts` holds that.
  */
 export const DEMO_ALLERGENS: ReadonlyMap<string, readonly string[]> = new Map([
+  // Bottles
+  ['6101', []], // Absolut Vodka 0.7
+  ['6102', []], // Jack Daniel’s 0.7
+  ['6103', []], // Grey Goose 0.7
+  ['6104', []], // Jägermeister 0.7
   ['6105', ['sulphites']], // Moët & Chandon Brut
   ['6106', ['sulphites']], // Prosecco
-  ['6303', ['milk']], // B-52
+  // Cocktails
+  ['6201', []], // Mojito
+  ['6202', ['sulphites']], // Aperol Spritz: made with prosecco
+  ['6203', []], // Espresso Martini
+  ['6204', []], // Piña Colada: coconut cream, which is not one of the fourteen
+  ['6205', []], // Cosmopolitan
+  ['6206', []], // Gin and tonic
+  // Shots
+  ['6301', []], // Tequila
+  ['6302', []], // Jägermeister
+  ['6303', ['milk']], // B-52: cream liqueur
+  ['6304', []], // Sambuca
+  // Spirits
+  ['6401', []], // Whisky 50ml
+  ['6402', []], // Vodka 50ml
+  ['6403', []], // Gin 50ml
+  ['6404', []], // Rakia 50ml
+  // Beer
   ['6501', ['gluten']], // Stella Artois
   ['6502', ['gluten']], // Corona
   ['6503', ['gluten']], // Heineken 0.0
   ['6504', ['gluten']], // Guinness
+  // Soft drinks
+  ['6601', []], // Coca-Cola 0.25
+  ['6602', []], // Fanta 0.25
+  ['6603', []], // Tonic 0.25
+  ['6604', []], // Still water 0.5
+  ['6605', []], // Red Bull 0.25
+  ['6606', []], // Freshly squeezed orange
+  // Other
+  ['6701', []], // Cover charge
 ])
 
 /**

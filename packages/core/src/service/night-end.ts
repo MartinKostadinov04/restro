@@ -41,7 +41,7 @@ import { sweepDetails, sweepNightLines, writeNightRecord } from './reservations/
 import { lockNight, lockNightReservations } from './reservations/rows'
 import { nightEndStatus, type ReservationKind, type ReservationStatus } from './reservations/status'
 import { accepted, type ServiceResult } from './results'
-import { closeOpenTables } from './sittings'
+import { closeOpenTables, openPaymentSittings } from './sittings'
 
 /** The venue's clock, as the night's end reads it from the venue's own settings. */
 export function venueClock(venue: {
@@ -88,14 +88,11 @@ export async function openSittingBills(
     ).map((row) => row.sittingId),
   )
   // The tables a card payment keeps open: the question `sittingsWithOpenPayment` asks.
-  const paying = await tx
-    .selectDistinct({ sittingId: payments.sittingId })
-    .from(payments)
-    .where(and(inArray(payments.sittingId, ids), isNull(payments.settledAt)))
+  const paying = await openPaymentSittings(tx, ids)
   return {
     open: open.length,
     bills: open.filter((row) => row.hadBillLines || sent.has(row.id)).length,
-    paying: paying.length,
+    paying: paying.size,
   }
 }
 

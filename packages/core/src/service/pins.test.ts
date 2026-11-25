@@ -89,6 +89,7 @@ describe('the default roles (design §5)', () => {
         'night.view',
         'ordering.pause',
         'reservations.tonight',
+        'sold_out',
         'tables.open_close',
         'tables.resume',
       ].sort(),

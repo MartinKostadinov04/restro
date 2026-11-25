@@ -24,6 +24,14 @@ _Avoid_: barsy venue, till venue, synced venue
 A venue with no POS, whose menus Restro's users build and fully control. "By hand" is the source a hand-made venue is created with.
 _Avoid_: by-hand venue, Restro venue, manual venue
 
+**Module**:
+A part of what a venue does that it can have or not: Ordering, Reservations, later Song requests (D155, proposed). Each has its own group in the venue's sidebar, its screens, its own Settings and its rights (D161, D156). The menu is not a module: every venue has it. Interface: "Модул / Module"; code: `module`.
+_Avoid_: feature base, add-on, feature (clashes with Guest feature)
+
+**Screen**:
+One destination of the admin, opened from the sidebar: the Studio, Tables & QR, Tonight, Reservations, a module's Settings (D161). A screen may have one row of views (Tonight › Log) or sections (Settings › Hours).
+_Avoid_: tab (for a destination), page (a page is a route)
+
 **Venue state**:
 Draft (never published, or unpublished), Live, Archived, or Deleted.
 
@@ -175,7 +183,7 @@ A drawing of one floor of a venue with its spots; a venue has one or more.
 _Avoid_: map, layout, venue map
 
 **Linked group**:
-Tables marked as one party for a stretch of a night: booked together, and reviewed and settled together. Each table keeps its own bill in the POS and its own tickets; Restro holds the pointers and shows the total grouped by table yet cumulative for the group.
+The tables one party, booked or walk-in, holds for a stretch of a night, reviewed and paid together. Each table keeps its own bill in the POS and its own tickets; Restro shows the total grouped by table yet cumulative for the group, and one payment can cover lines of several of its tables.
 _Avoid_: merged table, table combination
 
 **Open for phones**:
@@ -332,7 +340,7 @@ A payment that leaves its POS bill open with something still owed.
 _Avoid_: partial (on its own), instalment
 
 **Group payment**:
-Several guests' cards settling one bill, or one share of it, together.
+Several guests' cards settling one bill, or one share of it, together: each card is held for the amount its guest chose, and the bill closes once, with one receipt, when the amounts cover it. On the guest's screen the button reads "Split the amount".
 _Avoid_: split payment (a split moves items), split tender
 
 **Location check**:

@@ -26,6 +26,11 @@
 // step 2 publishes a menu of one item, the POS's Aperol Spritz, paid first: its id is in the ready
 // line.
 //
+// With `PAY_HARNESS_MODE=group` (apps/web/e2e/guest-pay-group.spec.ts, #542) a party is booked on
+// tables 1 and 2 and marked present, as the hostess would, so the two are one linked group; each
+// table has a waiter's round (table 2: one 2001), both read, and table 2's code is in the ready
+// line too (`code2`).
+//
 // It refuses a database that is not on this machine, and the simulated provider refuses
 // production. Its own log goes to stderr, so stdout carries only the JSON lines.
 import { randomUUID } from 'node:crypto'
@@ -41,6 +46,7 @@ import {
   newId,
   newTableToken,
   providerRef,
+  serviceDate,
   type VenueId,
 } from '@restro/core'
 import {
@@ -57,6 +63,7 @@ import {
   updateIntegration,
   upsertBarsyVenues,
 } from '@restro/core/apply'
+import { applyService, type ServiceCommand } from '@restro/core/service'
 import { createPool } from '@restro/db'
 import { createSimPayProvider, SIM_PAY_KIND, SimPayEngine } from '@restro/sim-pay'
 import { createSimServer } from '@restro/sim-pos'
@@ -79,6 +86,10 @@ const POS_TABLE = '30001'
 const PAYMENT_TABLES = ['39001', 'pay main 2']
 /** The pay-first run (#113): its scenario, and the POS article its one item is (an Aperol Spritz). */
 const PAY_FIRST = process.env.PAY_HARNESS_MODE === 'pay-first'
+/** The linked group's run (#542): a party on tables 1 and 2. */
+const GROUP = process.env.PAY_HARNESS_MODE === 'group'
+/** Demo Bar's table 2 on the simulator, the group's second table. */
+const POS_TABLE_2 = '30002'
 const SCENARIO = PAY_FIRST ? 'pay-first' : 'demo-bar'
 const PAY_FIRST_ARTICLE = { id: '2002', name: 'Aperol Spritz', priceMinor: 1_100 }
 /** The run that publishes a menu and prints the guest page's path (#114). */
@@ -208,19 +219,25 @@ async function main(): Promise<void> {
     [tenantId, venueId, accountKind, accountRef, ...SEED],
   )
 
-  // The table's code and its sitting, as the staff's "Open table" would leave them.
+  // The table's code and its sitting, as the staff's "Open table" would leave them; for the group,
+  // both tables' codes, and the party's arrival opens their sittings.
   const code = newTableToken()
   await query('update restro.tables set qr_token = $2, qr_code_hash = $3 where id = $1', [
     table.id,
     code,
     await hashTableCode(code),
   ])
-  await query(
-    `insert into restro.sittings
-       (id, tenant_id, venue_id, table_id, service_date, opened_how, source, actor, job_id)
-     values ($1, $2, $3, $4, $5, 'one', $6, $7, $8)`,
-    [newId('st'), tenantId, venueId, table.id, new Date().toISOString().slice(0, 10), ...SEED],
-  )
+  let second: { id: `tb_${string}`; code: string } | null = null
+  if (GROUP) {
+    second = await seatGroup({ pool, query, tenantId, venueId, first: table.id })
+  } else {
+    await query(
+      `insert into restro.sittings
+         (id, tenant_id, venue_id, table_id, service_date, opened_how, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, 'one', $6, $7, $8)`,
+      [newId('st'), tenantId, venueId, table.id, new Date().toISOString().slice(0, 10), ...SEED],
+    )
+  }
 
   // 2. The waiter's round, read onto the bill; for pay-first, the menu with its one item.
   let itemId: string | null = null
@@ -232,17 +249,24 @@ async function main(): Promise<void> {
       { article: '2001' },
       { article: '2002', quantity: '2' },
     ])
-    const reading = await readTableOf(
-      { pool, ...env },
-      { tenantId, venueId, tableId: table.id },
-      {
-        sim: config.sim,
-        billIdKey: BILL_ID_KEY,
-        budgets: new InstanceBudgets(),
-        readingBudgets: new ReadingBudgets(),
-      },
-    )
-    if (reading.kind !== 'recorded') throw new Error(`the bill was not read: ${reading.kind}`)
+    if (second !== null) sim.host.engine.waiter.addRound(POS_TABLE_2, [{ article: '2001' }])
+    for (const [index, tableId] of [table.id, ...(second === null ? [] : [second.id])].entries()) {
+      // The POS answers a login's reads about once a second: the second table waits its turn.
+      if (index > 0) await new Promise((resolve) => setTimeout(resolve, 1_100))
+      const reading = await readTableOf(
+        { pool, ...env },
+        { tenantId, venueId, tableId },
+        {
+          sim: config.sim,
+          billIdKey: BILL_ID_KEY,
+          budgets: new InstanceBudgets(),
+          readingBudgets: new ReadingBudgets(),
+        },
+      )
+      if (reading.kind !== 'recorded') {
+        throw new Error(`the bill was not read: ${reading.kind} (${String(reading.reason)})`)
+      }
+    }
   }
 
   // 3. The worker: the table reading and the payment jobs only. It shares the e2e worker's queue,
@@ -290,6 +314,7 @@ async function main(): Promise<void> {
     event: 'pay_harness_ready',
     code,
     itemId,
+    ...(second === null ? {} : { code2: second.code }),
     ...(PAGE ? { path: menuPath({ slug: venue.slug, publicId: venue.publicId }) } : {}),
   })
   const lines = createInterface({ input: process.stdin })
@@ -448,6 +473,98 @@ async function publishPayFirstMenu(
     await writeOrganizationIndex(deps, tenantId)
   }
   return item
+}
+
+/**
+ * The group's run (#542): a manager, a floor plan with a spot on tables 1 and 2, and a party
+ * booked on both and marked present, through the same commands the hostess's screens send. The
+ * arrival opens both tables' sittings, so they are one linked group. Table 2's id and its code.
+ */
+async function seatGroup(target: {
+  pool: ReturnType<typeof createPool>
+  query: <Row extends object>(sql: string, values?: unknown[]) => Promise<Row[]>
+  tenantId: string
+  venueId: VenueId
+  first: `tb_${string}`
+}): Promise<{ id: `tb_${string}`; code: string }> {
+  const { pool, query, tenantId, venueId, first } = target
+  const [table] = await query<{ id: `tb_${string}` }>(
+    `select id from restro.tables where venue_id = $1 and number = '2'`,
+    [venueId],
+  )
+  if (table === undefined) throw new Error('the simulated floor has no table 2')
+  const code = newTableToken()
+  await query('update restro.tables set qr_token = $2, qr_code_hash = $3 where id = $1', [
+    table.id,
+    code,
+    await hashTableCode(code),
+  ])
+  const userId = `e2e-group-${randomUUID()}`
+  await query('insert into restro.auth_user (id, name, email) values ($1, $2, $3)', [
+    userId,
+    'Hostess',
+    `${userId}@example.test`,
+  ])
+  await query(
+    'insert into restro.auth_member (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
+    [`mb-${userId}`, tenantId, userId, 'owner'],
+  )
+  const accept = async (command: Record<string, unknown>) => {
+    const { result } = await applyService(pool, command as ServiceCommand, {
+      tenantId,
+      venueId,
+      origin: 'staff',
+      actor: { kind: 'user', userId, sessionId: `e2e-${randomUUID()}` },
+      jobId: `e2e-group-${randomUUID()}`,
+      signedInAt: new Date(),
+    })
+    if (result.status !== 'accepted') {
+      throw new Error(`${String(command.type)} was refused: ${result.code}`)
+    }
+    return result.details as Record<string, unknown>
+  }
+  await accept({ type: 'reservation_settings.set', turnMinutes: 90 })
+  const planId = (await accept({ type: 'plan.save', name: 'Floor', makeCurrent: true })).planId
+  await accept({ type: 'spot_kind.save', key: 'table', label: 'Table', defaultSeats: 4 })
+  const spotIds: unknown[] = []
+  for (const [index, tableId] of [first, table.id].entries()) {
+    const spot = await accept({
+      type: 'spot.save',
+      planId,
+      name: `T${index + 1}`,
+      kind: 'table',
+      shape: 'rect',
+      x: index * 100,
+      y: 0,
+      width: 80,
+      height: 80,
+      tableId,
+    })
+    spotIds.push(spot.spotId)
+  }
+  const [venueRow] = await query<{ timezone: string; ends_at: string }>(
+    'select timezone, service_day_ends_at::text as ends_at from restro.venues where id = $1',
+    [venueId],
+  )
+  const reservationId = (
+    await accept({
+      type: 'reservation.create',
+      serviceDate: serviceDate(
+        new Date(),
+        venueRow?.timezone ?? 'UTC',
+        venueRow?.ends_at ?? '07:00:00',
+      ),
+      startsAt: new Date().toISOString(),
+      kind: 'booking',
+      status: 'reserved',
+      partySize: 6,
+      partyLabel: 'Group',
+      phone: '+359888123456',
+      spotIds,
+    })
+  ).reservationId
+  await accept({ type: 'reservation.arrive', reservationId })
+  return { id: table.id, code }
 }
 
 /** The publish store the e2e servers read (`PUBLISH_STORE=local`, set by the e2e run's config). */

@@ -157,11 +157,14 @@ test.afterAll(async () => {
 
 test('the Studio’s Design subtab opens a page of its own; Settings holds no Appearance card', async () => {
   await page.goto(`/venues/${venueId}`)
-  await expect(page.getByRole('tablist').first().getByRole('tab')).toHaveText([
+  // The venue's screens are the sidebar's entries, grouped by module (D161).
+  await expect(page.getByTestId('venue-nav').locator('[data-nav]')).toHaveText([
     'Studio',
     'Tables & QR',
     'Tonight',
+    'Settings',
     'Reservations',
+    'Settings',
     'Settings',
   ])
   await page.getByRole('tab', { name: 'Design' }).click()
@@ -170,7 +173,7 @@ test('the Studio’s Design subtab opens a page of its own; Settings holds no Ap
   await page.getByTestId('design-back').click()
   await expect(page).toHaveURL(/[?&]tab=studio/)
 
-  await page.getByRole('tab', { name: 'Settings' }).click()
+  await page.getByRole('link', { name: 'Venue settings' }).click()
   await expect(page.getByText('Europe/Sofia')).toBeVisible()
   await expect(page.getByTestId('appearance-card')).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Appearance' })).toHaveCount(0)

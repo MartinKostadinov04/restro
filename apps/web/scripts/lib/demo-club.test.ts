@@ -222,6 +222,19 @@ describe('the demo night', () => {
     // item; both are the cautious direction, which is the only one our layers may take (rule 5).
     expect(DEMO_HIDDEN_ARTICLE).not.toBe(DEMO_SOLD_OUT_ARTICLE)
   })
+
+  it('states the allergens of every item on the menu, so no demo item warns (#434)', () => {
+    // `allergens` is a required item field: an item with no value at all is a V4 warning in the
+    // composer. On the demo that is noise, so every item says what it contains, an empty list
+    // included.
+    for (const section of scenario.sections) {
+      for (const item of section.items) {
+        expect(DEMO_ALLERGENS.has(item.article), `${item.article} has no allergen statement`).toBe(
+          true,
+        )
+      }
+    }
+  })
 })
 
 describe('the demo staff', () => {

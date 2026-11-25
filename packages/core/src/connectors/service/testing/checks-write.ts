@@ -3,14 +3,16 @@
 // the problems it found. "Adds to the oldest bill" is conditional on the declared capabilities:
 // the expected answer is what `chooseTargetBill` says for that declaration.
 
-import { addMinor, subtractMinor } from '../../../money'
+import { addMinor, ratioOfMinor, subtractMinor } from '../../../money'
 import type { ServiceCapabilities } from '../capabilities'
 import type { ServiceConnector } from '../connector'
+import { closeProof } from '../landed'
 import { type PosRef, posRef, samePosRef } from '../pos-ref'
 import {
   type AddLinesRequest,
   AddLinesResultSchema,
   type BillLine,
+  type ClosePayment,
   EmptyResultSchema,
   IsolatedBillSchema,
   type IsolatedHandle,
@@ -441,6 +443,91 @@ export const paymentRouteCheck: Check<WriteHarness> = async (harness) => {
   return problems
 }
 
+/**
+ * One payment over several tables of a linked group (D160 §2, #542), where the POS moves lines to a
+ * payment table: each table's picks are isolated on their own, the later ones `into` the bill the
+ * first made, and an undo puts each line back on its own table. The kit takes two lines of one
+ * table, as two isolates, since the POS does not tell the tables a move comes from apart:
+ *   - the second isolate joins the first one's bill: one bill on the payment table, holding both;
+ *   - an undo that names one line moves exactly it back, and the bill keeps the other;
+ *   - the undo of the rest empties the payment table and restores the real table's total.
+ */
+export const groupIsolateCheck: Check<WriteHarness> = async (harness) => {
+  const connector: ServiceConnector = harness.connector
+  const ctx = kitContext(harness)
+  const setUp = await paymentSetUp(harness)
+  if (typeof setUp === 'string') return [setUp]
+  const { table, before, bill, line } = setUp
+  const other = bill.lines.find((l) => !samePosRef(l.ref, line.ref))
+  if (other === undefined) return ['setting up the group payment: the bill has one line']
+  const paymentTable = await harness.waiter.paymentTable()
+  if (paymentTable === null) {
+    return ['moveLinesToTable is declared, but the harness gives no payment table']
+  }
+  const problems: string[] = []
+  const first = await connector.isolateLines(ctx, {
+    table,
+    picks: [{ bill: bill.ref, line: line.ref, quantity: line.quantity }],
+    paymentTable,
+    ref: 'kit-group-1',
+  })
+  problems.push(...outcomeProblems(IsolateOutcomeSchema, 'the first isolate outcome', first))
+  if (first.kind !== 'done') return [...problems, `isolating came back ${describe(first)}`]
+  const handle = first.result.isolated
+  const second = await connector.isolateLines(ctx, {
+    table,
+    picks: [{ bill: bill.ref, line: other.ref, quantity: other.quantity }],
+    paymentTable,
+    into: handle,
+    ref: 'kit-group-2',
+  })
+  problems.push(...outcomeProblems(IsolateOutcomeSchema, 'the joining isolate outcome', second))
+  if (second.kind !== 'done') {
+    return [...problems, `isolating into the bill came back ${describe(second)}`]
+  }
+  if (!samePosRef(second.result.isolated.ref, handle.ref)) {
+    problems.push(
+      `the joining isolate made bill ${second.result.isolated.ref.pos}, not ${handle.ref.pos}`,
+    )
+  }
+  const joined = await readComplete(harness, paymentTable)
+  if (typeof joined === 'string') return [...problems, joined]
+  const held = findBill(joined, handle.ref)
+  if (joined.bills.length !== 1 || held === undefined) {
+    problems.push(`the payment table holds ${joined.bills.length} bills, not the one joined`)
+  } else if (JSON.stringify(keys(held.lines)) !== JSON.stringify(keys([line, other]))) {
+    problems.push(`the joined bill holds ${keys(held.lines).join(', ')}, not both picks`)
+  }
+
+  const one = await connector.undoIsolate(ctx, {
+    isolated: handle,
+    table,
+    lines: [line.ref],
+    ref: 'kit-group-undo-1',
+  })
+  problems.push(...outcomeProblems(UndoOutcomeSchema, 'the undo of one line', one))
+  if (one.kind !== 'done') return [...problems, `undoing one line came back ${describe(one)}`]
+  const half = await readComplete(harness, paymentTable)
+  if (typeof half === 'string') return [...problems, half]
+  const left = findBill(half, handle.ref)
+  if (left === undefined || JSON.stringify(keys(left.lines)) !== JSON.stringify(keys([other]))) {
+    problems.push('an undo naming one line did not move exactly that line back')
+  }
+  const rest = await connector.undoIsolate(ctx, {
+    isolated: handle,
+    table,
+    ref: 'kit-group-undo-2',
+  })
+  if (rest.kind !== 'done') return [...problems, `undoing the rest came back ${describe(rest)}`]
+  const restored = await readRoute(harness, table, paymentTable)
+  if (typeof restored === 'string') return [...problems, restored]
+  if (total(restored.real) !== total(before)) {
+    problems.push(`the undo left the table at ${total(restored.real)}, not ${total(before)}`)
+  }
+  if (total(restored.payment) !== 0) problems.push('the undo left lines on the payment table')
+  return problems
+}
+
 /** The tip the kit gives: odd on purpose, so a tip read as a fraction or rounded shows. */
 export const KIT_TIP_MINOR = 137
 
@@ -614,6 +701,190 @@ export const tipRetryCheck: Check<WriteHarness> = async (harness) => {
     return [...problems, `the retried close with a tip came back ${describe(retry)}, not done`]
   }
   return [...problems, ...(await closedWithTipProblems(harness, setUp))]
+}
+
+/**
+ * Three card payments sharing `linesMinor`: a third each, the last the rest, so they add up to the
+ * close exactly (rule 8). Where `tipped`, two carry a tip (1.00 and 0.37), inside their amount.
+ */
+function kitPayments(linesMinor: number, tipped: boolean): ClosePayment[] {
+  const third = ratioOfMinor(linesMinor, 1, 3)
+  const payment = (shareMinor: number, tip: number, ref: string): ClosePayment => {
+    const tipMinor = tipped ? tip : 0
+    return { amountMinor: addMinor(shareMinor, tipMinor), tipMinor, ref }
+  }
+  return [
+    payment(third, 100, 'kit-pay-1'),
+    payment(third, 37, 'kit-pay-2'),
+    payment(subtractMinor(linesMinor, addMinor(third, third)), 0, 'kit-pay-3'),
+  ]
+}
+
+/** A close request carrying `payments`, its amount and tip their sums. */
+function severalPaymentsClose(
+  handle: IsolatedHandle,
+  payments: readonly ClosePayment[],
+  ref: string,
+) {
+  return {
+    isolated: handle,
+    amountMinor: payments.reduce((sum, p) => addMinor(sum, p.amountMinor), 0),
+    tipMinor: payments.reduce((sum, p) => addMinor(sum, p.tipMinor), 0),
+    paymentType: null,
+    payments: [...payments],
+    ref,
+  }
+}
+
+/** Amounts as sorted text, to compare two lists of payments or lines. */
+const amountsOf = (items: readonly { readonly amountMinor: number }[]) =>
+  items
+    .map((item) => item.amountMinor)
+    .sort((a, b) => a - b)
+    .join(', ')
+
+/**
+ * One bill closed with several card payments (D160 §3, #541), on a bill isolated as the payment
+ * route does it:
+ *   - undeclared, a close with two payments is refused `not_supported` and nothing reaches the
+ *     POS;
+ *   - declared, the POS can isolate a bill and close it with a payment type;
+ *   - three payments that don't add up to the bill are refused, and the POS is as it was: the bill
+ *     still open with its lines, no payment taken, nothing printed (all or nothing);
+ *   - three that do close it once, with the tip where `recordTipOnClose` is declared; the till's
+ *     receipt lists the three payments, each with its reference; where `readClosedBills` is
+ *     declared, the closed bill reads back every reference and `closeProof` recognises the close
+ *     by any one of them; a second close is refused.
+ */
+export const severalPaymentsCheck: Check<WriteHarness> = async (harness) => {
+  const connector: ServiceConnector = harness.connector
+  const caps = connector.capabilities
+  const ctx = kitContext(harness)
+  const route = isolationRoute(caps)
+  if (caps.closeWithSeveralPayments && (route === 'none' || !caps.closeWithPaymentType)) {
+    return ['closeWithSeveralPayments is declared, but the POS cannot isolate a bill and close it']
+  }
+  const setUp = await tipSetUp(harness)
+  if (typeof setUp === 'string') return [setUp]
+
+  if (!caps.closeWithSeveralPayments) {
+    const shared = Math.max(setUp.linesMinor, 2)
+    const half = ratioOfMinor(shared, 1, 2)
+    const payments: ClosePayment[] = [
+      { amountMinor: half, tipMinor: 0, ref: 'kit-pay-1' },
+      { amountMinor: subtractMinor(shared, half), tipMinor: 0, ref: 'kit-pay-2' },
+    ]
+    const callsBefore = harness.pos.calls().length
+    const outcome = await connector.payAndClose(
+      ctx,
+      severalPaymentsClose(setUp.handle, payments, 'kit-close-several'),
+    )
+    const problems = outcomeProblems(CloseOutcomeSchema, 'the close outcome', outcome)
+    if (outcome.kind !== 'refused' || outcome.refusal.code !== 'not_supported') {
+      problems.push(
+        `closeWithSeveralPayments is not declared, but a close with two payments came back ${describe(outcome)}, not not_supported`,
+      )
+    }
+    const wrote = harness.pos
+      .calls()
+      .slice(callsBefore)
+      .filter((call) => call.write)
+    for (const call of wrote) {
+      problems.push(`a refused close with two payments still wrote to the POS: ${call.name}`)
+    }
+    return problems
+  }
+
+  const closedPayments = harness.waiter.closedPayments
+  if (closedPayments === undefined) {
+    return [
+      "closeWithSeveralPayments is declared, but the harness cannot show a receipt's payments",
+    ]
+  }
+  if (setUp.linesMinor < 3) {
+    return [`the isolated bill holds ${setUp.linesMinor}, too little for three payments`]
+  }
+  const problems: string[] = []
+  const tipped = caps.recordTipOnClose
+  const payments = kitPayments(setUp.linesMinor, tipped)
+
+  // All or nothing: three payments one cent over the bill are refused, and nothing changes.
+  const over = payments.map((p, index) =>
+    index === 0 ? { ...p, amountMinor: addMinor(p.amountMinor, 1) } : p,
+  )
+  const digestBefore = await harness.pos.digest?.()
+  const refused = await connector.payAndClose(
+    ctx,
+    severalPaymentsClose(setUp.handle, over, 'kit-close-several-over'),
+  )
+  problems.push(...outcomeProblems(CloseOutcomeSchema, 'the refused close outcome', refused))
+  if (refused.kind !== 'refused') {
+    problems.push(
+      `three payments one cent over the bill came back ${describe(refused)}, not refused`,
+    )
+  }
+  const digestAfter = await harness.pos.digest?.()
+  if (digestBefore !== digestAfter) {
+    problems.push('a refused close with three payments changed the POS: all or nothing')
+  }
+  if ((await closedPayments.call(harness.waiter, setUp.handle.ref)) !== null) {
+    problems.push('a refused close with three payments closed the bill')
+  }
+  const still = await connector.readIsolated(ctx, setUp.handle)
+  if (!still.complete || still.value.bill === null) {
+    problems.push('after a refused close the isolated bill no longer reads open')
+  } else if (amountsOf(still.value.bill.lines) !== amountsOf(setUp.isolatedLines)) {
+    problems.push('a refused close with three payments changed the isolated bill')
+  }
+
+  const close = severalPaymentsClose(setUp.handle, payments, 'kit-close-several')
+  const outcome = await connector.payAndClose(ctx, close)
+  problems.push(...outcomeProblems(CloseOutcomeSchema, 'the close outcome', outcome))
+  if (outcome.kind !== 'done') {
+    return [...problems, `the close with three payments came back ${describe(outcome)}`]
+  }
+  if (tipped) problems.push(...(await closedWithTipProblems(harness, setUp)))
+
+  const receipt = await closedPayments.call(harness.waiter, setUp.handle.ref)
+  if (receipt === null) return [...problems, 'the bill with three payments did not close']
+  if (amountsOf(receipt) !== amountsOf(payments)) {
+    problems.push(
+      `the receipt lists payments of ${amountsOf(receipt)}, not the three of ${amountsOf(payments)}`,
+    )
+  }
+  const listed = receipt.map((p) => p.ref ?? '-').sort()
+  if (
+    listed.join(', ') !==
+    payments
+      .map((p) => p.ref)
+      .sort()
+      .join(', ')
+  ) {
+    problems.push(`the receipt's payments carry ${listed.join(', ')}, not Restro's references`)
+  }
+
+  if (caps.readClosedBills && connector.readClosedBill !== undefined) {
+    const read = await connector.readClosedBill(ctx, setUp.handle)
+    if (!read.complete || read.value === null) {
+      problems.push('the bill closed with three payments does not read back as closed')
+    } else {
+      const refs = read.value.paymentRefs ?? []
+      for (const { ref } of payments) {
+        if (!refs.includes(ref)) problems.push(`the closed bill does not read back ${ref}`)
+        const proof = closeProof(read.value, {
+          refs: new Set([ref]),
+          amountMinor: close.amountMinor,
+        })
+        if (proof === null) problems.push(`the closed bill is not proof of the close by ${ref}`)
+      }
+    }
+  }
+
+  const second = await connector.payAndClose(ctx, { ...close, ref: 'kit-close-several-2' })
+  if (second.kind !== 'refused') {
+    problems.push(`a second close with three payments came back ${describe(second)}, not refused`)
+  }
+  return problems
 }
 
 interface TipSetUp {

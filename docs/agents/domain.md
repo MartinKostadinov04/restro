@@ -24,6 +24,8 @@ Only Martin makes product decisions. An agent proposes one in its report with a 
 
 Research, an opinion, a process map or a review made by a session, worktree or subagent is one file `docs/deliverables/<date>-<slug>.md` (D114), never only a chat message, a notes folder or an unmerged branch. The lead files it with its row in `docs/deliverables.md`; files are kept and revisited, never rewritten.
 
+**One exception: a letter to an outside company.** This repository is public. Martin, 11-24: our correspondence with a vendor does not live in it — not a draft, not the sent text, not the working file a letter is written from. Write it outside the repository (`Documents/Restro/vendor-letters/` on Martin's machine, which has its own README) and keep it there. What the repository carries is the **decision** an answer produces, and research that cites public sources. A deliverables row may name such a letter and say where it is kept, with no link. The four Mistral letters were taken out on 11-24, after they had been public on `or/foundation` for days; nothing in a public repository can be unpublished, so the time to decide this is before the commit.
+
 ## Decision logs
 
 Every grilling keeps a **decision log** (D114): `docs/deliverables/<date>-<slug>-decision-log.md`. The model is `docs/deliverables/2026-10-18-bill-decision-log.md`.

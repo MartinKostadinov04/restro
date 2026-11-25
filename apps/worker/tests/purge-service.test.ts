@@ -291,9 +291,9 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     references += 1
     await query(
       `insert into restro.payment_lines
-         (tenant_id, venue_id, payment_id, position, pos_line_ref, quantity, pos_amount_minor,
-          display_name, source, actor, job_id)
-       values ($1, $2, $3, 1, $4, 1, 1450, 'Gin tonic', $5, $6, $7)`,
+         (tenant_id, venue_id, payment_id, table_id, position, pos_line_ref, quantity,
+          pos_amount_minor, display_name, source, actor, job_id)
+       values ($1, $2, $3, (select p.table_id from restro.payments p where p.id = $3), 1, $4, 1, 1450, 'Gin tonic', $5, $6, $7)`,
       [tenantId, venue, id, String(9_200_000 + references), ...SEED],
     )
     await query(

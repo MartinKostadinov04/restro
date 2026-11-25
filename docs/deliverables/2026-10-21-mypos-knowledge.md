@@ -22,6 +22,7 @@ The one place for what Restro knows about myPOS, the first payment provider (Mar
 - **D22**: the Checkout API pages M22b links to, read by the lead on 2026-10-22 (developers.mypos.com/apis/checkout-api/…: `checkout-getting-started/authentication`, `pre-authorization`, `pre-auth-completion`, `pre-auth-cancellation`).
 - **H21**: myPOS's help centre, help.mypos.com (en-gb), read by the ordering lead on 10-21. Each line names the article id and the date the article was last updated. The help centre is written mostly for card terminals; online-only points are marked. Searches for embedded, iframe, sandbox, nightclub and bar found nothing, and the Bulgarian help centre returned no results.
 - **P21**: myPOS's public fees page, mypos.com/en-gb/pricing-and-fees/fees, read on 10-21. It is the UK page, in pounds; the Bulgarian figures may differ.
+- **W25**: myPOS's Bulgarian pages and help centre, read by a research agent on 2026-11-25 for the split-by-amount check (`2026-11-24-split-by-amount-bulgaria.md` §6). The help-centre articles returned 403, so they were read as search extracts.
 
 Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, **[SAID]** said by myPOS or by Martin, **[READING]** our interpretation.
 
@@ -140,6 +141,7 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
   - the cancel after a failed last check costs the venue nothing.
 - 2026-10-22 · M22 [SAID] When a completion is lower than the hold, myPOS releases the rest on its side. When the guest sees it on the card depends on the card's issuing bank. This answers question 3.
 - 2026-10-21 · [READING] The cardholder's consent fits our flow: the guest confirms the amount and enters the card on myPOS's page before the hold (D122 §8 step 1). The payment screen should say plainly that the amount is held and taken within seconds (#45, #57). Whether a club is eligible is still open (question 11): only the venue's request, or a person at myPOS, can answer it.
+- 2026-11-25 · W25 [VENDOR] (search extract) Pre-authorisation on terminals is aimed at hotels, with food and beverage charges among the allowed uses. A hold lasts up to 30 days, for verified merchants only. One article says every device except Carbon Fiscal supports it. https://help.mypos.com/hc/en-bg/articles/6882453362589-How-does-credit-card-pre-authorization-work
 
 ## Tips
 
@@ -263,6 +265,8 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
 - 2026-10-21 · AI-2 [SAID] Again only terminal answers: email, SMS or printed receipts; refunds from the device menu; money arrives in the myPOS account at once. Question 6 is still open.
 - 2026-10-22 · M22 [SAID] myPOS has no function that sends notification emails (asked: its email receipts to the payer after an online payment). This answers question 6.
 - 2026-10-22 · [READING] myPOS sends the guest nothing that could be mistaken for the venue's fiscal receipt. The guest gets only the venue's receipt (D122 §8). The card statement shows `BillingDescriptor`.
+- 2026-11-25 · W25 [VENDOR] The Bulgarian split-bill page (updated 05.11.2026) offers several card payments for one bill on the Ultra and Flex terminals: equal shares or custom amounts, a tip per payer, and digital QR receipts. It never mentions a fiscal receipt. https://www.mypos.com/bg-bg/blog/plashtania/dve-novi-funktsii-na-tvoya-mypos-terminal-razdeleni-plashtaniya-i-digitalni-belezhki
+- 2026-11-25 · W25 [VENDOR] Carbon Fiscal issues a receipt for every payment, cash, card or mixed. https://www.mypos.com/bg-bg/kupi-pos-terminal/carbon-fiscal
 
 ## Mistral
 
