@@ -7,7 +7,7 @@
 // load, the tab's session storage, the phone's position and Turnstile's token.
 
 import type { PayFormSlot, ServiceBinding } from '@restro/shell'
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import type { CardFormLook } from '../connectors/card-form-types'
 import { cardFormFor, cardReturnUrl } from '../connectors/card-forms'
@@ -19,6 +19,7 @@ import {
   type SessionMemory,
   type TableServices,
 } from './services-client'
+import { shareQrImage } from './share-qr'
 import { turnstileTokens } from './turnstile'
 
 /**
@@ -108,20 +109,51 @@ function payFormSlot(
       const values = services.formValues()
       const form = values === null ? null : cardFormFor(values.provider)
       if (values === null || form === null) return { update: () => {}, unmount: () => {} }
+      // A part of the table's share is its own payment (#544): its form comes back with its own
+      // command, and the redirect marker says which, so the page nudges the right one.
+      const share = values.kind === 'share'
       return form.mount(target as HTMLElement, props, {
         look: lookNow(),
         values: values.values,
         returnUrl: cardReturnUrl(window.location.href),
         onReturned: () => {
-          void services.dispatch({ kind: 'pay.returned', actionId: crypto.randomUUID() })
+          void services.dispatch({
+            kind: share ? 'share.returned' : 'pay.returned',
+            actionId: crypto.randomUUID(),
+          })
         },
         markRedirect: (on) => {
-          if (on) sessionMemory.set(PAY_RETURNED_KEY, '1')
+          if (on) sessionMemory.set(PAY_RETURNED_KEY, share ? 'share' : '1')
           else sessionMemory.remove(PAY_RETURNED_KEY)
         },
       })
     },
   }
+}
+
+/**
+ * "Show the others" (#544, D160 §3): the table's own address with the pay screen open, and its QR
+ * code, for the guests who are not holding the phone that started the share. The address is this
+ * page's, so a venue's own domain or path comes along; the code is made here, because a face takes
+ * no library of its own (`packages/faces/CLAUDE.md`).
+ */
+function useShareInvite(
+  on: boolean,
+): { readonly url: string; readonly qrImage: string | null } | null {
+  const [invite, setInvite] = useState<{ url: string; qrImage: string | null } | null>(null)
+  useEffect(() => {
+    if (!on) return
+    const url = `${window.location.origin}${window.location.pathname}#pay`
+    setInvite((before) => (before?.url === url ? before : { url, qrImage: null }))
+    let alive = true
+    void shareQrImage(url).then((qrImage) => {
+      if (alive && qrImage !== null) setInvite({ url, qrImage })
+    })
+    return () => {
+      alive = false
+    }
+  }, [on])
+  return on ? invite : null
 }
 
 export function useTableServices(
@@ -170,6 +202,7 @@ export function useTableServices(
     services?.getState ?? NO_STATE,
     NO_STATE,
   )
+  const shareInvite = useShareInvite(state?.share != null)
   // One slot per client: a face mounts the form once and keeps it across the polls' new states.
   const payForm = useMemo(
     () => (services === null ? null : payFormSlot(services, () => lookRef.current)),
@@ -187,7 +220,9 @@ export function useTableServices(
             refresh: services.refresh,
             payForm,
             payControls: { dismiss: services.dismissPayment },
+            shareControls: { dismiss: services.dismissShare },
+            shareInvite,
           },
-    [services, state, payForm],
+    [services, state, payForm, shareInvite],
   )
 }

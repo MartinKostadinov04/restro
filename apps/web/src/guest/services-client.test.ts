@@ -50,6 +50,7 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
       payingLegal: null,
       minCardMinor: 50,
       tips: false,
+      sharing: false,
       receiptEmail: false,
       night: { state: 'open', at: null },
     },

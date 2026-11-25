@@ -52,6 +52,7 @@ function state(version = 1) {
       payingLegal: null,
       minCardMinor: 50,
       tips: false,
+      sharing: false,
       receiptEmail: false,
       night: { state: 'open', at: null },
     },

@@ -81,6 +81,7 @@ function tableState(itemId: string | null): GuestTableState {
       payingLegal: null,
       minCardMinor: 50,
       tips: false,
+      sharing: false,
       receiptEmail: false,
       night: { state: 'open', at: null },
     },

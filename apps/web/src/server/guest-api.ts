@@ -3,6 +3,7 @@
 //   GET  /api/guest/state?since=<version>&view=menu|order|bill   the table's state, or "unchanged"
 //   POST /api/guest/actions                                      one guest command, and the state
 //   GET  /api/guest/payment                                      the paying phone's own payment
+//   GET  /api/guest/share                                        the table's group payment (D160)
 //   POST /api/guest/events                                       what the phone did (D142)
 //
 // The table's code comes in `Authorization: Table <code>`, never in the address or the body. A
@@ -41,6 +42,7 @@ import {
   type GuestEventsInput,
   guestAct,
   guestPayment,
+  guestShare,
   guestState,
   type HumanCheck,
   MAX_PASS_LENGTH,
@@ -61,6 +63,7 @@ import {
   GuestEventsAnswerSchema,
   GuestEventsRequestSchema,
   GuestPaymentAnswerSchema,
+  GuestShareAnswerSchema,
   GuestStateAnswerSchema,
   GuestStateQuerySchema,
   PAYMENT_HANDLE_PATTERN,
@@ -365,6 +368,31 @@ export async function handleGuestPayment(request: Request, deps: GuestApiDeps): 
     return json(GuestPaymentAnswerSchema.parse(read.answer))
   } catch (error) {
     return failed('guest_payment_failed', error)
+  }
+}
+
+/**
+ * `GET /api/guest/share` (D160 §3): the table's group payment, as any phone of the table sees it,
+ * and — for a phone that sends the handle of its own part in `X-Restro-Payment` — that part with
+ * it. The handle is optional here, unlike a payment's: a phone that has taken no part still sees
+ * the share. A phone whose handle belongs to no part of this table's share is answered 404, exactly
+ * as an unknown payment's is, so nothing says whether such a part exists. Null is a 200 with
+ * `null`: the table has no group payment.
+ */
+export async function handleGuestShare(request: Request, deps: GuestApiDeps): Promise<Response> {
+  const code = tableCodeOf(request)
+  if (code === null) return wrongCode(request, deps)
+  const handle = paymentHandleOf(request)
+  try {
+    const read = await guestShare(deps.pool, { code, handle, ...paymentQueue(deps) })
+    if (!read.ok) {
+      return read.code === 'unknown_payment'
+        ? refuse('unknown_payment', 404)
+        : stateless(read, request, deps)
+    }
+    return json(read.answer === null ? null : GuestShareAnswerSchema.parse(read.answer))
+  } catch (error) {
+    return failed('guest_share_failed', error)
   }
 }
 

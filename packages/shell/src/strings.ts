@@ -266,10 +266,63 @@ export interface ServiceStrings {
   /** Not sent because the POS said items ran out (#80): nothing was sent, the rest can go. */
   readonly sentNotSentOutOfStock: string
   /** Why a command was refused, by code; `refusedOther` for any other code. */
-  readonly refusals: { readonly [C in Exclude<GuestRefusalCode, 'below_minimum'>]: string }
+  readonly refusals: {
+    readonly [C in Exclude<
+      GuestRefusalCode,
+      'below_minimum' | 'above_share' | 'rest_below_minimum'
+    >]: string
+  }
   readonly refusedOther: string
   /** The bill screen and paying from it (#114; the guide's "Guest words: the bill and paying"). */
   readonly paying: PayingStrings
+}
+
+/**
+ * The words of a group payment (D160 §3, #544): sharing the bill by amount, so the table settles
+ * together. "Split the amount" is the button's wording only — the thing is a group payment
+ * (GLOSSARY). Martin's own words are the ticket's; the rest are the lead's, awaiting Martin.
+ */
+export interface ShareStrings {
+  /** The button beside Pay under the ticked lines. */
+  readonly splitAmount: string
+  /** The title of the screen where this guest takes a part. */
+  readonly partTitle: string
+  /** The amount field's label. */
+  readonly amountLabel: string
+  /** "The rest": what is left of the shared amount, as one tap. */
+  readonly rest: string
+  /** The title of the share screen every phone of the table sees. */
+  readonly title: string
+  /** "27,50 EUR of 109,00 EUR paid · 81,50 EUR left": the amounts are text. */
+  readonly progress: (paid: string, total: string, left: string) => string
+  /** How long the share still has. */
+  readonly minutesLeft: (minutes: number) => string
+  /** This guest gives their own part back, until the shared amount is covered. */
+  readonly takeBack: string
+  /** The control that shows the QR code and the link for the others. */
+  readonly showOthers: string
+  /** Under them: how the others use the code. */
+  readonly invite: string
+  /** Waiting with this guest's own part held and the others' still to come. */
+  readonly waiting: string
+  /** The shared amount is covered and the bill is being paid. */
+  readonly closing: string
+  /** This guest's part is being given back. */
+  readonly releasing: string
+  /** The table paid, on a phone that took no part of its own. */
+  readonly settled: string
+  /** Ended with nothing charged: the time ran out, staff cancelled, or the part came back. */
+  readonly nothingCharged: string
+  /** The bill changed under the share. */
+  readonly billChanged: string
+  /** The button under it. */
+  readonly startAgain: string
+  /** An amount above what is left of the shared amount (`left` the amount as text). */
+  readonly aboveShare: (left: string) => string
+  /** An amount below the smallest card payment (`min` the amount as text). */
+  readonly smallestCard: (min: string) => string
+  /** An amount that would leave the others a rest nobody could pay. */
+  readonly restBelowMinimum: (min: string) => string
 }
 
 /**
@@ -403,6 +456,8 @@ export interface PayingStrings {
   readonly tipTooBig: string
   /** What the card form says when it could not load (Martin 10-29). */
   readonly cardFormFailed: string
+  /** Sharing the bill by amount, so the table settles together (D160 §3). */
+  readonly share: ShareStrings
 }
 
 /** The words of one language. `lang` is the language the strings are really in. */
@@ -694,6 +749,9 @@ const EN: Strings = {
       unknown_payment: 'We can’t find this payment. Ask your waiter.',
       // Martin 10-29.
       tip_not_offered: 'A tip can’t be added right now. Pay without a tip.',
+      share_not_offered:
+        'Splitting the amount isn’t offered here. Pay the whole bill, or ask your waiter.',
+      share_over: 'This split has closed. Open the bill again.',
       not_built: 'This is not available yet.',
     },
     refusedOther: 'That did not work. Try again.',
@@ -797,6 +855,28 @@ const EN: Strings = {
       rateLimited: 'Too many tries. Wait a moment and try again.',
       tipTooBig: 'The tip can’t be more than the amount you’re paying.',
       cardFormFailed: 'The card form didn’t load. Try again or ask your waiter.',
+      share: {
+        splitAmount: 'Split the amount',
+        partTitle: 'Your part',
+        amountLabel: 'Amount',
+        rest: 'The rest',
+        title: 'Paying together',
+        progress: (paid, total, left) => `${paid} of ${total} paid · ${left} left`,
+        minutesLeft: (minutes) => `${minutes} min left`,
+        takeBack: 'Take my part back',
+        showOthers: 'Show the others',
+        invite: 'The others scan this code, or open the link, to pay their part.',
+        waiting: 'Your part is ready. Waiting for the others.',
+        closing: 'The whole amount is covered. Paying the bill…',
+        releasing: 'Giving your part back…',
+        settled: 'The bill is paid.',
+        nothingCharged: 'Nothing was charged.',
+        billChanged: 'The bill changed. Nothing was charged.',
+        startAgain: 'Start again',
+        aboveShare: (left) => `Only ${left} is left to pay.`,
+        smallestCard: (min) => `The smallest card payment is ${min}.`,
+        restBelowMinimum: (min) => `That would leave less than ${min} for the others.`,
+      },
       payAgain: 'Pay again',
       locationTitle: 'The bill shows only at the table',
       locationBody:
@@ -1077,6 +1157,9 @@ const BG: Strings = {
       unknown_payment: 'Не намираме това плащане. Попитайте сервитьора.',
       // Martin 10-29.
       tip_not_offered: 'В момента не може да се добави бакшиш. Платете без бакшиш.',
+      share_not_offered:
+        'Тук сумата не може да се разделя. Платете цялата сметка или попитайте сервитьора.',
+      share_over: 'Разделянето вече е затворено. Отворете сметката отново.',
       not_built: 'Това още не е налично.',
     },
     refusedOther: 'Не се получи. Опитайте отново.',
@@ -1184,6 +1267,28 @@ const BG: Strings = {
       rateLimited: 'Твърде много опити. Изчакайте малко и опитайте отново.',
       tipTooBig: 'Бакшишът не може да е повече от сумата за плащане.',
       cardFormFailed: 'Формата за карта не се зареди. Опитайте отново или попитайте сервитьора.',
+      share: {
+        splitAmount: 'Раздели сумата',
+        partTitle: 'Твоята част',
+        amountLabel: 'Сума',
+        rest: 'Останалото',
+        title: 'Плащате заедно',
+        progress: (paid, total, left) => `Платени ${paid} от ${total} · остават ${left}`,
+        minutesLeft: (minutes) => `Остават ${minutes} мин`,
+        takeBack: 'Вземи частта си обратно',
+        showOthers: 'Покажи на останалите',
+        invite: 'Останалите сканират този код или отварят връзката, за да платят своята част.',
+        waiting: 'Твоята част е готова. Изчакваме останалите.',
+        closing: 'Цялата сума е събрана. Сметката се плаща…',
+        releasing: 'Частта ти се връща…',
+        settled: 'Сметката е платена.',
+        nothingCharged: 'Нищо не е таксувано.',
+        billChanged: 'Сметката се промени. Нищо не е таксувано.',
+        startAgain: 'Започни отначало',
+        aboveShare: (left) => `Остават само ${left}.`,
+        smallestCard: (min) => `Най-малкото плащане с карта е ${min}.`,
+        restBelowMinimum: (min) => `Така ще остане по-малко от ${min} за останалите.`,
+      },
       payAgain: 'Плати отново',
       locationTitle: 'Сметката се вижда само на масата',
       locationBody:

@@ -605,6 +605,12 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
         case 'order.restore':
         // The location check (#76) runs only on a real table, never in the preview.
         case 'location.check':
+        // A group payment (D160 §3) takes several phones, so the demo does not offer one: its
+        // state leaves `ordering.sharing` unset, which keeps "Split the amount" off the preview.
+        case 'share.start':
+        case 'share.hold':
+        case 'share.withdraw':
+        case 'share.returned':
           return answer(command, 'rejected')
       }
     },

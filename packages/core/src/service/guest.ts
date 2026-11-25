@@ -187,6 +187,12 @@ export interface GuestTableState {
     readonly notesAndOptions: boolean
     /** A tip can be given when paying here (D127: the POS records it on the receipt); else none. */
     readonly tips: boolean
+    /**
+     * The bill can be shared by amount here (D160 2.8): the table's POS closes one bill with
+     * several card payments and guests here don't pay before they order. The phone offers "Split
+     * the amount" only then.
+     */
+    readonly sharing: boolean
     /** An email for the venue's electronic receipt can be given when paying here (D127, #186). */
     readonly receiptEmail: boolean
     /** The venue's night (#82): "Last orders at 04:30", "closed for tonight", opening later. */
@@ -645,6 +651,7 @@ export function projectGuestState(
       ...(read.sitting === null && read.movedAway === true ? { movedAway: true as const } : {}),
       notesAndOptions: read.notesAndOptions,
       tips: read.tips,
+      sharing: read.sharing,
       receiptEmail: read.receiptEmail,
       payFirst: read.sitting === null ? 'off' : read.payFirst.state,
       paying: read.sitting === null ? 'off' : read.paying.state,
