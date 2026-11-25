@@ -367,6 +367,46 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
     await accept({ type: 'table.close', tableId: tableOf('D2') })
   })
 
+  it('names the table the open-bill question is about, where the venue numbers its tables (#558)', async () => {
+    // Every table of this venue carries a number and no name, as a club's do (`createTable` takes
+    // one or the other, and the plan's own read falls back the same way). Reading the name alone
+    // left the hostess with „ все още има отворена сметка.“ — a table she could not find (#558).
+    await accept({ type: 'table.open', tableId: tableOf('D2') })
+    await sendRound(tableOf('D2'))
+    const read = await readArrivalChecks(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+      spotIds: [spotId('D2')],
+    })
+    if (!read.ok) throw new Error(read.code)
+    expect(read.checks.tables).toMatchObject([
+      { tableId: tableOf('D2'), label: '2', numbered: true, bill: true },
+    ])
+
+    // Our own name over the table wins, and then it is not a number: the screen says it as it is.
+    await world.owner.query('update restro.tables set name = $2 where id = $1', [
+      tableOf('D2'),
+      'Terrace',
+    ])
+    try {
+      const named = await readArrivalChecks(world.app, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+        spotIds: [spotId('D2')],
+      })
+      if (!named.ok) throw new Error(named.code)
+      expect(named.checks.tables).toMatchObject([
+        { tableId: tableOf('D2'), label: 'Terrace', numbered: false },
+      ])
+    } finally {
+      // The venue is numbered again, for every test after this one.
+      await world.owner.query('update restro.tables set name = null where id = $1', [tableOf('D2')])
+    }
+    await accept({ type: 'table.close', tableId: tableOf('D2') })
+  })
+
   it('sends New guests only as the answer to that question, never on its own', async () => {
     await accept({ type: 'table.open', tableId: tableOf('D3') })
     const was = await openSittingOf(tableOf('D3'))

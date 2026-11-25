@@ -568,7 +568,10 @@ export function rvChecksView(checks: BookingChecks, timezone: string): RvChecksV
 /** One Table of the spots being seated: whether its codes are open, and whether it carries a bill. */
 export interface RvDoorTableView {
   readonly tableId: string
-  readonly tableName: string
+  /** Our name for the table, else its number, else the spot's name: resolved in the read (#558). */
+  readonly label: string
+  /** The label is a number, so a dialogue says «Маса 22» rather than a bare 22. */
+  readonly numbered: boolean
   readonly open: boolean
   /** An order is on this table in its current sitting (a sent round or the bag): the only reason to ask (#419). */
   readonly hasOrder: boolean
@@ -621,7 +624,8 @@ export function rvArrivalChecksView(checks: ArrivalChecks, timezone: string): Rv
     payRule: checks.payRule,
     tables: checks.tables.map((table) => ({
       tableId: table.tableId,
-      tableName: table.tableName,
+      label: table.label,
+      numbered: table.numbered,
       open: table.open,
       hasOrder: table.hasOrder,
       bill: table.bill,

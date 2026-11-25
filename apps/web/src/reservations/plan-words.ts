@@ -11,6 +11,10 @@
 //
 // A spot's history is the Log's own sentences (`useHistoryText`), not a second set of words for
 // the same events (copy rules §3: one name per action).
+//
+// A Table is named the same way here and on the plan's own sheets: our name for it, else «Маса 22»
+// from the number it carries. The fallback behind the label belongs to the read, never to a
+// screen (#558).
 import { useTranslations } from 'next-intl'
 import { useCallback } from 'react'
 
@@ -52,6 +56,22 @@ export function useSpotsCalled() {
     const listed = names.join(', ')
     return names.some(isBareSpotNumber) ? t('p_spots_mid', { spots: listed }) : listed
   }
+}
+
+/**
+ * The Tables of a sentence, as the door's dialogues name them: our name over a table as it stands,
+ * «Маса 22» where the label is the number the venue gives it, joined in the order read. The pair
+ * comes resolved from the read (#558): nothing here falls back to anything.
+ */
+export function useTablesCalled() {
+  const t = useTranslations('reservations')
+  return useCallback(
+    (tables: readonly { readonly label: string; readonly numbered: boolean }[]): string =>
+      tables
+        .map((table) => (table.numbered ? t('p_table_n', { n: table.label }) : table.label))
+        .join(', '),
+    [t],
+  )
 }
 
 /** One state of a spot, as the legend and the tile say it. */
