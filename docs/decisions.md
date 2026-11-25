@@ -47,7 +47,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D40](decisions/D40.md) | Build the doc's document model plus a generic shell/face contract | firm |
 | [D41](decisions/D41.md) | barsy freshness by polling | firm; refined by D110 and D125 (POS webhooks only) |
 | [D42](decisions/D42.md) | Allergens are a plain EU-14 enum_set attribute | firm |
-| [D43](decisions/D43.md) | Supabase Postgres only, free plan, restro-staging and restro-prod, Data API off | refined by D54 |
+| [D43](decisions/D43.md) | Supabase Postgres only, free plan, restro-staging and restro-prod, Data API off | refined by D54; staging refined by D172 |
 | [D44](decisions/D44.md) | E:\Restro is the repo | firm |
 | [D45](decisions/D45.md) | Service day ends 07:00 local, per venue | firm |
 | [D46](decisions/D46.md) | Sold out: barsy's for-sale flag is the source | firm |
@@ -107,7 +107,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D100](decisions/D100.md) | A guest feature declares whether it needs a table code | firm; refines D71; refined by D170 (song requests declare no, and the way in is the venue's menu) |
 | [D101](decisions/D101.md) | Reservations become a module of the platform on Areas and Tables, hosted page first | direction; after ordering from the menu (T83) |
 | [D102](decisions/D102.md) | The night promise: the menu never goes down; everything else degrades to paused and alerts | firm; refined by D120 (push alerts, the outside watchdog) |
-| [D103](decisions/D103.md) | Keep the D43 hosting split through 10 clubs; agent time goes into portability, not moves | firm |
+| [D103](decisions/D103.md) | Keep the D43 hosting split through 10 clubs; agent time goes into portability, not moves | firm; staging refined by D172 |
 | [D104](decisions/D104.md) | Fable plans the heavy zone; "I don't know" gets a higher model's proposal | firm; refines D58; refined by D108 and D133 |
 | [D105](decisions/D105.md) | Templates are designed by agents in the repo, from the menu functionality file | firm; supersedes D63; refines D69; refined by D128 (a template is a Style preset; how a Style is made) |
 | [D106](decisions/D106.md) | The design-skill set in force: frontend-design vendored for templates, Vercel rules pinned, UI UX Pro Max rejected | firm; refined by D109, D123, D146 |
@@ -176,6 +176,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D169](decisions/D169.md) | Paid greetings come in two kinds, are approved or refused with no revision loop, and settle on their song's marker | firm |
 | [D170](decisions/D170.md) | A song request carries no table, and the way in is the venue's own menu | firm; refines D100; closes D99's and D100's deferral of the entry point (T81) |
 | [D171](decisions/D171.md) | The venue's settings for song requests, and the defaults an owner never has to think about | firm; supersedes D99's venue settings |
+| [D172](decisions/D172.md) | Staging runs on Coolify on Martin's own server; production's host stays open | firm; refines D43 and D103 for staging only |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

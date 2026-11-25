@@ -5,6 +5,11 @@ Martin's steps, click by click, for the staging environment that sandbox checks 
 `#117`, T25). The database itself is `docs/runbooks/supabase-setup.md`; this file starts where that
 one left off, at its section 6.
 
+> **Staging moved to Coolify on 2026-11-25 (D172).** Railway is not used for staging: §5 is
+> replaced by `docs/runbooks/staging-coolify.md`, and so are the private address in §6 and the
+> domain in §8. §1–§4, the variable list in §6 and §7 still hold, with
+> `https://restro.synexcloud.com` wherever this file says the Railway address.
+
 ## 0. Ground rules
 
 - **No secret in chat, in the repo, or in a log.** Passwords and keys go from their source straight
@@ -82,6 +87,9 @@ paid on staging.
 
 ## 5. Railway: the account, the project, the two services (about 30 minutes)
 
+> **Replaced** by `docs/runbooks/staging-coolify.md` §2–§5 (D172). Kept below for production,
+> whose host is still open.
+
 1. https://railway.com → sign up with GitHub.
 2. Plan: **Hobby**, $5 a month, which includes $5 of usage. Do not take Pro yet; see the note below.
 3. **New Project** → **Deploy from GitHub repo** → `MartinKostadinov04/restro`. Give Railway access
@@ -136,7 +144,7 @@ What goes where, so you can check the lead's work:
 | `BETTER_AUTH_URL` | the `https://…up.railway.app` address |
 | `BETTER_AUTH_SECRET`, `GUEST_PASS_KEY`, `STAFF_PIN_PEPPER`, `REVEAL_SERVICE_TOKEN` | fresh random values, generated locally |
 | `SEAL_PUBLIC_KEY` | the public half of a new pair (`pnpm keys:seal`) |
-| `WORKER_REVEAL_URL` | `http://<worker service name>.railway.internal:8081` |
+| `WORKER_REVEAL_URL` | `http://<worker service name>.railway.internal:8081` on Railway; on Coolify it is fixed in the Compose file (`http://worker:8081`) |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | from §4 |
 | `ASSET_STORE`, `PUBLISH_STORE` | both `local` (see the note below) |
 | `PAYMENTS_ENV` | `staging` |
@@ -181,6 +189,9 @@ When both services are up:
 
 ## 8. The domain, for check 5 only
 
+> **On Coolify** staging already has a domain of Martin's, `restro.synexcloud.com` (D172), so the
+> purchase below is no longer needed for check 5; the phone part still is.
+
 Check 5 — Apple Pay and Google Pay — needs a domain registered with Stripe, so a
 `…up.railway.app` address is not enough. Buy the main domain (T25), point `staging.<domain>` at the
 Railway web service (Settings → Networking → **Custom Domain** gives you the DNS record to add;
@@ -193,6 +204,8 @@ phone's wallet** — and with test keys Stripe turns it into a test token and **
 You will not type a card number anywhere.
 
 ## 9. One thing still to decide
+
+> **Decided 2026-11-25:** yes, `sim-pos` runs on staging (D172).
 
 To pay on staging there has to be a bill to pay, and a bill comes from a POS. The stack doc says a
 simulated POS (`sim-pos`) on staging "is a later step that needs Martin's OK". Checks 4 and 5 need
