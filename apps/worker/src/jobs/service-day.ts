@@ -133,7 +133,6 @@ export async function sweepPassedNights(
   let swept = 0
   for (const night of await unsweptNights(pool, now)) {
     try {
-      const jobId = `night-sweep-${randomUUID()}`
       const { result } = await applyService(
         pool,
         { type: 'reservation_night.sweep', serviceDate: night.serviceDate },
@@ -142,21 +141,13 @@ export async function sweepPassedNights(
           venueId: night.venueId,
           origin: 'worker',
           actor: { kind: 'system' },
-          jobId,
+          jobId: `night-sweep-${randomUUID()}`,
           now,
         },
+        // A request nobody answered is declined: its guest's email rides in the sweep (#578).
+        queue === undefined ? {} : { queueJobs: queueNightEndEmails(queue) },
       )
       if (result.status === 'accepted' && result.details.changed === true) swept += 1
-      // A request nobody answered was declined: its guest is told (#578).
-      if (queue !== undefined) {
-        await queueNightEndEmails(
-          pool,
-          queue,
-          result,
-          { tenantId: night.tenantId, venueId: night.venueId, jobId },
-          log,
-        )
-      }
     } catch (error) {
       log.warn(
         { venueId: night.venueId, serviceDate: night.serviceDate, err: error },

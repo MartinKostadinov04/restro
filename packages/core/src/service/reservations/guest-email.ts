@@ -14,11 +14,12 @@
 // here is only that there was news for a guest who had an address at the time.
 //
 // One command can owe many emails: the night's end declines every request nobody answered (#578).
-// Its answer carries counts, not a list, so its caller reads the declines its own job wrote from
-// the Log (`nightEndGuestEmailJobs`) and queues one job each.
+// Its answer carries counts, not a list, so the sweep owes each guest his email through
+// `stx.oweGuestEmail` (`oweNightEndEmail`), and the caller's `queueJobs` gets them in the same
+// transaction as the declines.
 
-import { type DbPool, guests, logEntries, reservations, withTenant } from '@restro/db'
-import { and, eq, gt, isNull, sql } from 'drizzle-orm'
+import { guests } from '@restro/db'
+import { and, eq, isNull } from 'drizzle-orm'
 
 import {
   GUEST_EMAIL_KINDS,
@@ -29,7 +30,6 @@ import {
 import type { ServiceTx } from '../definition'
 import type { LogKind } from '../log'
 import type { ResultDetails, ServiceResult } from '../results'
-import { NIGHT_END_REASON } from './status'
 
 /** The Log kind each email's news is recorded under: the entry the worker checks is still latest. */
 export const GUEST_EMAIL_LOG_KINDS: Readonly<Record<GuestEmailKind, LogKind>> = {
@@ -85,44 +85,19 @@ export function guestEmailJobOf(
 }
 
 /**
- * The `guest-email` jobs a night's end owes (#578; spec #322, Implementation Decision 2): one per
- * request that run declined, read from the Log entries of its own job (`jobId`, the provenance the
- * caller gave `applyService`) and kept to a guest record that is not erased and holds an address.
- * Call it after the command committed, and only when its answer counted a decline. Read as the
- * venue's tenant (row-level security); the address itself is never returned.
+ * Owes the guest of a request the night's end declined his email (#578; spec #322, Implementation
+ * Decision 2), through `stx.oweGuestEmail`: one night's end declines many. Call it right after the
+ * Log entry that recorded the decline; nothing for a guest with no address or an erased record.
  */
-export async function nightEndGuestEmailJobs(
-  pool: DbPool,
-  scope: { readonly tenantId: string; readonly venueId: string; readonly jobId: string },
-): Promise<GuestEmailJob[]> {
-  const rows = await withTenant(pool, scope.tenantId, (tx) =>
-    tx
-      .select({ reservationId: logEntries.reservationId, entry: logEntries.seq })
-      .from(logEntries)
-      .innerJoin(reservations, eq(reservations.id, logEntries.reservationId))
-      .innerJoin(guests, and(eq(guests.id, reservations.guestId), isNull(guests.erasedAt)))
-      .where(
-        and(
-          eq(logEntries.venueId, scope.venueId),
-          // The job just ran: the bound keeps the read on the venue's newest entries.
-          gt(logEntries.at, sql`now() - interval '1 day'`),
-          eq(logEntries.jobId, scope.jobId),
-          eq(logEntries.kind, GUEST_EMAIL_LOG_KINDS.reservation_declined),
-          eq(logEntries.toState, 'declined'),
-          eq(logEntries.reason, NIGHT_END_REASON),
-          sql`nullif(trim(${guests.email}), '') is not null`,
-        ),
-      )
-      .orderBy(logEntries.seq),
-  )
-  return rows.flatMap((row) => {
-    const job = GuestEmailJobSchema.safeParse({
-      tenantId: scope.tenantId,
-      venueId: scope.venueId,
-      reservationId: row.reservationId,
-      kind: 'reservation_declined',
-      entry: row.entry,
-    })
-    return job.success ? [job.data] : []
+export async function oweNightEndEmail(
+  stx: ServiceTx,
+  line: { readonly id: string; readonly kind: string; readonly guestId: string | null },
+): Promise<void> {
+  const owed = await guestEmailOwed(stx, line, 'reservation_declined')
+  if (typeof owed.guestEmailEntry !== 'number') return
+  stx.oweGuestEmail({
+    reservationId: line.id,
+    kind: 'reservation_declined',
+    entry: owed.guestEmailEntry,
   })
 }

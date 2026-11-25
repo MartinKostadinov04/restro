@@ -21,7 +21,7 @@ import { z } from 'zod'
 
 import { getPool } from '../db'
 import { queuePaymentStep } from '../guest-api'
-import { enqueueJob } from '../jobs'
+import { enqueueJob, enqueueJobIn } from '../jobs'
 import { logError, logWarn } from '../log'
 import { requireTenant } from '../session'
 import { identifyAtSharedDevice, ownActor, personAtSharedDevice } from '../staff/service'
@@ -276,7 +276,7 @@ export async function endNightAction(input: unknown): Promise<TonightResult> {
   const parsed = OnVenue.safeParse(input)
   if (!parsed.success) return INVALID
   return perform(parsed.data, (scope) =>
-    endNight(scope, { enqueue: (name, data) => enqueueJob(name, data) }),
+    endNight(scope, { enqueueIn: (queue, name, data) => enqueueJobIn(queue, name, data) }),
   )
 }
 

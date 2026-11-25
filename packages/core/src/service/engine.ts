@@ -18,7 +18,7 @@
 // 8. the version of every table the handler touched rises once, and an order edit's answer goes
 //    into the ring;
 // 9. for an accepted answer, the jobs it owes, which the caller queues in this same transaction
-//    (`queueJobs`, #592).
+//    (`queueJobs`, #592), with the guest emails the handler owed beyond its answer (#578).
 // The answer is always accepted or refused with a code (D72). Nothing here, and nothing a handler
 // gets, can call a POS or a payment provider: the transaction holds row locks for milliseconds.
 
@@ -38,6 +38,7 @@ import { and, eq, isNull, ne, type SQLChunk, sql } from 'drizzle-orm'
 
 import { lockLiveVenue } from '../apply/venue-lock'
 import { recordEvents as recordGuestEvents } from '../events'
+import { type GuestEmailJob, GuestEmailJobSchema } from '../jobs'
 import { serviceDate } from '../service-day'
 import { ORDER_CHANGES_PER_MINUTE } from '../table-order'
 import { actionsSince, findInRing, pushToRing } from './action-ring'
@@ -114,8 +115,18 @@ export interface ServiceOptions {
    * same transaction, so the queue entry is saved with the write or neither is. `queue` is for a
    * job queue's insert only (pg-boss's `send` with `{ db: queue }`), never a service row (rule 1).
    * A throw rolls the command back and reaches the caller. Not called for a refusal or a repeat.
+   * `owed` carries the jobs the handler owed beyond its answer (`stx.oweGuestEmail`, #578).
    */
-  readonly queueJobs?: (result: ServiceResult, queue: QueueExecutor) => Promise<void>
+  readonly queueJobs?: (
+    result: ServiceResult,
+    queue: QueueExecutor,
+    owed: OwedJobs,
+  ) => Promise<void>
+}
+
+/** The jobs a handler owed beyond its answer's details (#578): the night's end's guest emails. */
+export interface OwedJobs {
+  readonly guestEmails: readonly GuestEmailJob[]
 }
 
 /** Runs one parameterised statement (`$1`, `$2`…) on the command's transaction: pg-boss's `db`. */
@@ -309,6 +320,7 @@ export async function executeCommand(
         return clock
       }
       const touchedNights = new Set<string>()
+      const guestEmails: GuestEmailJob[] = []
       const kept: (() => Promise<void>)[] = []
       const logged: { readonly seq: number; readonly at: Date; readonly kind: string }[] = []
       const stx: ServiceTx = {
@@ -355,6 +367,11 @@ export async function executeCommand(
           logged.findLast((entry) => kinds.includes(entry.kind as never)) ?? null,
         touchNight: (serviceDate) => {
           touchedNights.add(serviceDate)
+        },
+        oweGuestEmail: (email) => {
+          guestEmails.push(
+            GuestEmailJobSchema.parse({ tenantId: context.tenantId, venueId: venue.id, ...email }),
+          )
         },
         keepOnRefusal: (write) => {
           kept.push(write)
@@ -467,7 +484,7 @@ export async function executeCommand(
       }
       // The jobs the answer owes ride in this transaction (#592): committed with it or not at all.
       if (result.status === 'accepted' && options.queueJobs !== undefined) {
-        await options.queueJobs(result, queueExecutorOf(tx))
+        await options.queueJobs(result, queueExecutorOf(tx), { guestEmails })
       }
       return result
     })

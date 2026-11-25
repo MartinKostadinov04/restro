@@ -18,7 +18,7 @@ const getVenue = vi.hoisted(() =>
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('../db', () => ({ getPool: () => ({}) }))
-vi.mock('../jobs', () => ({ enqueueJob: vi.fn() }))
+vi.mock('../jobs', () => ({ enqueueJob: vi.fn(), enqueueJobIn: vi.fn() }))
 vi.mock('../log', () => ({ logError: vi.fn() }))
 vi.mock('../session', () => ({
   requireTenant: async () => ({

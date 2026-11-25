@@ -22,9 +22,10 @@ import {
 import { itemsOfVenue } from '@restro/core/apply'
 import {
   applyService,
-  nightEndGuestEmailJobs,
+  type QueueExecutor,
   type RefusalCode,
   type ServiceActor,
+  type ServiceOptions,
   type ServiceResult,
 } from '@restro/core/service'
 import type { DbPool } from '@restro/db'
@@ -152,44 +153,54 @@ function answer(result: ServiceResult): TonightResult {
 async function run(
   scope: TonightScope,
   command: unknown,
-  jobId: string = newId('jb'),
+  options: ServiceOptions = {},
 ): Promise<ServiceResult> {
-  const { result } = await applyService(scope.pool, command, {
-    tenantId: scope.tenantId,
-    venueId: scope.venueId,
-    origin: 'staff',
-    via: 'tonight',
-    actor: scope.actor,
-    jobId,
-    ...(scope.signedInAt === undefined ? {} : { signedInAt: scope.signedInAt }),
-  })
+  const { result } = await applyService(
+    scope.pool,
+    command,
+    {
+      tenantId: scope.tenantId,
+      venueId: scope.venueId,
+      origin: 'staff',
+      via: 'tonight',
+      actor: scope.actor,
+      jobId: newId('jb'),
+      ...(scope.signedInAt === undefined ? {} : { signedInAt: scope.signedInAt }),
+    },
+    options,
+  )
   return result
 }
 
+/** How the night's end queues a job in its own transaction (`enqueueJobIn`, #592). */
+export interface NightEndServices {
+  readonly enqueueIn: <N extends ProducedJobName>(
+    queue: QueueExecutor,
+    name: N,
+    data: JobPayload<N>,
+  ) => Promise<string | null>
+}
+
 /**
- * Ends the night now (`night.end`, #332) and queues the emails it owes (#578): one per online
- * request nobody answered, which the night's end declined. They are read from the Log entries of
- * this command's own job once it committed; a queue that cannot be reached is logged (a code,
- * never a guest) and the night's end stands.
+ * Ends the night now (`night.end`, #332) with the emails it owes (#578): one per online request
+ * nobody answered, which the night's end declined. They are queued in the command's own
+ * transaction (#592), so the declines and their emails are saved together or not at all.
  */
 export async function endNight(
   scope: TonightScope,
-  services: TonightServices,
+  services: NightEndServices,
 ): Promise<TonightResult> {
-  const jobId = newId('jb')
-  const result = await run(scope, { type: 'night.end' }, jobId)
-  if (result.status === 'accepted' && Number(result.details.declined ?? 0) > 0) {
-    try {
-      const jobs = await nightEndGuestEmailJobs(scope.pool, {
-        tenantId: scope.tenantId,
-        venueId: scope.venueId,
-        jobId,
-      })
-      for (const job of jobs) await services.enqueue(JOB_NAMES.guestEmail, job)
-    } catch (error) {
-      logError('night_end_emails_not_queued', error)
-    }
-  }
+  const result = await run(
+    scope,
+    { type: 'night.end' },
+    {
+      queueJobs: async (_accepted, queue, owed) => {
+        for (const job of owed.guestEmails) {
+          await services.enqueueIn(queue, JOB_NAMES.guestEmail, job)
+        }
+      },
+    },
+  )
   return answer(result)
 }
 

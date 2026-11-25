@@ -23,11 +23,7 @@ import {
   JOB_NAMES,
   prepareJob,
 } from '@restro/core'
-import {
-  GUEST_EMAIL_LOG_KINDS,
-  nightEndGuestEmailJobs,
-  type ServiceResult,
-} from '@restro/core/service'
+import { GUEST_EMAIL_LOG_KINDS, type ServiceOptions } from '@restro/core/service'
 import {
   type DbPool,
   guests,
@@ -257,32 +253,20 @@ export function createGuestEmailJob(options: {
 }
 
 /**
- * Queues the emails a night's end owes (#578): one `guest-email` job per request it declined, read
- * from the Log entries of its own run (`jobId`). Called by the worker's two runs that end a night —
- * the closing hour and the sweep of a passed night — after the command committed. Nothing is read
- * when the answer counted no decline. A queue that cannot be reached is logged (the venue, never a
- * guest) and the night's end stands; answers how many were queued.
+ * The `queueJobs` of the worker's runs that end a night (#578): the closing hour and the sweep of a
+ * passed night. One `guest-email` job per request the night's end declined (`owed.guestEmails`),
+ * sent in the command's own transaction (#592), so the declines and their emails are saved
+ * together or not at all.
  */
-export async function queueNightEndEmails(
-  pool: DbPool,
-  queue: JobQueue,
-  result: ServiceResult,
-  scope: { readonly tenantId: string; readonly venueId: string; readonly jobId: string },
-  log: Pick<Logger, 'warn'>,
-): Promise<number> {
-  if (result.status !== 'accepted' || Number(result.details.declined ?? 0) <= 0) return 0
-  let queued = 0
-  try {
-    for (const job of await nightEndGuestEmailJobs(pool, scope)) {
+export function queueNightEndEmails(queue: JobQueue): NonNullable<ServiceOptions['queueJobs']> {
+  return async (_result, db, owed) => {
+    for (const job of owed.guestEmails) {
       const prepared = prepareJob(JOB_NAMES.guestEmail, job)
       await queue.send(JOB_NAMES.guestEmail, prepared.data, {
         singletonKey: prepared.singletonKey,
         group: prepared.group,
+        db,
       })
-      queued += 1
     }
-  } catch (error) {
-    log.warn({ venueId: scope.venueId, err: error }, 'the night end emails could not be queued')
   }
-  return queued
 }

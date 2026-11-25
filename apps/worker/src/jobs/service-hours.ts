@@ -168,7 +168,6 @@ export async function closeTablesAtClosingHour(
           .limit(1),
       )
       if (open === undefined && !unended) continue
-      const jobId = `service-hours-${randomUUID()}`
       const { result } = await applyService(
         pool,
         { type: 'hours.close_tables' },
@@ -177,21 +176,13 @@ export async function closeTablesAtClosingHour(
           venueId: venue.venueId,
           origin: 'worker',
           actor: { kind: 'system' },
-          jobId,
+          jobId: `service-hours-${randomUUID()}`,
           now,
         },
+        // The night's end declines the requests nobody answered: their guests' emails ride in it.
+        queue === undefined ? {} : { queueJobs: queueNightEndEmails(queue) },
       )
       if (result.status === 'accepted') closed += Number(result.details.closed ?? 0)
-      // The night's end declined the requests nobody answered: their guests are told (#578).
-      if (queue !== undefined) {
-        await queueNightEndEmails(
-          pool,
-          queue,
-          result,
-          { tenantId: venue.tenantId, venueId: venue.venueId, jobId },
-          log,
-        )
-      }
     } catch (error) {
       log.warn(
         { venueId: venue.venueId, err: error },

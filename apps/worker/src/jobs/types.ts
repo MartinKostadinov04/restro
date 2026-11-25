@@ -16,7 +16,7 @@
 //   - for a job with a `schedule`, upserts the schedule; a schedule whose job was removed from
 //     the list or lost its `schedule` is removed.
 import type { DbPool } from '@restro/db'
-import type { Job, QueueOptions, QueuePolicy, WorkOptions } from 'pg-boss'
+import type { Db, Job, QueueOptions, QueuePolicy, WorkOptions } from 'pg-boss'
 import type { WorkerStatus } from '../health'
 import type { Logger } from '../logger'
 
@@ -44,12 +44,14 @@ export interface JobQueue {
     data: object,
     /**
      * `startAfter`: seconds to wait before the job may start. `group`: the route queues' one run
-     * at a time per key (`ONE_RUN_PER_GROUP_JOBS`).
+     * at a time per key (`ONE_RUN_PER_GROUP_JOBS`). `db`: the caller's transaction, when the job
+     * rides in it (a service command's `queueJobs`, #592).
      */
     options?: {
       singletonKey?: string
       startAfter?: number | undefined
       group?: { readonly id: string } | undefined
+      db?: Db | undefined
     },
   ): Promise<string | null>
 }

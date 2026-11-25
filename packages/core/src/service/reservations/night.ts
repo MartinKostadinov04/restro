@@ -5,8 +5,8 @@
 //   (`night-end.ts`, which owns the moment and its record). There the parties are swept: the seated
 //   become Finished, a booking nobody came for No-show, a party still waiting Not seated, an online
 //   request nobody answered Declined, a block untouched (`nightEndStatus`). Each declined request's
-//   guest is emailed by the caller, from the Log entries its own job wrote
-//   (`nightEndGuestEmailJobs`); nothing here touches money.
+//   guest is owed his email in the same transaction (`oweNightEndEmail`, queued by the caller's
+//   `queueJobs`); nothing here touches money.
 // - **A night has passed** when its service day ended (D45). The worker then runs the same sweep
 //   once more (`sweepPassedNight`), for whatever the night's end left: a party seated after the
 //   hour, a booking made after it, a night whose end never ran.
@@ -22,6 +22,7 @@ import { eq, sql } from 'drizzle-orm'
 import type { ServiceTx } from '../definition'
 import { accepted, type ServiceResult } from '../results'
 import { releaseHeldSpots } from './book'
+import { oweNightEndEmail } from './guest-email'
 import { lockNight, lockNightReservations, type Reservation } from './rows'
 import {
   isEndStatus,
@@ -131,6 +132,7 @@ export async function sweepNightLines(
       reason: NIGHT_END_REASON,
       details: { freed: freed.join(',') },
     })
+    if (to === 'declined') await oweNightEndEmail(stx, line)
   }
   return countSweep(moves)
 }

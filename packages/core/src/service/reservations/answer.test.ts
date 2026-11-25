@@ -2,7 +2,8 @@
 // the restro_app role: Confirm gives the request its spots in the same command, a spot somebody
 // took meanwhile is refused by name and nothing is written, Decline frees what it held, a role
 // without tonight's reservations is refused, and the night's end declines a request nobody
-// answered — each with its Log entry and the email it owes. Skipped without a database.
+// answered — each with its Log entry and the email it owes, handed to the caller's `queueJobs` in
+// the command's own transaction (#592). Skipped without a database.
 //
 // A request is seeded by the owner role: the booking page that makes them is part 2's, so no
 // command writes Requested yet.
@@ -12,12 +13,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../../apply/test-database'
 import type { Id } from '../../ids'
+import type { GuestEmailJob } from '../../jobs'
 import { DEFAULT_ORDERING_SETTINGS, type ServiceHours } from '../../ordering-settings'
 import { openServiceWorld, type ServiceWorld } from '../../testing/service-world'
 import { applyService } from '../apply-service'
 import type { ServiceActor, ServiceContext } from '../context'
 import type { ServiceCommand } from '../index'
-import { nightEndGuestEmailJobs } from './guest-email'
 
 // Friday nights: open 22:00, closes 05:30 (Sofia, service day 07:00), as the night's end test.
 const HOURS: ServiceHours = {
@@ -258,13 +259,25 @@ describe.skipIf(!hasDatabase)('answering an online request (as the restro_app ro
     expect(await statusLines(id)).toEqual(before)
   })
 
-  it('declines at the night’s end a request nobody answered, and finds its email by its job', async () => {
+  it('declines at the night’s end a request nobody answered, and owes its guest the email', async () => {
     const answered = await request('kept@example.com')
     await accept({ type: 'reservation.confirm', reservationId: answered })
     const unanswered = await request('guest@example.com', ['T5'])
     const silent = await request(null)
     const jobId = `req-${randomUUID()}`
-    const ended = await accept({ type: 'night.end' } as ServiceCommand, staff(ownerId, jobId))
+    let owedEmails: readonly GuestEmailJob[] = []
+    const { result } = await applyService(
+      world.app,
+      { type: 'night.end' } as ServiceCommand,
+      staff(ownerId, jobId),
+      {
+        queueJobs: async (_accepted, _queue, owed) => {
+          owedEmails = owed.guestEmails
+        },
+      },
+    )
+    if (result.status !== 'accepted') throw new Error(`night.end refused: ${result.code}`)
+    const ended = result.details
     expect(ended).toMatchObject({ changed: true })
     // Every request left from the tests above, plus these two (one with an address, one without).
     expect(Number(ended.declined)).toBeGreaterThanOrEqual(2)
@@ -281,12 +294,7 @@ describe.skipIf(!hasDatabase)('answering an online request (as the restro_app ro
     // The confirmed one is a booking now: the night's end makes it a no-show, never Declined.
     expect(await row(answered)).toMatchObject({ status: 'no_show' })
 
-    const jobs = await nightEndGuestEmailJobs(world.app, {
-      tenantId: world.tenantId,
-      venueId: world.venueId,
-      jobId,
-    })
-    const mine = jobs.filter((job) => job.reservationId === unanswered)
+    const mine = owedEmails.filter((job) => job.reservationId === unanswered)
     expect(mine).toEqual([
       {
         tenantId: world.tenantId,
@@ -296,14 +304,7 @@ describe.skipIf(!hasDatabase)('answering an online request (as the restro_app ro
         entry: Number(line?.seq),
       },
     ])
-    // A guest with no address is not in the list; another job's entries never are.
-    expect(jobs.some((job) => job.reservationId === silent)).toBe(false)
-    expect(
-      await nightEndGuestEmailJobs(world.app, {
-        tenantId: world.tenantId,
-        venueId: world.venueId,
-        jobId: `req-${randomUUID()}`,
-      }),
-    ).toEqual([])
+    // A guest with no address is owed nothing.
+    expect(owedEmails.some((job) => job.reservationId === silent)).toBe(false)
   })
 })

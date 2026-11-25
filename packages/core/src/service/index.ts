@@ -133,6 +133,7 @@ export {
   type EvidenceWho,
 } from './dispute-evidence'
 export {
+  type OwedJobs,
   postgresCode,
   type QueueExecutor,
   SERVICE_LOCK_TIMEOUT,
@@ -444,7 +445,7 @@ export { CLOSED_DATES_MAX } from './reservations/closed-dates'
 export {
   GUEST_EMAIL_LOG_KINDS,
   guestEmailJobOf,
-  nightEndGuestEmailJobs,
+  oweNightEndEmail,
 } from './reservations/guest-email'
 export { phoneKeyOf, regionOfLocale } from './reservations/guests'
 export {
