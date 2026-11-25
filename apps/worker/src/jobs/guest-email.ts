@@ -5,8 +5,8 @@
 // When the job runs it reads the reservation and the guest record again and sends only while the
 // news is still true: the reservation is still in that state, not taken out of the book, and the
 // Log entry that recorded the news is still its latest of that kind. A deletion, a later change or
-// a guest erased meanwhile (a retry can run minutes later) sends nothing. The address is read here
-// and dropped after the one send.
+// a guest erased meanwhile (a retry can run minutes later) sends nothing. The email address is
+// read here and dropped after the one send.
 //
 // A send the service refuses for good (a bad address, a spent quota) is logged and ends the job;
 // one it could not take now (busy, unreachable) throws, and pg-boss tries the job again with its
@@ -28,30 +28,29 @@ import { and, eq, isNull, max } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 
 import { EmailSendError, type EmailSender } from '../email/sender'
-import { type GuestEmailLanguage, guestEmailWords } from '../guest-email/words'
+import {
+  type GuestEmailLanguage,
+  guestEmailWords,
+  type ReservationFacts,
+} from '../guest-email/words'
 import type { Logger } from '../logger'
 import { defineJob, type JobDefinition } from './types'
 
 /** What the job reads before it sends: the reservation as it is now, and whom to tell. */
-export interface GuestEmailNews {
+export interface GuestEmailNews extends ReservationFacts {
   readonly status: string
   readonly deleted: boolean
-  readonly serviceDate: string
-  readonly startsAt: Date
-  readonly partySize: number | null
   /** The Log's latest entry of the news's kind about this reservation. */
   readonly latestEntry: number | null
-  /** The guest record's address; null without a record, an address, or once he is erased. */
-  readonly address: string | null
-  readonly venueName: string
-  readonly timeZone: string
+  /** The guest record's email; null without a record, an email, or once he is erased. */
+  readonly email: string | null
 }
 
 /** Reads the news of one job, or null when the reservation is not this venue's (or is gone). */
 export type GuestEmailReader = (pool: DbPool, job: GuestEmailJob) => Promise<GuestEmailNews | null>
 
 /** Why a job sent nothing. */
-export type GuestEmailSkip = 'reservation_missing' | 'news_changed' | 'no_address'
+export type GuestEmailSkip = 'reservation_missing' | 'news_changed' | 'no_email'
 
 /** The state each kind of news leaves a reservation in, while it is still true. */
 const STILL_TRUE: Readonly<Record<GuestEmailKind, (news: GuestEmailNews) => boolean>> = {
@@ -83,10 +82,10 @@ export function guestEmailDecision(
   if (news.deleted || !STILL_TRUE[job.kind](news) || news.latestEntry !== job.entry) {
     return { send: false, reason: 'news_changed' }
   }
-  if (news.address === null || news.address.trim() === '') {
-    return { send: false, reason: 'no_address' }
+  if (news.email === null || news.email.trim() === '') {
+    return { send: false, reason: 'no_email' }
   }
-  return { send: true, to: news.address.trim(), language: bookingLanguage(news), news }
+  return { send: true, to: news.email.trim(), language: bookingLanguage(news), news }
 }
 
 /** The reader on the database, as the job's tenant (row-level security). */
@@ -99,7 +98,7 @@ export const readGuestEmailNews: GuestEmailReader = (pool, job) =>
         serviceDate: reservations.serviceDate,
         startsAt: reservations.startsAt,
         partySize: reservations.partySize,
-        address: guests.email,
+        email: guests.email,
         venueName: venues.name,
         timeZone: venues.timezone,
       })
@@ -126,7 +125,7 @@ export const readGuestEmailNews: GuestEmailReader = (pool, job) =>
       startsAt: row.startsAt,
       partySize: row.partySize,
       latestEntry: latest?.seq ?? null,
-      address: row.address,
+      email: row.email,
       venueName: row.venueName,
       timeZone: row.timeZone,
     }
@@ -168,13 +167,7 @@ export async function sendGuestEmailOf(
     await deps.sender.sendGuestEmail({
       to: decision.to,
       venueName: news.venueName,
-      words: guestEmailWords(job.kind, decision.language, {
-        venueName: news.venueName,
-        serviceDate: news.serviceDate,
-        startsAt: news.startsAt,
-        timeZone: news.timeZone,
-        partySize: news.partySize,
-      }),
+      words: guestEmailWords(job.kind, decision.language, news),
       idempotencyKey: `${job.reservationId}-${job.kind}-${job.entry}`,
     })
   } catch (error) {
@@ -195,7 +188,6 @@ export async function sendGuestEmailOf(
 /** The `guest-email` job. `sender` null: guest emails are off (the worker warned at start). */
 export function createGuestEmailJob(options: {
   readonly sender: Pick<EmailSender, 'sendGuestEmail'> | null
-  readonly read?: GuestEmailReader
 }): JobDefinition<GuestEmailJob> {
   return defineJob<GuestEmailJob>({
     name: JOB_NAMES.guestEmail,
@@ -224,7 +216,6 @@ export function createGuestEmailJob(options: {
           pool: context.pool,
           log: context.log,
           sender: options.sender,
-          ...(options.read === undefined ? {} : { read: options.read }),
         })
       }
     },

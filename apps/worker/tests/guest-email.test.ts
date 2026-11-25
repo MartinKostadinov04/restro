@@ -148,7 +148,7 @@ describe.skipIf(!hasDatabase)('the guest email of a cancelled reservation (#576)
       serviceDate: today,
       partySize: 3,
       latestEntry: job.entry,
-      address: ADDRESS,
+      email: ADDRESS,
       venueName: 'Club Нощ',
       timeZone: timezone,
     })
@@ -156,7 +156,7 @@ describe.skipIf(!hasDatabase)('the guest email of a cancelled reservation (#576)
     expect(outcome).toBe('sent')
     expect(sent).toHaveLength(1)
     expect(sent[0]?.to).toBe(ADDRESS)
-    expect(sent[0]?.words.subject).toBe('Резервацията ви е отменена')
+    expect(sent[0]?.words.subject).toBe('Резервацията ви е отказана')
     expect(sent[0]?.idempotencyKey).toBe(`${reservationId}-reservation_cancelled-${job.entry}`)
     expect(lines.join('\n')).toContain(reservationId)
     expect(lines.join('\n')).not.toMatch(/guest-576|example\.test|Мария/)
@@ -179,7 +179,7 @@ describe.skipIf(!hasDatabase)('the guest email of a cancelled reservation (#576)
 
     const erased = await cancelled(ADDRESS)
     await apply({ type: 'guest.erase', guestId: erased.guestId } as ServiceCommand)
-    expect((await sendOf(erased.job as NonNullable<typeof erased.job>)).outcome).toBe('no_address')
+    expect((await sendOf(erased.job as NonNullable<typeof erased.job>)).outcome).toBe('no_email')
   })
 
   it('reads nothing of another venue', async () => {

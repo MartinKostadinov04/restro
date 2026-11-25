@@ -258,18 +258,17 @@ function answer(result: ServiceResult, who: string | null): RvWriteResult {
 
 /**
  * Queues the guest email a command's answer owes (#576): a cancelled booking whose guest has an
- * address. Only the worker sends it. The write is done whatever becomes of its email, so a queue
- * that cannot be reached is logged (a code, never the guest) and the answer stands.
+ * email address. Only the worker sends it. The write is done whatever becomes of its email, so a
+ * queue that cannot be reached is logged (a code, never the guest) and the answer stands.
  */
-export async function queueGuestEmail(
+async function queueGuestEmail(
   result: ServiceResult,
   scope: { readonly tenantId: string; readonly venueId: string },
-  enqueue: typeof enqueueJob = enqueueJob,
 ): Promise<void> {
   const job = guestEmailJobOf(result, scope)
   if (job === null) return
   try {
-    await enqueue(JOB_NAMES.guestEmail, job)
+    await enqueueJob(JOB_NAMES.guestEmail, job)
   } catch (error) {
     logError('guest_email_queue_failed', error)
   }

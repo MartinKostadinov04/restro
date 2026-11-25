@@ -99,13 +99,13 @@ export interface WorkerConfig {
    * email key (it will serve login links and the digest too) and is needed only when that is set.
    * Never logged: a secret.
    */
-  readonly receiptEmail?: ReceiptEmailConfig | null
+  readonly receiptEmail?: EmailServiceConfig | null
   /**
    * The email service every other guest email goes through (#576): a reservation's news, from the
    * venue's name. GUEST_EMAIL_FROM_ADDRESS switches them on and needs RESEND_API_KEY; null: no
    * guest is emailed about his reservation (one warning at start). Never logged: a secret.
    */
-  readonly guestEmail?: ReceiptEmailConfig | null
+  readonly guestEmail?: EmailServiceConfig | null
 }
 
 /** How the database is backed up (ticket #320; D103). */
@@ -119,7 +119,7 @@ export interface BackupConfig {
 }
 
 /** Where a guest email is sent from: a receipt file (#186; D127), or any other (#576). */
-export interface ReceiptEmailConfig {
+export interface EmailServiceConfig {
   /** The email service's API key. A secret. */
   readonly apiKey: string
   /** An address on the sending domain verified with the service; the venue's name is its display name. */
@@ -237,9 +237,19 @@ const BAD_TELEGRAM_TOKEN = 'must be the bot token BotFather gave (digits, a colo
 const BAD_TELEGRAM_CHAT = 'must be a Telegram chat id: digits, with a minus sign for a group.'
 const BAD_HEALTHCHECKS_URL = 'must be an https:// address.'
 const BAD_RESEND_KEY = 'must be a Resend API key (it starts with re_).'
-const BAD_RECEIPT_FROM = 'must be one email address on the sending domain verified with Resend.'
+const BAD_FROM_ADDRESS = 'must be one email address on the sending domain verified with Resend.'
 const RESEND_KEY_MISSING = 'is not set. Receipt emails (RECEIPT_FROM_ADDRESS) need it.'
-const BAD_GUEST_EMAIL_FROM = 'must be one email address on the sending domain verified with Resend.'
+/** One address on the verified sending domain (RECEIPT_FROM_ADDRESS, GUEST_EMAIL_FROM_ADDRESS). */
+const fromAddress = () =>
+  z.preprocess(
+    unsetWhenBlank,
+    z
+      .string()
+      .trim()
+      .max(254)
+      .pipe(z.email({ error: BAD_FROM_ADDRESS }))
+      .optional(),
+  )
 const RESEND_KEY_MISSING_FOR_GUESTS = 'is not set. Guest emails (GUEST_EMAIL_FROM_ADDRESS) need it.'
 const BAD_VAPID_PUBLIC_KEY =
   'must be a base64url public key (pnpm exec web-push generate-vapid-keys).'
@@ -441,24 +451,8 @@ function environmentSchema(defaultWorkerId: () => string) {
           .regex(/^re_[A-Za-z0-9_-]{8,200}$/, { error: BAD_RESEND_KEY })
           .optional(),
       ),
-      RECEIPT_FROM_ADDRESS: z.preprocess(
-        unsetWhenBlank,
-        z
-          .string()
-          .trim()
-          .max(254)
-          .pipe(z.email({ error: BAD_RECEIPT_FROM }))
-          .optional(),
-      ),
-      GUEST_EMAIL_FROM_ADDRESS: z.preprocess(
-        unsetWhenBlank,
-        z
-          .string()
-          .trim()
-          .max(254)
-          .pipe(z.email({ error: BAD_GUEST_EMAIL_FROM }))
-          .optional(),
-      ),
+      RECEIPT_FROM_ADDRESS: fromAddress(),
+      GUEST_EMAIL_FROM_ADDRESS: fromAddress(),
       WORKER_SEND: z.preprocess(
         unsetWhenBlank,
         z

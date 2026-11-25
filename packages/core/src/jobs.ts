@@ -348,8 +348,8 @@ export type GuestEmailKind = (typeof GUEST_EMAIL_KINDS)[number]
  * it (`log_entries.seq`): the worker sends only while that entry is still the reservation's latest
  * news of its kind, and the email service sees it in the idempotency key, so the same news goes
  * out once and later news about the same reservation is an email of its own. No address and no
- * name: the worker
- * reads them from the guest record when it sends, so a guest erased meanwhile is not emailed.
+ * name: the worker reads them from the guest record when it sends, so a guest erased meanwhile
+ * is not emailed.
  */
 export const GuestEmailJobSchema = z.strictObject({
   tenantId,

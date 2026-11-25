@@ -2,7 +2,8 @@
 // venue's name, what happened, the night, the hour and the party. Plain and short: no image, no
 // link that tracks, nothing but these words; and never the word "receipt" (that email is the
 // POS's, `../email/sender.ts`). Every kind of news is one entry of `NEWS`, in both languages
-// (copy-rules.md), so a new kind is new words here and nothing else changes shape.
+// (copy-rules.md). A new kind is its words here, its Log kind in core (`GUEST_EMAIL_LOG_KINDS`)
+// and the state it leaves (`STILL_TRUE` in the job); the job and the sender keep their shape.
 //
 // Pure: no I/O.
 
@@ -38,8 +39,8 @@ const NEWS: Readonly<
 > = {
   reservation_cancelled: {
     bg: {
-      subject: 'Резервацията ви е отменена',
-      headline: (venue) => `Резервацията ви в ${venue} е отменена.`,
+      subject: 'Резервацията ви е отказана',
+      headline: (venue) => `Резервацията ви в ${venue} е отказана.`,
     },
     en: {
       subject: 'Your reservation is cancelled',

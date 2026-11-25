@@ -15,9 +15,9 @@ const FACTS = {
 describe('the words of a guest email (#576)', () => {
   it('says a cancellation in Bulgarian: the venue, what happened, the night, the hour, the party', () => {
     expect(guestEmailWords('reservation_cancelled', 'bg', FACTS)).toEqual({
-      subject: 'Резервацията ви е отменена',
+      subject: 'Резервацията ви е отказана',
       text: [
-        'Резервацията ви в Club Нощ е отменена.',
+        'Резервацията ви в Club Нощ е отказана.',
         '',
         'Вечер: събота, 28 ноември',
         'Час: 22:30',

@@ -31,7 +31,7 @@ const NEWS: GuestEmailNews = {
   startsAt: new Date('2026-11-28T20:30:00Z'),
   partySize: 4,
   latestEntry: 17,
-  address: ` ${ADDRESS} `,
+  email: ` ${ADDRESS} `,
   venueName: 'Club Нощ',
   timeZone: 'Europe/Sofia',
 }
@@ -69,7 +69,7 @@ describe('the guest email job (#576)', () => {
     const [email] = sender.guestSent
     expect(email?.to).toBe(ADDRESS)
     expect(email?.venueName).toBe('Club Нощ')
-    expect(email?.words.subject).toBe('Резервацията ви е отменена')
+    expect(email?.words.subject).toBe('Резервацията ви е отказана')
     expect(email?.words.text).toContain('Club Нощ')
     expect(email?.idempotencyKey).toBe(`${job.reservationId}-reservation_cancelled-17`)
     expect(sender.sent).toEqual([])
@@ -83,9 +83,9 @@ describe('the guest email job (#576)', () => {
     expect(lines.join('\n')).not.toMatch(/example\.test|maria|Мария/i)
   })
 
-  it('sends nothing to a reservation without an address', async () => {
-    expect(await run({ ...NEWS, address: null })).toBe('no_address')
-    expect(await run({ ...NEWS, address: '  ' })).toBe('no_address')
+  it('sends nothing to a reservation without an email', async () => {
+    expect(await run({ ...NEWS, email: null })).toBe('no_email')
+    expect(await run({ ...NEWS, email: '  ' })).toBe('no_email')
     expect(sender.guestSent).toEqual([])
   })
 
