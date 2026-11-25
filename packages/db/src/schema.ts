@@ -3807,7 +3807,11 @@ export const RESERVATION_KINDS = ['booking', 'walk_in', 'block'] as const
 
 const RESERVATION_KIND_VALUES = sql.raw(`('booking', 'walk_in', 'block')`)
 
-/** The eight statuses of a reservation (D135's seven and D138's Not seated). */
+/**
+ * The nine statuses of a reservation: D135's seven, D138's Not seated, and Declined (#578,
+ * Martin 11-25): the venue said no to a request. Cancelled stays a booking that stood and was
+ * called off.
+ */
 export const RESERVATION_STATUSES = [
   'requested',
   'reserved',
@@ -3817,10 +3821,11 @@ export const RESERVATION_STATUSES = [
   'no_show',
   'cancelled',
   'not_seated',
+  'declined',
 ] as const
 
 const RESERVATION_STATUS_VALUES = sql.raw(
-  `('requested', 'reserved', 'waiting', 'seated', 'finished', 'no_show', 'cancelled', 'not_seated')`,
+  `('requested', 'reserved', 'waiting', 'seated', 'finished', 'no_show', 'cancelled', 'not_seated', 'declined')`,
 )
 
 /** What a reservation's prepayment is doing (D136). Declared here; part 1 writes none of it. */
