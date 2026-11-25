@@ -1,6 +1,6 @@
 # What we can reliably know about a requested song, and whether a venue can block a genre
 
-Made by a research session (Opus) for row 1.13 of `2026-11-22-song-requests-grilling-answers.md`, the last
+Made by a research session (Opus) for row 1.13 of `2026-11-22-song-requests-decision-log.md`, the last
 open row of the song-requests grilling (T82). Research only: no code, no dependency chosen.
 
 **Verdict: partly, and not from YouTube.** YouTube can keep requests to *music as a whole* — the prototype

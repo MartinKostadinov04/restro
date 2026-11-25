@@ -103,8 +103,8 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D96](decisions/D96.md) | Versions: live + up to 2 restorable, non-live purged after 30 days, change log 2 months | firm |
 | [D97](decisions/D97.md) | Venue page tabs: Composer | firm; refined by D156, D157 and D161 |
 | [D98](decisions/D98.md) | Payments are a connector kind; the venue is the merchant; Restro never holds money | firm; refined by D126 (Stripe first) and D125 (its open line closed) |
-| [D99](decisions/D99.md) | Song requests: a paid priority queue the DJ runs, holds captured on accept | direction; prototype to be ported (T82), access to be grilled (T81) |
-| [D100](decisions/D100.md) | A guest feature declares whether it needs a table code | firm; refines D71 |
+| [D99](decisions/D99.md) | Song requests, the first direction: the paid bidding queue it describes is superseded by D162 to D171 | superseded in part by D162 to D171; the bidding queue is dead and must not be built; what survives is listed in the file |
+| [D100](decisions/D100.md) | A guest feature declares whether it needs a table code | firm; refines D71; refined by D170 (song requests declare no, and the way in is the venue's menu) |
 | [D101](decisions/D101.md) | Reservations become a module of the platform on Areas and Tables, hosted page first | direction; after ordering from the menu (T83) |
 | [D102](decisions/D102.md) | The night promise: the menu never goes down; everything else degrades to paused and alerts | firm; refined by D120 (push alerts, the outside watchdog) |
 | [D103](decisions/D103.md) | Keep the D43 hosting split through 10 clubs; agent time goes into portability, not moves | firm |
@@ -166,6 +166,16 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D159](decisions/D159.md) | The Design panel opens on a list of parts, and an option's picture draws the part alone | firm; refines D129 and D130 |
 | [D160](decisions/D160.md) | A party’s tables can be paid in one payment, and guests can share a bill by amount, settling together | firm; refines D139 (13.13), D154 §1 and D127; part payment waits on Mistral |
 | [D161](decisions/D161.md) | The admin is organised around the open venue | firm; supersedes D74; refines D97 |
+| [D162](decisions/D162.md) | A song request has one price the venue sets, and no amounts are shown to anyone | firm; supersedes D99's bidding model (ordering by amount, visible amounts, backers, boosts, the minimum paid request) |
+| [D163](decisions/D163.md) | The guest's money is held when he asks and taken only when the DJ marks the song played | firm; supersedes D99's capture on accept and its night-end-only release |
+| [D164](decisions/D164.md) | One timestamped queue, and the few in front of the DJ have no order among them | firm; supersedes D99's lock window |
+| [D165](decisions/D165.md) | A guest is told his place, and never a time Restro has not measured | firm; supersedes D99's “every guest sees the whole queue” |
+| [D166](decisions/D166.md) | A second guest asking for the same song pays the same price and moves it up: popularity, not bidding | firm; supersedes D99's boosts and its ordering by total amount |
+| [D167](decisions/D167.md) | The DJ refuses a request with one tap from a short fixed list, and his eyes are release 1's only screening | firm; refines D99 |
+| [D168](decisions/D168.md) | The DJ opens and closes the door to new requests, there is no automatic cap, and the same song cannot be asked again at once | firm; refines D99 |
+| [D169](decisions/D169.md) | Paid greetings come in two kinds, are approved or refused with no revision loop, and settle on their song's marker | firm |
+| [D170](decisions/D170.md) | A song request carries no table, and the way in is the venue's own menu | firm; refines D100; closes D99's and D100's deferral of the entry point (T81) |
+| [D171](decisions/D171.md) | The venue's settings for song requests, and the defaults an owner never has to think about | firm; supersedes D99's venue settings |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.
