@@ -1,5 +1,6 @@
 // The web app's server-side settings. Read lazily, on first use, so that `next build` (which
 // loads every route module) does not need them. Names only in messages, never values.
+import { isLocalHost } from '@restro/core'
 import { z } from 'zod'
 
 import type { ClientAddressSource } from './guard/bad-codes'
@@ -210,6 +211,78 @@ export function clientAddressFrom(
     )
   }
   return parsed.data
+}
+
+/** The most sites `BOOKING_FRAME_ANCESTORS` may name. */
+export const MAX_BOOKING_FRAME_ANCESTORS = 3
+
+/**
+ * One origin a site may frame the booking page from: `https://` and a host name or IPv4 address (a
+ * port is fine), with no path, query, `#part`, name and password, `*`, or anything else the policy
+ * would read as its own syntax (`;`, quotes); plain `http://` only for this PC and the local
+ * network (`isLocalHost`, the rule of the QR base address). A trailing `/` is tolerated. Returned as
+ * the browser writes an origin (`URL.origin`: scheme and host in lower case, no default port).
+ * No IPv6 address (`[::1]`): a policy's host-source has no form for one, so the browser would drop
+ * it and the setting would quietly do nothing. A name outside ASCII is written in punycode (`xn--…`).
+ */
+const ORIGIN_SHAPE = /^https?:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*(?::\d{1,5})?\/?$/i
+const FrameOriginSchema = z.string().transform((text, context) => {
+  let url: URL | null = null
+  try {
+    url = ORIGIN_SHAPE.test(text) ? new URL(text) : null
+  } catch {
+    url = null
+  }
+  const local = url !== null && isLocalHost(url.hostname)
+  if (url === null || (url.protocol !== 'https:' && !(url.protocol === 'http:' && local))) {
+    context.addIssue({ code: 'custom', message: 'not an origin' })
+    return z.NEVER
+  }
+  return url.origin
+})
+
+const BookingFrameAncestorsSchema = z
+  .string()
+  .optional()
+  .transform((value) =>
+    (value ?? '')
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part !== ''),
+  )
+  .pipe(z.array(FrameOriginSchema))
+  // The same site named twice counts once, before the limit.
+  .transform((origins) => [...new Set(origins)])
+  .pipe(z.array(z.string()).max(MAX_BOOKING_FRAME_ANCESTORS))
+
+/** The last value read and what it gave, so the proxy parses the setting once, not per request. */
+let frameAncestorsRead: { raw: string | undefined; origins: readonly string[] } | undefined
+
+/**
+ * The sites besides the booking page's own that may show it in a frame (#581, D178):
+ * `BOOKING_FRAME_ANCESTORS`, zero to three origins separated by commas, read at run time (the image
+ * is built once and configured per environment). Unset or empty means none. Read on its own, not
+ * through `serverEnv`, so the proxy needs no secret to ask; `instrumentation.ts` reads it at
+ * start-up, so a bad value stops the app there. The error names the variable, never the value.
+ */
+export function bookingFrameAncestors(
+  source: Readonly<Record<string, string | undefined>> = process.env,
+): readonly string[] {
+  const raw = source.BOOKING_FRAME_ANCESTORS
+  if (frameAncestorsRead !== undefined && frameAncestorsRead.raw === raw) {
+    return frameAncestorsRead.origins
+  }
+  const parsed = BookingFrameAncestorsSchema.safeParse(raw)
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid setting: BOOKING_FRAME_ANCESTORS (up to ${MAX_BOOKING_FRAME_ANCESTORS} origins ` +
+        'separated by commas, each https:// and a host with no path; http:// only for this PC ' +
+        'and the local network; or leave it unset).',
+    )
+  }
+  const origins = Object.freeze(parsed.data)
+  frameAncestorsRead = { raw, origins }
+  return origins
 }
 
 /** The key Tonight subscribes a staff device with, or undefined: unset, or not in a key's shape. */

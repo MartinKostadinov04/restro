@@ -59,6 +59,10 @@ services:
       # the notice route answers 503, so requiring it would block the first deploy.
       STRIPE_NOTICE_SECRET: ${STRIPE_NOTICE_SECRET:-}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      # The sites that may show the booking page in a frame, besides staging itself (#581, D178):
+      # up to three https origins separated by commas. Blank means none. A bad value stops the web
+      # app at start-up.
+      BOOKING_FRAME_ANCESTORS: ${BOOKING_FRAME_ANCESTORS:-}
     volumes:
       - restro-data:/data
     depends_on:

@@ -69,13 +69,16 @@ describe('the Content-Security-Policy of the guest pages', () => {
     expect(live.replaceAll('https://*.js.stripe.com', '')).not.toContain('*')
   })
 
-  it("goes with the no-referrer policy on both of the guest's paths", () => {
-    for (const rule of guestHeaders({})) {
-      expect(rule.headers.map((header) => header.key)).toEqual([
-        'Referrer-Policy',
-        'Content-Security-Policy',
-      ])
-    }
+  it('goes with the no-referrer policy on the menu and the table address, and not on the booking page', () => {
+    const keys = Object.fromEntries(
+      guestHeaders({}).map((rule) => [rule.source, rule.headers.map((header) => header.key)]),
+    )
+    expect(keys).toEqual({
+      '/m/:path*': ['Referrer-Policy', 'Content-Security-Policy'],
+      '/t/:path*': ['Referrer-Policy', 'Content-Security-Policy'],
+      // Its policy is its framing rule, sent by the proxy (#581, D178; src/frame-headers.ts).
+      '/book/:path*': ['Referrer-Policy'],
+    })
   })
 })
 

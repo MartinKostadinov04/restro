@@ -37,6 +37,7 @@ vi.mock('sonner', () => ({
 }))
 
 const VENUE = 'vn_0000000000000000000001'
+const ADDRESS = 'https://restro.example/book/night-group/club-night'
 
 function view(
   settings: Partial<ReservationsView['settings']> = {},
@@ -60,7 +61,7 @@ function view(
       spots: [],
       ...settings,
     },
-    bookingPath: '/book/night-group/club-night',
+    bookingAddress: ADDRESS,
     plan: { plans: [], spots: [], kinds: [], tables: [], unreadable: 0 },
     ...more,
   }
@@ -117,13 +118,17 @@ describe('Settings › Reservations', () => {
     const user = userEvent.setup()
     renderWithIntl(<ReservationsPanel view={view()} />)
     expect(screen.getByText('Guests can ask for a table on your booking page')).toBeTruthy()
-    const address = screen.getByTestId('rs-booking-address')
-    expect(address.getAttribute('href')).toBe('/book/night-group/club-night')
+    // Off: nothing to copy yet; on at once, the address and the embed code show (#581).
+    expect(screen.queryByTestId('rs-booking-address')).toBeNull()
+    expect(screen.getByTestId('rs-embed-off').textContent).toBe(
+      'The booking page is off. Turn on Online booking to get its address and embed code.',
+    )
     await user.click(screen.getByRole('switch', { name: 'Online booking' }))
     await waitFor(() =>
       expect(saveOnlineBookingAction).toHaveBeenCalledWith({ venueId: VENUE, bookingPage: true }),
     )
     expect(vi.mocked(toast.success).mock.calls[0]?.[0]).toBe('Online booking is on.')
+    expect(screen.getByTestId('rs-booking-address').getAttribute('href')).toBe(ADDRESS)
     const options = vi.mocked(toast.success).mock.calls[0]?.[1] as unknown as {
       action: { onClick: () => void }
     }
@@ -140,6 +145,46 @@ describe('Settings › Reservations', () => {
     renderWithIntl(<ReservationsPanel view={view({ bookingPage: true }, { canChange: false })} />)
     expect(screen.queryByRole('switch', { name: 'Online booking' })).toBeNull()
     expect(screen.getByTestId('rs-booking-value').textContent).toBe('On')
+  })
+
+  it('offers the booking page address and its embed code, each with Copy, to a read-only role too (#581)', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    renderWithIntl(<ReservationsPanel view={view({ bookingPage: true }, { canChange: false })} />)
+    const embed = screen.getByTestId('rs-embed')
+    expect(within(embed).getByRole('heading', { name: 'Embed on your website' })).toBeTruthy()
+    expect(screen.getByTestId('rs-booking-address').getAttribute('href')).toBe(ADDRESS)
+    const code = screen.getByTestId('rs-embed-code').textContent
+    expect(code).toBe(
+      `<iframe src="${ADDRESS}" title="Book a table" width="100%" height="800" style="border:0" loading="lazy"></iframe>`,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Copy Booking page address' }))
+    expect(writeText).toHaveBeenLastCalledWith(ADDRESS)
+    expect(vi.mocked(toast.success)).toHaveBeenLastCalledWith('Copied', { id: 'rs-embed-copied' })
+
+    await user.click(screen.getByRole('button', { name: 'Copy Embed code' }))
+    expect(writeText).toHaveBeenLastCalledWith(code)
+  })
+
+  it('says what to do when the browser does not copy (#581)', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'))
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    renderWithIntl(<ReservationsPanel view={view({ bookingPage: true })} />)
+    await user.click(screen.getByRole('button', { name: 'Copy Embed code' }))
+    expect(vi.mocked(toast.error)).toHaveBeenLastCalledWith(
+      'This browser didn’t copy it. Select the text and copy it yourself.',
+      { id: 'rs-embed-copied' },
+    )
+  })
+
+  it('shows no address and no snippet without a full address: no organisation address, or no absolute origin (#581)', () => {
+    renderWithIntl(
+      <ReservationsPanel view={view({ bookingPage: true }, { bookingAddress: null })} />,
+    )
+    expect(screen.queryByTestId('rs-embed')).toBeNull()
   })
 
   it('names the consequence of editing a night that has passed, in one line', () => {

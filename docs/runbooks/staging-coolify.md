@@ -117,8 +117,9 @@ worker and never the web app.
 | `STRIPE_SECRET_KEY` | | ✓ | | the `rk_test_…` key |
 | `SIM_POS_CONTROL_TOKEN` | | | ✓ | a fresh random value |
 
-Optional, and left blank on staging unless the lead says otherwise: `PUBLIC_BASE_URL` and
-`VAPID_PUBLIC_KEY` (web); `STRIPE_REFUND_KEY`, `BARSY_PRODUCTION_HOSTS`, the Telegram,
+Optional, and left blank on staging unless the lead says otherwise: `PUBLIC_BASE_URL`,
+`VAPID_PUBLIC_KEY` and `BOOKING_FRAME_ANCESTORS` (the sites that may frame the booking page, #581;
+`docs/runbooks/staging-deploy.md` §6) (web); `STRIPE_REFUND_KEY`, `BARSY_PRODUCTION_HOSTS`, the Telegram,
 Healthchecks, Web Push and receipt-email settings (worker); `SIM_POS_SCENARIO` (the simulator's
 starting scenario, `quiet-night` when blank).
 

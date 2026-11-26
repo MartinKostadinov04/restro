@@ -41,6 +41,11 @@ const REVEAL_SERVICE_TOKEN = 'e2e-only-reveal-token-not-used-anywhere-else-01234
 const WORKER_PORT = PORT + 2
 // The simulated POS the Send's test adds rounds to (#77; never a real one); it moves with E2E_PORT.
 const SIM_PORT = PORT + 3
+// The site the booking page's embed test frames it from (#581, D178): the spec serves a page on this
+// port, and only `127.0.0.1` on it is allowed (`localhost` on the same port is another site, which
+// the browser must refuse). It moves with E2E_PORT. Not in the build's environment: the web server
+// reads it when it runs, which is what the spec proves.
+const FRAME_HOST_PORT = PORT + 4
 
 const serverEnvironment = (origin: string) => ({
   ...(process.env as Record<string, string>),
@@ -63,6 +68,8 @@ const serverEnvironment = (origin: string) => ({
   // The guest link's key (#579), the web servers' and the worker's alike, for the test servers
   // only: the booking link spec works a booking's token out with it. Never the runner's own.
   GUEST_LINK_KEY: E2E_GUEST_LINK_KEY,
+  // The one other site that may frame the booking page in the tests (#581); never the runner's own.
+  BOOKING_FRAME_ANCESTORS: `http://127.0.0.1:${FRAME_HOST_PORT}`,
   PAYMENTS_PROVIDER: 'sim-pay',
   // Not production: the simulated provider's stand-in onboarding page (#398) is offered only where
   // the environment is named and is not production, as the worker's simulator is.
