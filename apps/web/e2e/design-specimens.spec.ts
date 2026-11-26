@@ -2,7 +2,8 @@ import { type BrowserContext, expect, type Page, test } from '@playwright/test'
 
 import { e2eSealEnvironment } from '../../worker/src/e2e-seal-keys'
 import { runScriptWith } from './global-setup'
-import { ADMIN_PASSWORD, TONIGHT_PIN_PEPPER } from './support'
+import { signInAs } from './sign-in'
+import { TONIGHT_PIN_PEPPER } from './support'
 
 // The speed of the Advanced panel's option pictures (D159) on the walk's demo club
 // (`db:seed:demo`: a Bulgarian club menu with photos, a design, a night in progress), on a production
@@ -25,20 +26,7 @@ let page: Page
 let venueId = ''
 
 async function signIn(target: Page, email: string) {
-  // Better Auth allows a few sign-ins per 10 seconds, and the other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await target.goto('/venues')
-    await target.getByLabel('Имейл').fill(email)
-    await target.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await target.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(target).toHaveURL(/\/venues$/, { timeout: 5_000 })
-      return
-    } catch {
-      await target.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  await signInAs(target, email, { lands: /\/venues$/ })
 }
 
 /**

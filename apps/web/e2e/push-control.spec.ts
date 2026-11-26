@@ -6,8 +6,8 @@ import pg from 'pg'
 
 import { runScriptWith } from './global-setup'
 import { addressOfVenue } from './menu-path'
+import { signInAs } from './sign-in'
 import {
-  ADMIN_PASSWORD,
   GUEST_SLUG,
   TONIGHT_PIN_PEPPER,
   TONIGHT_TABLET_EMAIL,
@@ -90,24 +90,9 @@ async function stubPush(
 }
 
 async function signIn(page: Page, email: string) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(email)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      // A staff sign-in lands on a screen of the venue (D141); the tablet's plain account on the
-      // venues, until it is a device.
-      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=\w+|\/venues$/, {
-        timeout: 8_000,
-      })
-      return
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  // A staff sign-in lands on a screen of the venue (D141); the tablet's plain account on the
+  // venues, until it is a device.
+  await signInAs(page, email, { lands: /\/venues\/vn_[^/?]+\?tab=\w+|\/venues$/ })
 }
 
 async function person(

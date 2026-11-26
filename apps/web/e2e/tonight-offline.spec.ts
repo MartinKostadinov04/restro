@@ -7,12 +7,8 @@
 import { type BrowserContext, expect, type Page, test } from '@playwright/test'
 
 import { runScriptWith } from './global-setup'
-import {
-  ADMIN_PASSWORD,
-  TONIGHT_OWNER_EMAIL,
-  TONIGHT_PIN_PEPPER,
-  TONIGHT_WAITER_EMAIL,
-} from './support'
+import { signInAs } from './sign-in'
+import { TONIGHT_OWNER_EMAIL, TONIGHT_PIN_PEPPER, TONIGHT_WAITER_EMAIL } from './support'
 
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(240_000)
@@ -30,32 +26,19 @@ function seed(...args: string[]): string {
 }
 
 async function signIn(page: Page, email: string) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(email)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+|\/venues$/, { timeout: 8_000 })
-      // The list may send a person with one venue straight into it; if it does not, open the club.
-      const inside = await page.waitForURL(/\/venues\/vn_/, { timeout: 10_000 }).then(
-        () => true,
-        () => false,
-      )
-      if (inside) return
-      // The card's own link (the sidebar is shut at phone width); the page is still in Bulgarian.
-      await page
-        .getByRole('link', { name: /^(Отвори|Open)$/ })
-        .first()
-        .click()
-      await expect(page).toHaveURL(/\/venues\/vn_/, { timeout: 30_000 })
-      return
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  await signInAs(page, email, { lands: /\/venues\/vn_[^/?]+|\/venues$/ })
+  // The list may send a person with one venue straight into it; if it does not, open the club.
+  const inside = await page.waitForURL(/\/venues\/vn_/, { timeout: 10_000 }).then(
+    () => true,
+    () => false,
+  )
+  if (inside) return
+  // The card's own link (the sidebar is shut at phone width); the page is still in Bulgarian.
+  await page
+    .getByRole('link', { name: /^(Отвори|Open)$/ })
+    .first()
+    .click({ timeout: 20_000 })
+  await expect(page).toHaveURL(/\/venues\/vn_/, { timeout: 30_000 })
 }
 
 async function person(

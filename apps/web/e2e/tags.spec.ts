@@ -4,7 +4,8 @@ import path from 'node:path'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
-import { ADMIN_EMAIL, ADMIN_PASSWORD } from './support'
+import { signInAs } from './sign-in'
+import { ADMIN_EMAIL } from './support'
 
 // Tags in the composer (brief S3-06, D60) on a production build, in Bulgarian, against the demo
 // menu: create a tag in the Tags panel, tick five items and add the tag to all of them with the
@@ -31,19 +32,7 @@ let page: Page
 
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1280, height: 1100 } })
-  // Better Auth allows a few sign-ins per 10 seconds, and the other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(ADMIN_EMAIL)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(page).toHaveURL(/\/venues$/, { timeout: 5_000 })
-      break
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
+  await signInAs(page, ADMIN_EMAIL, { lands: /\/venues$/ })
   await page.getByTestId('venue-card').first().getByRole('link', { name: 'Отвори' }).click()
   await expect(page.getByTestId('composer')).toBeVisible()
 })

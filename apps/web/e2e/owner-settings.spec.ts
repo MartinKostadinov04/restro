@@ -2,8 +2,8 @@ import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
 import { type Browser, expect, type Page, test } from '@playwright/test'
-
-import { ADMIN_EMAIL, ADMIN_PASSWORD, VENUE_NAME } from './support'
+import { signInAs } from './sign-in'
+import { ADMIN_EMAIL, VENUE_NAME } from './support'
 
 // The owner's settings for ordering (#87; plans `docs/deliverables/2026-10-27-settings-*-plan.md`) on
 // a production build, in Bulgarian (the longest words), as the demo owner:
@@ -22,20 +22,7 @@ test.setTimeout(240_000)
 let venueId = ''
 
 async function signIn(page: Page) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(ADMIN_EMAIL)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(page).toHaveURL(/\/venues$/, { timeout: 8_000 })
-      return
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
-  throw new Error('could not sign in')
+  await signInAs(page, ADMIN_EMAIL, { lands: /\/venues$/ })
 }
 
 async function open(

@@ -1,7 +1,8 @@
 import { type Browser, expect, type Page, test } from '@playwright/test'
 
 import { addressOfVenue } from './menu-path'
-import { ADMIN_EMAIL, ADMIN_PASSWORD, GUEST_SLUG, VENUE_NAME } from './support'
+import { signInAs } from './sign-in'
+import { ADMIN_EMAIL, GUEST_SLUG, VENUE_NAME } from './support'
 
 // The composer's "Guest features" card (brief SH-05b, D71; on the Design subtab since S6, D92) on a
 // production build, with the REAL
@@ -56,19 +57,7 @@ async function publishFromTab() {
 
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1280, height: 1100 } })
-  // Better Auth allows a few sign-ins per 10 seconds, and the other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(ADMIN_EMAIL)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(page).toHaveURL(/\/venues$/, { timeout: 5_000 })
-      break
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
+  await signInAs(page, ADMIN_EMAIL, { lands: /\/venues$/ })
   await page
     .getByTestId('venue-card')
     .filter({ hasText: VENUE_NAME })
