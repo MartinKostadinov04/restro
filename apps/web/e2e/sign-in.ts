@@ -84,9 +84,8 @@ export async function signInAs(
     // is then already inside, with no form to fill.
     if (lands.test(page.url())) return
 
-    const emailField = page.getByLabel('Имейл')
     try {
-      await emailField.fill(email, { timeout: STEP_MS })
+      await page.getByLabel('Имейл').fill(email, { timeout: STEP_MS })
       await page.getByLabel('Парола').fill(password, { timeout: STEP_MS })
     } catch {
       if (lands.test(page.url())) return
