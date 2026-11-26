@@ -100,6 +100,7 @@ import {
 } from './payment-todos'
 import type { Permission } from './permissions'
 import { type ReceiptToBring, receiptsToBring } from './receipt-rows'
+import { type GatheringShare, gatheringShares } from './share-rows'
 import {
   byCodeUnits,
   groupHasUnreadTable,
@@ -176,6 +177,13 @@ export interface TableStateRead {
    * is false.
    */
   readonly movedAway?: boolean
+  /**
+   * True when the table is closed and its last sitting's bill was settled by a payment made at
+   * another table of its linked group that covered this table's lines (#545, D160 §2), within the
+   * same window as `movedAway`: the phone is told the bill was paid with the party's, not that no
+   * orders were made. Absent is false. It names no table and no payer (rule 3).
+   */
+  readonly paidTogether?: boolean
   /** The open sitting's order, or null before its first write. Lines are the guest API's shape. */
   readonly order: {
     readonly lines: readonly unknown[]
@@ -348,7 +356,11 @@ export function lastEndedSittingQuery(
   input: { readonly tableId: string; readonly after: Date; readonly notBefore: Date },
 ) {
   return tx
-    .select({ reason: sittings.endReason, endedAt: sittings.endedAt })
+    .select({
+      reason: sittings.endReason,
+      openedAt: sittings.openedAt,
+      endedAt: sittings.endedAt,
+    })
     .from(sittings)
     .where(
       and(
@@ -868,6 +880,34 @@ export async function readTableState(
             notBefore: dayStart,
           })
     const movedAway = lastEnd?.reason === 'party_moved'
+    // A closed table whose last bill a payment of another table of its group settled (#545): the
+    // group payment moves this table's lines to the payment table and the sitting ends with the
+    // bill, so the phone here has nothing to read but "no orders yet" unless the server says so.
+    const paidTogether =
+      lastEnd !== undefined && lastEnd.reason === 'bill_closed'
+        ? (
+            await tx
+              .select({ id: payments.id })
+              .from(paymentLines)
+              .innerJoin(
+                payments,
+                and(
+                  eq(payments.tenantId, paymentLines.tenantId),
+                  eq(payments.id, paymentLines.paymentId),
+                ),
+              )
+              .where(
+                and(
+                  eq(paymentLines.tableId, table.id),
+                  ne(payments.tableId, table.id),
+                  eq(payments.state, 'captured'),
+                  gte(payments.createdAt, lastEnd.openedAt),
+                  lte(payments.createdAt, lastEnd.endedAt ?? lastEnd.openedAt),
+                ),
+              )
+              .limit(1)
+          ).length > 0
+        : false
     const [order] =
       sitting === undefined
         ? []
@@ -1014,6 +1054,7 @@ export async function readTableState(
       },
       sitting: sitting ?? null,
       ...(movedAway ? { movedAway: true } : {}),
+      ...(paidTogether ? { paidTogether: true } : {}),
       order:
         order === undefined
           ? null
@@ -1180,6 +1221,12 @@ export interface Tonight {
    * Brought (`alerts.answer`); null otherwise.
    */
   readonly receipts: readonly ReceiptToBring[] | null
+  /**
+   * The shares of a bill still gathering their holds (D160 §3, 2.16; #545), every one of them whatever
+   * the role: what is held of how much and the time left, never who. Each names every table it
+   * covers, so each of those tiles and sheets reads it.
+   */
+  readonly shares?: readonly GatheringShare[]
   /**
    * Refunds the venue made in its provider's dashboard that still wait for a storno (#222), the
    * ones that did not go through after their storno was made (tonight's only), and the disputes
@@ -1400,6 +1447,9 @@ export async function readTonight(
               ),
             )
             .orderBy(logEntries.at)
+
+    // The shares still gathering their holds: every role reads them, they name nobody (D160 2.16).
+    const shares = await gatheringShares(tx, venue.id)
 
     const calls = held.has('alerts.answer')
       ? await tx
@@ -1678,6 +1728,7 @@ export async function readTonight(
         row.sentOrderId === null ? [] : [{ sentOrderId: row.sentOrderId, at: row.at }],
       ),
       receipts,
+      shares,
       refunds: refundTodos,
       waiterCalls:
         calls === null ? null : calls.map((call) => ({ ...call, kinds: orderedKinds(call.kinds) })),

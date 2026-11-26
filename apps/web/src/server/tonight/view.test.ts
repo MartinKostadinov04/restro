@@ -159,6 +159,7 @@ describe('Needs you, in the order of what costs most to leave', () => {
           tableId: 'tb_000000000000000000001',
           name: null,
           number: '1',
+          payer: { tableId: 'tb_000000000000000000001', name: null, number: '1' },
           receiptNumber: null,
           amountMinor: 3800,
           currency: 'EUR',
@@ -170,6 +171,7 @@ describe('Needs you, in the order of what costs most to leave', () => {
           tableId: 'tb_000000000000000000003',
           name: null,
           number: '3',
+          payer: { tableId: 'tb_000000000000000000003', name: null, number: '3' },
           receiptNumber: 'R-000123',
           amountMinor: 1450,
           currency: 'EUR',
@@ -184,8 +186,22 @@ describe('Needs you, in the order of what costs most to leave', () => {
     // Oldest first, with the number the guest shows and the receipt number when the POS gave one;
     // a receipt row never turns a tile red.
     expect(rows.slice(1).map((row) => row.receipt)).toEqual([
-      { paymentId: 'py_1', paymentNumber: 'AB3CD', receiptNumber: 'R-000123', amountMinor: 1450 },
-      { paymentId: 'py_2', paymentNumber: 'KQ7MD', receiptNumber: null, amountMinor: 3800 },
+      {
+        paymentId: 'py_1',
+        paymentNumber: 'AB3CD',
+        receiptNumber: 'R-000123',
+        amountMinor: 1450,
+        payer: { tableId: 'tb_000000000000000000003', table: 'Table 3', numbered: false },
+        alsoPaid: [],
+      },
+      {
+        paymentId: 'py_2',
+        paymentNumber: 'KQ7MD',
+        receiptNumber: null,
+        amountMinor: 3800,
+        payer: { tableId: 'tb_000000000000000000001', table: 'Table 1', numbered: false },
+        alsoPaid: [],
+      },
     ])
     expect(rows[1]).toMatchObject({ tableId: 'tb_000000000000000000003', table: 'Table 3' })
     expect(
@@ -195,6 +211,66 @@ describe('Needs you, in the order of what costs most to leave', () => {
     ).not.toContain('payment')
     // Someone who may not mark it Brought is given none.
     expect(view(tonight({ receipts: null })).rows).toEqual([])
+  })
+
+  it('raises a receipt row for every table one payment covered, the paying table keeping the button (#545)', () => {
+    const t1 = 'tb_000000000000000000001'
+    const t3 = 'tb_000000000000000000003'
+    const row = (tableId: string, label: string) => ({
+      paymentId: 'py_9',
+      paymentNumber: 'ZZ9ZZ',
+      tableId,
+      name: null,
+      number: label,
+      payer: { tableId: t1, name: null, number: '1' },
+      receiptNumber: null,
+      amountMinor: 5400,
+      currency: 'EUR',
+      raisedAt: new Date('2026-10-27T21:20:00Z'),
+    })
+    const rows = view(tonight({ receipts: [row(t1, '1'), row(t3, '3')] })).rows
+    expect(rows.map((one) => one.tableId)).toEqual([t1, t3])
+    // Each names its own table, and the one payment's id is the same on both.
+    expect(rows.map((one) => one.table)).toEqual(['Table 1', 'Table 3'])
+    expect(rows.map((one) => one.receipt?.paymentId)).toEqual(['py_9', 'py_9'])
+    // The paying table's row says which other tables the payment covered; the other names the payer.
+    expect(rows[0]?.receipt?.alsoPaid).toEqual([{ table: 'Table 3', numbered: false }])
+    expect(rows[1]?.receipt?.alsoPaid).toEqual([])
+    expect(rows[1]?.receipt?.payer).toEqual({ tableId: t1, table: 'Table 1', numbered: false })
+    // Two rows, two ids: the screen keys and announces each.
+    expect(new Set(rows.map((one) => one.id)).size).toBe(2)
+  })
+
+  it('shows a gathering share on every table it covers: the money state, what is held, the time left (#545)', () => {
+    const t1 = 'tb_000000000000000000001'
+    const t3 = 'tb_000000000000000000003'
+    const share = {
+      paymentId: 'py_5',
+      paymentNumber: 'AB5CD',
+      tableId: t1,
+      tableIds: [t1, t3],
+      sharedMinor: 10000,
+      heldMinor: 6000,
+      currency: 'EUR',
+      endsAt: new Date(NOW.getTime() + 5 * 60_000 + 10_000),
+    }
+    const tiles = view(tonight({ shares: [share] })).groups.flatMap((g) => g.tables)
+    const of = (id: string) => tiles.find((tile) => tile.id === id)
+    // 5 min 10 s left reads "6 min": rounded up, never a share shown as over while it is not.
+    expect(of(t1)).toMatchObject({
+      state: 'payment',
+      share: { paymentId: 'py_5', sharedMinor: 10000, heldMinor: 6000, minutesLeft: 6 },
+    })
+    expect(of(t3)).toMatchObject({ state: 'payment', share: { paymentId: 'py_5' } })
+    // A table the share does not cover reads as before.
+    expect(tiles.find((tile) => tile.share === undefined)).toBeDefined()
+    // No card held yet: the time has not started.
+    const none = view(tonight({ shares: [{ ...share, heldMinor: 0, endsAt: null }] }))
+    expect(none.groups.flatMap((g) => g.tables).find((tile) => tile.id === t1)?.share).toMatchObject(
+      { heldMinor: 0, minutesLeft: null },
+    )
+    // The share names nobody: nothing of a hold's owner is on the tile.
+    expect(JSON.stringify(of(t1)?.share)).not.toMatch(/handle|hold_|ph_/)
   })
 
   it('puts the storno, the dispute and a refund that failed at rank 5, with what the storno needs (#222)', () => {

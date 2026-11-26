@@ -153,6 +153,8 @@ export const GuestTableStateSchema = z.strictObject({
     state: z.enum(['on', 'paused', 'closed']),
     /** Staff moved the party away from this table (P22): the bill stayed here. Absent otherwise. */
     movedAway: z.literal(true).optional(),
+    /** The bill here was paid by a payment made at another table of the party (#545). */
+    paidTogether: z.literal(true).optional(),
     notesAndOptions: z.boolean(),
     /**
      * Pay-first at this table (#113): `on` where the POS opens a bill with a first round, pay-first

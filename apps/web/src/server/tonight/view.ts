@@ -69,6 +69,14 @@ export interface ActionRow {
     readonly receiptNumber: string | null
     /** What was charged, tip included. */
     readonly amountMinor: number
+    /**
+     * The table whose waiter brings the receipt: where the paying phone is (D151). When it is not
+     * this row's table, the payment covered this table too (#545): the row tells this table's
+     * waiter it is paid and where the receipt goes, and has no button.
+     */
+    readonly payer: { readonly tableId: string; readonly table: string; readonly numbered: boolean }
+    /** On the paying table's row: the other tables the one payment covered, by name. */
+    readonly alsoPaid: readonly { readonly table: string; readonly numbered: boolean }[]
   }
   /** A refund the venue made in its provider's dashboard that waits for a storno (#222). */
   readonly storno?: {
@@ -149,12 +157,31 @@ export interface MoneyRow {
 /** The words a table's tile can show, in the order they win (plan §5; `payment` is red, #115). */
 export type TileState = 'closed' | 'open' | 'paused' | 'check' | 'approval' | 'call' | 'payment'
 
+/** A share gathering at a table: what its sheet reads, and what "Cancel sharing" names. */
+export interface TileShare {
+  /** The share's payment: `share.cancel` names it. */
+  readonly paymentId: string
+  /** The amount shared, and what the guests' cards hold of it (tips aside), in minor units. */
+  readonly sharedMinor: number
+  readonly heldMinor: number
+  /**
+   * Whole minutes left of the guests' time, rounded up, at the moment of the read; null while no
+   * card is held, since the time starts with the first hold (D160 2.7).
+   */
+  readonly minutesLeft: number | null
+}
+
 /** One table's tile. */
 export interface TableTile {
   readonly id: string
   readonly label: string
   readonly numbered: boolean
   readonly state: TileState
+  /**
+   * A share of the bill still gathering its holds (D160 §3, 2.16; #545): what is held of how much
+   * and the time left, never who. Set on every table the share covers. Absent for none.
+   */
+  readonly share?: TileShare
   /** The table, or its hall, is hidden: it is in neither count and "Open all" leaves it closed. */
   readonly hidden: boolean
   /** When its sitting opened, as `HH:mm` in the venue's zone; null while closed. */
@@ -588,9 +615,16 @@ export function buildTonightView(input: {
     })
     raise(call.tableId, 'call')
   }
+  // A payment covering several tables leaves one row for each of them (#545, Martin 11-25).
+  const receiptTables = new Map<string, { tableId: string; label: string }[]>()
   for (const receipt of tonight.receipts ?? []) {
+    const own = { tableId: receipt.tableId, label: labelOf.get(receipt.tableId) ?? '' }
+    receiptTables.set(receipt.paymentId, [...(receiptTables.get(receipt.paymentId) ?? []), own])
+  }
+  for (const receipt of tonight.receipts ?? []) {
+    const payerTable = receipt.payer.tableId
     rows.push({
-      id: `receipt:${receipt.paymentId}`,
+      id: `receipt:${receipt.paymentId}${receipt.tableId === payerTable ? '' : `:${receipt.tableId}`}`,
       kind: 'receipt',
       tableId: receipt.tableId,
       table: labelOf.get(receipt.tableId) ?? '',
@@ -601,8 +635,41 @@ export function buildTonightView(input: {
         paymentNumber: receipt.paymentNumber,
         receiptNumber: receipt.receiptNumber,
         amountMinor: receipt.amountMinor,
+        payer: {
+          tableId: payerTable,
+          table: labelOf.get(payerTable) ?? '',
+          numbered: numberedOf.has(payerTable),
+        },
+        alsoPaid:
+          receipt.tableId !== payerTable
+            ? []
+            : (receiptTables.get(receipt.paymentId) ?? [])
+                .filter((other) => other.tableId !== payerTable)
+                .map((other) => ({
+                  table: other.label,
+                  numbered: numberedOf.has(other.tableId),
+                })),
       },
     })
+  }
+  // A share gathering its holds: the table's tile shows the money state, its sheet the line (#545).
+  // The time left counts from the first hold; with none held yet there is none to say.
+  const shareOf = new Map<string, TileShare>()
+  for (const share of tonight.shares ?? []) {
+    const minutesLeft =
+      share.endsAt === null
+        ? null
+        : Math.max(1, Math.ceil((share.endsAt.getTime() - input.now.getTime()) / 60_000))
+    const tileShare: TileShare = {
+      paymentId: share.paymentId,
+      sharedMinor: share.sharedMinor,
+      heldMinor: share.heldMinor,
+      minutesLeft,
+    }
+    for (const tableId of share.tableIds) {
+      shareOf.set(tableId, tileShare)
+      raise(tableId, 'payment')
+    }
   }
   // The storno and dispute to-dos (#222): present only for those who may see them.
   for (const refund of tonight.refunds?.storno ?? []) {
@@ -690,6 +757,7 @@ export function buildTonightView(input: {
   const tiles = tonight.tables.map((table): TableTile & { readonly barId: string | null } => {
     const open = table.sitting !== null
     const barPaused = allBars || (table.barId !== null && pausedBars.has(table.barId))
+    const sharing = shareOf.get(table.id)
     return {
       id: table.id,
       label: table.label,
@@ -707,6 +775,7 @@ export function buildTonightView(input: {
             size: party.partySize,
           }))
         : [],
+      ...(sharing === undefined ? {} : { share: sharing }),
       hidden: table.hidden,
     }
   })

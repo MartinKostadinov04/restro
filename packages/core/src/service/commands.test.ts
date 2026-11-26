@@ -80,6 +80,9 @@ describe('the service commands', () => {
       'reservation.set_guests',
       'reservation.set_status',
       'reservation.undo_arrival',
+      // #545: "Cancel sharing" lets held cards go and charges nothing, so it is as quick as
+      // closing the table beside it (Martin 11-24, decision log 2.16; the lead, no PIN).
+      'share.cancel',
       'table.close',
       'table.new_guests',
       'table.open',

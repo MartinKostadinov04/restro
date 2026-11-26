@@ -409,6 +409,7 @@ export {
   receiptsToBring,
 } from './receipt-rows'
 export { readReceiptsNotBrought, readReceiptsToBring } from './receipts'
+export { type GatheringShare, gatheringShares } from './share-rows'
 export {
   type PendingRefund,
   pendingRefunds,

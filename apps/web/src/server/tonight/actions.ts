@@ -332,6 +332,43 @@ export async function receiptBroughtAction(input: unknown): Promise<TonightResul
   )
 }
 
+const OnShare = z.strictObject({ venueId, tableId, paymentId: idSchema('py'), pin })
+
+/**
+ * "Cancel sharing" (#545; D160 §3, decision log 2.16): lets every hold of the table's share go, so
+ * the guests can pay another way, cash included. The same class of write as closing a table: the
+ * right to open and close tables decides, on a shared tablet as on a phone, with no PIN of its own
+ * (nothing is charged and nothing is lost but the holds the guests chose to give). The holds are
+ * released by the worker, which is queued at once, as for a payment's answer. A repeat, or a share
+ * that was covered meanwhile, is the engine's: its refusal comes back and the sheet shows what the
+ * share became.
+ */
+export async function cancelShareAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnShare.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { tableId: table, paymentId } = parsed.data
+  return perform(parsed.data, async (scope) => {
+    const result = await command(scope, { type: 'share.cancel', tableId: table, paymentId })
+    if (!result.ok) return result
+    const state = result.details.state
+    if (typeof state === 'string') {
+      const step = paymentWorkerJob({ state, reason: null })
+      if (step !== null) {
+        try {
+          await queuePaymentStep(
+            { tenantId: scope.tenantId, venueId: scope.venueId, paymentId },
+            step,
+          )
+        } catch (error) {
+          // The cancel is saved; the recovery tick picks the share up within a minute.
+          logError('payment_worker_not_queued', error)
+        }
+      }
+    }
+    return result
+  })
+}
+
 /** Undo of "Brought": the receipt is to be brought again. */
 export async function receiptUnbroughtAction(input: unknown): Promise<TonightResult> {
   const parsed = OnReceipt.safeParse(input)
