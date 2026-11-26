@@ -27,11 +27,21 @@ one left off, at its section 6.
 
 | | Why |
 | --- | --- |
-| `or/foundation` merged into `main` | staging deploys from `main`, and the paying code and its 18 migrations are not there yet |
-| PR #199 merged | it is the migration runner, and it only runs from `main` |
+| `or/foundation` merged into `main` | staging deploys from the `staging` branch, which is fast-forwarded from `main`, and the paying code and its 18 migrations are not there yet |
+| PR #199 merged | it is the migration runner, and it only runs from the `staging` branch |
 | Your acceptance walk done | so what reaches the deploy path is code you have seen working |
 
 Section 5 (Railway) does not wait for any of those and can be done first.
+
+**The `staging` branch.** Everything that reaches staging — this migration runner and Coolify —
+comes from the branch called `staging`, never from `main` directly. The repository's `staging`
+environment allows no other branch, so a run started from anywhere else is refused before it can
+touch the database, and the approval bar below is a second lock, not the only one.
+
+`staging` does not follow `main` on its own. When you want staging to catch up, it is
+fast-forwarded to `main` first (`git push origin origin/main:staging`, which a lead can do when
+you ask) and deployed after. That is the point of it: `main` keeps moving while staging stays on
+a commit you chose.
 
 ## 2. The five GitHub environment secrets (about 20 minutes)
 
@@ -58,7 +68,7 @@ A sixth, `STAGING_DATABASE_URL_PURGE`, is the worker's and belongs in Railway (�
 ## 3. Run the migration
 
 1. GitHub → **Actions** → in the left list, **DB migrate (staging)** → **Run workflow**.
-2. Branch: **main**. Leave `rotate_app_password` and `rotate_purge_password` **unticked** — they are
+2. Branch: **`staging`**. Leave `rotate_app_password` and `rotate_purge_password` **unticked** — they are
    only for after you have changed a password in §2.
 3. **Run workflow**, then wait for the yellow "waiting for approval" bar and **Review deployments**
    → tick `staging` → **Approve and deploy**.
