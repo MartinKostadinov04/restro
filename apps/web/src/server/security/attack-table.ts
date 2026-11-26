@@ -1010,6 +1010,13 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
   {
+    action: 'cancelShareAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return tonight.cancelShareAction({ venueId: x.id, tableId: x.table, paymentId: x.payment })
+    },
+  },
+  {
     action: 'receiptUnbroughtAction',
     call: (v) => {
       const x = v.venues[0]
@@ -2335,6 +2342,15 @@ export const MIXED: readonly Attack[] = [
     action: 'receiptBroughtAction',
     call: (v, a) =>
       tonight.receiptBroughtAction({ venueId: a.venues[0].id, paymentId: v.venues[0].payment }),
+  },
+  {
+    action: 'cancelShareAction',
+    call: (v, a) =>
+      tonight.cancelShareAction({
+        venueId: a.venues[0].id,
+        tableId: v.venues[0].table,
+        paymentId: v.venues[0].payment,
+      }),
   },
   {
     action: 'pauseOrderingAction',

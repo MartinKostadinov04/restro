@@ -184,6 +184,11 @@ export interface GuestTableState {
      * and shows no amount. Absent otherwise; no ids, the table's own label is in `table`.
      */
     readonly movedAway?: true
+    /**
+     * The bill here was paid by a payment made at another table of the party (#545, D160 §2): the
+     * phone says it was paid, not that nothing was ordered. Absent otherwise; no ids, no payer.
+     */
+    readonly paidTogether?: true
     readonly notesAndOptions: boolean
     /** A tip can be given when paying here (D127: the POS records it on the receipt); else none. */
     readonly tips: boolean
@@ -649,6 +654,9 @@ export function projectGuestState(
     ordering: {
       state: read.sitting === null ? 'closed' : read.pauses.length > 0 ? 'paused' : 'on',
       ...(read.sitting === null && read.movedAway === true ? { movedAway: true as const } : {}),
+      ...(read.sitting === null && read.paidTogether === true
+        ? { paidTogether: true as const }
+        : {}),
       notesAndOptions: read.notesAndOptions,
       tips: read.tips,
       sharing: read.sharing,

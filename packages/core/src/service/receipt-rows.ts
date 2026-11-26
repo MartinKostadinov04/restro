@@ -3,8 +3,8 @@
 // opened (Tonight's read, the end of the night's, the receipts' own reads in `receipts.ts`); they
 // check no right. Our ids and public fields only (rule 3).
 
-import { payments, type ReadTx, venueTables } from '@restro/db'
-import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm'
+import { paymentLines, payments, type ReadTx, venueTables } from '@restro/db'
+import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 
 import { paymentNumberOf } from './payment-number'
 import { withoutTipMinor } from './staff-amount'
@@ -17,10 +17,21 @@ export interface ReceiptToBring {
   readonly paymentId: string
   /** The number the guest shows the waiter (`paymentNumberOf`). */
   readonly paymentNumber: string
+  /** The table the row is for: the paying table, or another table the payment covered (#545). */
   readonly tableId: string
   /** The table's name and number, for the screen to word (a numbered table has no name). */
   readonly name: string | null
   readonly number: string | null
+  /**
+   * The table the paying phone is at, whose waiter brings the paper receipt (D151, D160 §2). It is
+   * `tableId` on the paying table's own row. On the row of another table the payment covered, it
+   * names where the receipt goes, and the row only tells that table's waiter the table is paid.
+   */
+  readonly payer: {
+    readonly tableId: string
+    readonly name: string | null
+    readonly number: string | null
+  }
   /** The fiscal receipt's number when the POS gave one at the close; the row shows it then. */
   readonly receiptNumber: string | null
   /**
@@ -87,6 +98,11 @@ export async function receiptsNotBrought(
 /**
  * The receipts to bring of `day`, oldest first. Shared by Tonight's read and the receipts' own.
  * `full` is true for a reader with `night.view_full`; any other gets the amount without the tip.
+ *
+ * A payment covering several tables of a linked group (#542) leaves one row for every table it
+ * covers (#545, Martin 11-25): the paying table's own row is the one that is answered "Brought",
+ * and the others tell their tables' waiters that the table is paid, and where the receipt goes.
+ * Every row of a payment disappears with it once it is marked Brought.
  */
 export async function receiptsToBring(
   tx: ReadTx,
@@ -118,17 +134,44 @@ export async function receiptsToBring(
     )
     .orderBy(asc(payments.receiptToBringAt), asc(payments.id))
     .limit(MAX_RECEIPTS)
-  return rows.flatMap(({ tipMinor, ...row }) =>
-    // A receipt is raised at the capture, which sets both.
-    row.amountMinor === null || row.raisedAt === null
+  // The other tables each payment covered: the tables of its lines (`payment_lines.table_id`).
+  const covered =
+    rows.length === 0
       ? []
-      : [
-          {
-            ...row,
-            paymentNumber: paymentNumberOf(row.paymentId),
-            amountMinor: (full ? row.amountMinor : withoutTipMinor(row.amountMinor, tipMinor)) ?? 0,
-            raisedAt: row.raisedAt,
-          },
-        ],
-  )
+      : await tx
+          .selectDistinct({
+            paymentId: paymentLines.paymentId,
+            tableId: paymentLines.tableId,
+            name: venueTables.name,
+            number: venueTables.number,
+          })
+          .from(paymentLines)
+          .innerJoin(venueTables, eq(venueTables.id, paymentLines.tableId))
+          .where(
+            inArray(
+              paymentLines.paymentId,
+              rows.map((row) => row.paymentId),
+            ),
+          )
+  return rows.flatMap(({ tipMinor, ...row }) => {
+    // A receipt is raised at the capture, which sets both.
+    if (row.amountMinor === null || row.raisedAt === null) return []
+    const raisedAt = row.raisedAt
+    const paymentNumber = paymentNumberOf(row.paymentId)
+    const amountMinor = (full ? row.amountMinor : withoutTipMinor(row.amountMinor, tipMinor)) ?? 0
+    const payer = { tableId: row.tableId, name: row.name, number: row.number }
+    const others = covered
+      .filter((line) => line.paymentId === row.paymentId && line.tableId !== row.tableId)
+      .sort((a, b) => (a.tableId < b.tableId ? -1 : a.tableId > b.tableId ? 1 : 0))
+    const own: ReceiptToBring = { ...row, paymentNumber, amountMinor, raisedAt, payer }
+    return [
+      own,
+      ...others.map((other) => ({
+        ...own,
+        tableId: other.tableId,
+        name: other.name,
+        number: other.number,
+      })),
+    ]
+  })
 }

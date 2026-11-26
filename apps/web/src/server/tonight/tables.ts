@@ -57,6 +57,8 @@ export type TableCommand =
     }
   | { readonly type: 'waiter_call.done'; readonly waiterCallId: string }
   | { readonly type: 'waiter_call.undone'; readonly waiterCallId: string; readonly undo: UndoToken }
+  /** "Cancel sharing" (#545, D160 2.16): every hold of the table's share is let go. */
+  | { readonly type: 'share.cancel'; readonly tableId: string; readonly paymentId: string }
   | { readonly type: 'receipt.brought'; readonly paymentId: string }
   | { readonly type: 'receipt.unbrought'; readonly paymentId: string; readonly undo?: UndoToken }
   | {

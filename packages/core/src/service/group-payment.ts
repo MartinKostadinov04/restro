@@ -611,6 +611,8 @@ export function shareCancel() {
     schema: z.strictObject({ type: z.literal('share.cancel'), tableId, paymentId }),
     origins: ['staff'],
     permission: 'tables.open_close',
+    // As closing a table is: nothing is charged, so the tablet needs no PIN for it (#545, the lead).
+    quickOnSharedDevice: true,
     idempotency: 'by_state',
     async handle(stx, command) {
       const share = await shareOfTable(stx, command.tableId, command.paymentId)

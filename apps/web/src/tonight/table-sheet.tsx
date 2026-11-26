@@ -48,6 +48,7 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile'
 import { WRAPS } from '@/lib/wrapping'
 import {
+  cancelShareAction,
   closeTableAction,
   newGuestsAction,
   openTableAction,
@@ -94,6 +95,7 @@ export function TableSheet({
   const isMobile = useIsMobile()
   const { run, busy } = useTonightRun()
   const [newGuests, setNewGuests] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [bill, setBill] = useState<TableSheetBill | null | undefined>(undefined)
   // The party's other tables and its total, where this table is in a linked group (#540).
   const [group, setGroup] = useState<TableSheetGroup | null>(null)
@@ -192,6 +194,22 @@ export function TableSheet({
           )}
         </>
       )}
+      {tile.share === undefined ? null : (
+        <div className="flex justify-between gap-3">
+          <dt className="[overflow-wrap:anywhere]" data-testid="sh-share">
+            {tile.share.minutesLeft === null
+              ? t('sh_share_start', {
+                  held: money(tile.share.heldMinor, view.currency),
+                  total: money(tile.share.sharedMinor, view.currency),
+                })
+              : t('sh_share', {
+                  held: money(tile.share.heldMinor, view.currency),
+                  total: money(tile.share.sharedMinor, view.currency),
+                  m: tile.share.minutesLeft,
+                })}
+          </dt>
+        </div>
+      )}
       {tile.payRule === null ? null : (
         <div className="flex justify-between gap-3">
           <dt className="text-muted-foreground" data-testid="sh-pay-rule">
@@ -226,6 +244,18 @@ export function TableSheet({
     </Button>
   ) : (
     <>
+      {tile.share === undefined ? null : (
+        // The primary action while a share gathers (#545): one tap here, one on the confirmation.
+        <Button
+          type="button"
+          className={WRAPS}
+          disabled={busy}
+          data-testid="sh-cancel-share"
+          onClick={() => setCancelling(true)}
+        >
+          {t('sh_cancel')}
+        </Button>
+      )}
       <Button
         type="button"
         variant="outline"
@@ -286,6 +316,49 @@ export function TableSheet({
           </SheetContent>
         </Sheet>
       )}
+      <Dialog open={cancelling && tile.share !== undefined} onOpenChange={setCancelling}>
+        <DialogContent className={CLOSE_44}>
+          <DialogHeader className="pr-8">
+            <DialogTitle>{t('cs_t')}</DialogTitle>
+            <DialogDescription>{t('cs_b')}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-11"
+              onClick={() => setCancelling(false)}
+            >
+              {t('cs_keep')}
+            </Button>
+            <Button
+              type="button"
+              className="h-11"
+              disabled={busy}
+              data-testid="sh-cancel-share-ok"
+              onClick={() => {
+                const share = tile.share
+                setCancelling(false)
+                if (share === undefined) return
+                onClose()
+                // No Undo: the guests lose what they had gathered, and nothing brings a hold back.
+                run({
+                  id: `share:${share.paymentId}`,
+                  act: () =>
+                    cancelShareAction({
+                      venueId: view.venueId,
+                      tableId: tile.id,
+                      paymentId: share.paymentId,
+                    }),
+                  done: t('cs_toast'),
+                })
+              }}
+            >
+              {t('sh_cancel')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={newGuests} onOpenChange={setNewGuests}>
         <DialogContent className={CLOSE_44}>
           <DialogHeader className="pr-8">

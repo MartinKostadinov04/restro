@@ -163,25 +163,40 @@ export function ActionRowItem({
     }
   } else if (row.kind === 'receipt' && row.receipt !== undefined) {
     const { receipt } = row
-    title = t('r_t')
+    // One payment can cover several tables of a linked group (#545): the paying table's waiter
+    // brings the receipt; every other table covered is told it is paid, and where the receipt goes.
+    const forPayer = receipt.payer.tableId === row.tableId
+    const payerName = tableName(receipt.payer.table, receipt.payer.numbered)
+    title = forPayer ? t('r_t') : t('r_t_other')
     body = (
       <div className="space-y-0.5 text-sm text-muted-foreground">
         <p className="[overflow-wrap:anywhere]">
-          {t('r_d', {
-            table: name,
-            ref: receipt.paymentNumber,
-            amt: money(receipt.amountMinor, view.currency),
-          })}
+          {!forPayer
+            ? t('r_d_other', { table: name, payer: payerName, ref: receipt.paymentNumber })
+            : receipt.alsoPaid.length === 0
+              ? t('r_d', {
+                  table: name,
+                  ref: receipt.paymentNumber,
+                  amt: money(receipt.amountMinor, view.currency),
+                })
+              : t('r_d_also', {
+                  table: name,
+                  ref: receipt.paymentNumber,
+                  amt: money(receipt.amountMinor, view.currency),
+                  others: receipt.alsoPaid
+                    .map((other) => tableName(other.table, other.numbered))
+                    .join(', '),
+                })}
         </p>
-        {receipt.receiptNumber === null ? null : (
+        {forPayer && receipt.receiptNumber !== null ? (
           <p className="[overflow-wrap:anywhere]">{t('r_rcpt', { rcpt: receipt.receiptNumber })}</p>
-        )}
+        ) : null}
       </div>
     )
     // "Brought": one tap, no PIN even on a shared device; the Log names the device's account
     // (D122 §7, Martin 10-26). The Undo toast is offered only when this tap changed something: a
     // repeat finds it marked already and must not undo someone else's mark.
-    if (view.can.answer) {
+    if (view.can.answer && forPayer) {
       answer = (
         <Button
           type="button"

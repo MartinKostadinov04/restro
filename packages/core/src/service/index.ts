@@ -655,6 +655,7 @@ export {
   type SentOrderAnswer,
 } from './sent-order-answer'
 export { CLEARED_AT_DAY_CLOSE } from './service-day-close'
+export { type GatheringShare, gatheringShares } from './share-rows'
 export {
   type DevicePerson,
   devicePersonOf,
