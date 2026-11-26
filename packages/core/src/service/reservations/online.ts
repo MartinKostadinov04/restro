@@ -35,9 +35,11 @@ import {
 } from '../../booking-nights'
 import { newId } from '../../ids'
 import { readOrderingSettings, WEEKDAYS, type Weekday } from '../../ordering-settings'
+import { guestLinkToken, guestLinkTokenHash } from '../booking-link'
 import type { ServiceTx } from '../definition'
 import { accepted, type ServiceResult } from '../results'
 import { closedDatesOf } from './closed-dates'
+import { guestEmailOwed } from './guest-email'
 import { venuePhoneKey } from './guests'
 import { readOnlineSettings } from './online-settings'
 import {
@@ -191,6 +193,11 @@ export async function requestReservation(
     reason: null,
     madeBy: null,
     seatedAt: null,
+    // The guest's own link (#579): only its token's hash is kept, never the token.
+    guestTokenHash:
+      stx.guestLinkKey === null
+        ? null
+        : guestLinkTokenHash(guestLinkToken(stx.guestLinkKey, reservationId)),
     ...stx.provenance,
   })
   stx.touchNight(command.serviceDate)
@@ -208,7 +215,9 @@ export async function requestReservation(
       opened: '',
     },
   })
-  return accepted(null, { details: { reservationId, repeated: false } })
+  // "We got your request" (#579), with the guest's link, to the address on his record.
+  const email = await guestEmailOwed(stx, { kind: 'booking', guestId }, 'reservation_requested')
+  return accepted(null, { details: { reservationId, repeated: false, ...email } })
 }
 
 /**

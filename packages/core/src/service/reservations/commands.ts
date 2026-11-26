@@ -64,6 +64,7 @@ import {
 } from './book'
 import { changeTables } from './change-tables'
 import { addClosedDate, ClosedDateSchema, removeClosedDate } from './closed-dates'
+import { cancelReservationByGuest } from './guest-link'
 import { eraseGuest, saveGuest, setGuestPrivateNote } from './guests'
 import { sweepPassedNight } from './night'
 import { requestReservation, setOnlineBooking } from './online'
@@ -462,6 +463,22 @@ export const RESERVATION_COMMANDS = {
     permission: null,
     idempotency: 'by_nature',
     handle: requestReservation,
+  }),
+  // The guest calls his booking off from his own link (#579; spec #322 stories 8 and 34): a guest
+  // command like the request, with no permission. What lets it in is the link: it carries the hash
+  // of the link's token (never the token), and only the booking with that hash is touched.
+  // Turnstile is checked by its caller first (`cancelGuestBooking`).
+  'reservation.guest_cancel': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation.guest_cancel'),
+      /** The page's own id for this tap. */
+      actionId: z.uuid(),
+      tokenHash: z.string().regex(/^[0-9a-f]{64}$/),
+    }),
+    origins: ['guest'],
+    permission: null,
+    idempotency: 'by_nature',
+    handle: cancelReservationByGuest,
   }),
   // D135's "delete": the line leaves the night's list without becoming a cancellation nobody made.
   // The row stays (app code deletes nothing), so Restore can put it back and the Log still names it.

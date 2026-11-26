@@ -341,6 +341,17 @@ Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototy
 - **What the platform does (#577):** the owner's switch (Settings › Reservations › Online booking) and the venue's hours and closed dates make the booking file `b/<venue id>.json`, which the worker publishes beside the menu (prefixed ids and public fields only). `GET /api/booking/night` answers one thing, whether a night can be booked; `POST /api/booking` sends the request behind Turnstile (action `booking_request`) as the guest command `reservation.request`, which arrives as Requested with no spot; a hostess answers it in Reservations (#578). The guest chooses no status, spot or id.
 - **Where:** D72, D101, D105, D136
 
+### Your own booking (the guest's link)
+- **Shell key:** `BookingHostProps.guestLink` (`GuestLinkBinding`, shell `booking.ts`), drawn by the same booking screen at `/book/<organisation>/<venue>/<token>`
+- **Status:** supported
+- **Drawn means:** (#579; spec #322 stories 8 and 34) with `guestLink` set the screen draws that one booking instead of the form, whether or not the page takes requests now; the words are the shell's (`stringsFor(locale).bookingLink`, both languages). The template draws:
+  - the heading "Your booking" and the facts as a list: the night, the hour, how many guests, the spots (left out until the club gives any) and the status ("Waiting for the club’s answer", "Confirmed", "You came", "Cancelled", "The club could not take it", "The night is over"); never a phone number, a note, an id or anything about another booking;
+  - while the booking can still be called off (`booking.canCancel`), "Cancel the booking"; it asks once ("Cancel this booking? The club will be told. You cannot undo this from the link.", "Yes, cancel it" / "No, keep it"), shows "Cancelling…" while it goes, and says "Your booking is cancelled. The club has been told." only once the server's answer shows it cancelled (D72);
+  - once the night has started (`booking.nightStarted`), no Cancel, and "The night has started. To change the booking, call the club."; a refused Cancel shows its refusal (`guestLink.refusal`);
+  - a link that opens nothing (`stage` `gone`: unknown, malformed or past its days alike), one plain page: "This booking has passed" and "This link no longer opens a booking. Call the club if you need to."; a read that failed (`failed`), "Try again".
+- **What the platform does (#579):** every online request gets a link whose token (43 random-looking characters, an HMAC of the booking under `GUEST_LINK_KEY`) is stored only as a hash; the "We got your request" email and every later email about the booking (confirmed, declined, cancelled) carry it. `GET /api/booking/link/<token>` reads that one booking; `POST` to the same path is the Cancel, behind Turnstile (action `booking_cancel`), as the guest command `reservation.guest_cancel`: Cancelled, a Log entry with the guest as its actor, and the cancellation email; staff see it on the list as any cancellation. It is refused once the night has started (the venue's service day). The token travels in the path only; an unknown, malformed or expired token gets the same 404. The link stops opening the booking 7 days after its night.
+- **Where:** D72, D101, D105, D136
+
 ## Later
 
 ### Request a song from the DJ

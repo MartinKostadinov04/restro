@@ -1001,7 +1001,7 @@ export type HumanCheckVerdict = 'passed' | 'failed' | 'unavailable'
  * What a token was made for: a Send, a Pay, or a request from the booking page (#577); each widget
  * names its own action.
  */
-export type HumanCheckUse = 'send' | 'pay' | 'booking'
+export type HumanCheckUse = 'send' | 'pay' | 'booking' | 'booking_cancel'
 
 /** Calls siteverify for `token` with `actionId` as its idempotency key. */
 export type HumanCheck = (

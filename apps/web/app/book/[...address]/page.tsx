@@ -3,6 +3,10 @@
 // action; the browser reads the published files under /cdn (or the CDN), and asks the booking API
 // only whether a night can be booked and to send the request. Anything but two parts names no
 // venue. The sign-in gate in proxy.ts leaves this path alone.
+//
+// /book/<organisation>/<venue>/<token> (#579): a guest's own link to his booking, drawn by the same
+// booking screen. The token stays in the path; the page reads the booking from one narrow endpoint
+// keyed by it (`/api/booking/link/<token>`).
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { createTranslator } from 'next-intl'
@@ -30,7 +34,11 @@ export async function generateMetadata({
 
 export default async function BookingAddressPage({ params }: PageProps<'/book/[...address]'>) {
   const { address } = await params
-  const [organization, venue, ...rest] = address
+  const [organization, venue, token, ...rest] = address
   if (organization === undefined || venue === undefined || rest.length > 0) notFound()
-  return <BookingPage address={{ organization, venue }} />
+  return token === undefined ? (
+    <BookingPage address={{ organization, venue }} />
+  ) : (
+    <BookingPage address={{ organization, venue }} token={token} />
+  )
 }

@@ -8,6 +8,7 @@
 
 export { EditorialMarketBooking, type EditorialMarketBookingProps } from './booking'
 export { BOOKING_CSS } from './booking-css'
+export { BOOKING_LINK_CSS } from './booking-link-css'
 export { EDITORIAL_CSS } from './css'
 export { EditorialMarketFace, type EditorialMarketFaceProps } from './face'
 export { EDITORIAL_MARKET_MANIFEST } from './manifest'

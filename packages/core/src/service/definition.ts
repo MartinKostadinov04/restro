@@ -50,6 +50,8 @@ export interface ServiceTx extends LeaseTx {
   readonly pinPepper: string | null
   /** The bill-id key, when the caller passed one (a reading's `rd_` and `bn_` ids, #74). */
   readonly billIdKey: string | null
+  /** The guest-link key, when the caller passed one (a booking request's link, #579). */
+  readonly guestLinkKey: string | null
   /**
    * The location consent version of a located guest command (D119, #76): what a sent order
    * records. Null for any other command.

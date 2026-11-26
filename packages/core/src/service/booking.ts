@@ -10,20 +10,41 @@
 //   guest command `reservation.request` through `applyService` (rule 1). A failed check is refused
 //   before the database is asked; a siteverify that is down lets the request through and is
 //   counted, as at Send and Pay.
+// - `readGuestBooking` — what the guest's own link opens (#579): that one booking's night, hour,
+//   party, spots and state, and whether it can still be called off. No phone, no note, no id.
+// - `cancelGuestBooking` — the link's Cancel, behind Turnstile, written as the guest command
+//   `reservation.guest_cancel` with the token's hash.
 //
 // Read-only reads run on `withTenant`; the guest's write is the service write path's.
 
 import { randomUUID } from 'node:crypto'
 
-import { type DbPool, reservationSettings, venues, withTenant } from '@restro/db'
+import {
+  type DbPool,
+  reservationSettings,
+  reservationSpots,
+  reservations,
+  spots,
+  venues,
+  withTenant,
+} from '@restro/db'
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { type BookingNightVerdict, bookingNightVerdict } from '../booking-nights'
+import { type GuestBookingState, guestBookingStateOf } from '../guest-booking'
 import { BOOKING_FILE_CLOSED_DATES_MAX, type BookingFile } from '../guest-files'
 import type { VenueId } from '../ids'
-import { serviceDate } from '../service-day'
+import { serviceDate, wallClock } from '../service-day'
 import { applyService } from './apply-service'
+import {
+  guestLinkExpired,
+  guestLinkHashesEqual,
+  guestLinkTokenFits,
+  guestLinkTokenHash,
+} from './booking-link'
+import type { ServiceOptions } from './engine'
 import type { HumanCheck } from './guest'
+import { guestCanCancel } from './reservations/guest-link'
 import { bookingCalendarOf, bookingPageOn } from './reservations/online'
 import { refused, type ServiceResult } from './results'
 
@@ -114,6 +135,10 @@ export interface BookingRequestInput {
   readonly onGuard?: (kind: 'human_check_failed' | 'human_check_open') => void
   readonly now?: Date
   readonly jobId?: string
+  /** The guest-link key (`GUEST_LINK_KEY`, #579); without it the request is taken with no link. */
+  readonly guestLinkKey?: string
+  /** Queues the "We got your request" email in the command's own transaction (#592). */
+  readonly queueJobs?: ServiceOptions['queueJobs']
 }
 
 /**
@@ -155,6 +180,174 @@ export async function requestBooking(
       via: 'guest_page',
       ...(input.now === undefined ? {} : { now: input.now }),
     },
+    {
+      ...(input.guestLinkKey === undefined ? {} : { guestLinkKey: input.guestLinkKey }),
+      ...(input.queueJobs === undefined ? {} : { queueJobs: input.queueJobs }),
+    },
+  )
+  return result
+}
+
+/** How a guest's booking reads through his own link (#579): nothing about anyone else. */
+export interface GuestLinkBooking {
+  readonly venueName: string
+  /** The night, as the venue's service day. */
+  readonly night: string
+  /** The hour the booking starts, on the venue's clock (`HH:MM`). */
+  readonly time: string
+  readonly partySize: number | null
+  /** The spots it holds now, by the plan's names; none before the club gives it any. */
+  readonly spots: readonly string[]
+  readonly state: GuestBookingState
+  /** True while its night is still to come and it is asked for or booked. */
+  readonly canCancel: boolean
+  /** True once its night has started: a change is a call to the club. */
+  readonly nightStarted: boolean
+}
+
+/**
+ * The booking a guest's link opens, or null for every token that opens none: unknown, malformed,
+ * taken out of the book, past its days, of another venue, or made under another key. The token is
+ * hashed whatever it is, the hash looked up, the stored hash compared in constant time and the
+ * token checked against the current key, so each of those takes the same path. The token is never
+ * logged.
+ */
+export async function readGuestBooking(
+  pool: DbPool,
+  input: {
+    readonly tenantId: string
+    readonly venueId: string
+    readonly token: string
+    /** GUEST_LINK_KEY; without it no link opens. */
+    readonly guestLinkKey: string | undefined
+    readonly now: Date
+  },
+): Promise<GuestLinkBooking | null> {
+  const hash = guestLinkTokenHash(input.token)
+  return withTenant(pool, input.tenantId, async (tx) => {
+    const [venue] = await tx
+      .select({
+        name: venues.name,
+        timezone: venues.timezone,
+        serviceDayEndsAt: venues.serviceDayEndsAt,
+      })
+      .from(venues)
+      .where(and(eq(venues.id, input.venueId), isNull(venues.archivedAt)))
+    const [found] = await tx
+      .select({
+        id: reservations.id,
+        status: reservations.status,
+        serviceDate: reservations.serviceDate,
+        startsAt: reservations.startsAt,
+        partySize: reservations.partySize,
+        guestTokenHash: reservations.guestTokenHash,
+      })
+      .from(reservations)
+      .where(
+        and(
+          eq(reservations.venueId, input.venueId),
+          eq(reservations.guestTokenHash, hash),
+          eq(reservations.kind, 'booking'),
+          isNull(reservations.deletedAt),
+        ),
+      )
+      .limit(1)
+    const same = guestLinkHashesEqual(found?.guestTokenHash ?? null, hash)
+    // The stored hash alone opens nothing: the token must also be the current key's for this
+    // booking, so a changed key revokes every link already sent.
+    const fits = guestLinkTokenFits(input.guestLinkKey, found?.id ?? '', input.token)
+    if (venue === undefined || found === undefined || !same || !fits) return null
+    const today = serviceDate(input.now, venue.timezone, venue.serviceDayEndsAt.slice(0, 5))
+    if (guestLinkExpired(found.serviceDate, today)) return null
+    const held = await tx
+      .select({ name: spots.name })
+      .from(reservationSpots)
+      .innerJoin(spots, eq(spots.id, reservationSpots.spotId))
+      .where(and(eq(reservationSpots.reservationId, found.id), isNull(reservationSpots.releasedAt)))
+    const clock = wallClock(found.startsAt, venue.timezone)
+    return {
+      venueName: venue.name,
+      night: found.serviceDate,
+      time: `${String(clock.hour).padStart(2, '0')}:${String(clock.minute).padStart(2, '0')}`,
+      partySize: found.partySize,
+      // "Bar 2" before "Bar 10": the names in the order a person counts them.
+      spots: [...new Set(held.map((spot) => spot.name))].sort((a, b) =>
+        a.localeCompare(b, 'bg', { numeric: true }),
+      ),
+      state: guestBookingStateOf(found.status),
+      canCancel: guestCanCancel(found, today),
+      nightStarted: found.serviceDate <= today,
+    }
+  })
+}
+
+/** What the Cancel of a guest's link carries, as the API parsed it. */
+export interface GuestCancelInput {
+  readonly tenantId: string
+  readonly venueId: string
+  /** The link's token, from the page's path. Hashed here; never logged, never in a command. */
+  readonly token: string
+  /** GUEST_LINK_KEY; without it no link opens, so every cancel is refused `link_unknown`. */
+  readonly guestLinkKey: string | undefined
+  readonly actionId: string
+  /** Turnstile's token; without it the cancel is refused `human_check`. */
+  readonly humanToken?: string
+  /** Turnstile's siteverify; without it every cancel fails the check (fail closed). */
+  readonly humanCheck?: HumanCheck
+  /** Counts a check that failed, or that let a cancel through while siteverify was down. */
+  readonly onGuard?: (kind: 'human_check_failed' | 'human_check_open') => void
+  /** Queues the cancellation's email in the command's own transaction (#592). */
+  readonly queueJobs?: ServiceOptions['queueJobs']
+  readonly now?: Date
+  readonly jobId?: string
+}
+
+/**
+ * The guest calls his booking off from his link: Turnstile first, then the link must open (the
+ * token is the current key's for that booking), then `reservation.guest_cancel` as a guest command
+ * with the token's hash. The answer is the command's.
+ */
+export async function cancelGuestBooking(
+  pool: DbPool,
+  input: GuestCancelInput,
+): Promise<ServiceResult> {
+  const token = input.humanToken
+  const verdict =
+    token === undefined || input.humanCheck === undefined
+      ? 'failed'
+      : await input.humanCheck(token, input.actionId, 'booking_cancel')
+  if (verdict === 'failed') {
+    input.onGuard?.('human_check_failed')
+    return refused(input.actionId, 'human_check')
+  }
+  if (verdict === 'unavailable') input.onGuard?.('human_check_open')
+  // The link must open first: a token made under another key (the key changed since) is refused
+  // as an unknown one, with the same code, before the command is issued.
+  const opens = await readGuestBooking(pool, {
+    tenantId: input.tenantId,
+    venueId: input.venueId,
+    token: input.token,
+    guestLinkKey: input.guestLinkKey,
+    now: input.now ?? new Date(),
+  })
+  if (opens === null) return refused(input.actionId, 'link_unknown')
+  const { result } = await applyService(
+    pool,
+    {
+      type: 'reservation.guest_cancel',
+      actionId: input.actionId,
+      tokenHash: guestLinkTokenHash(input.token),
+    },
+    {
+      tenantId: input.tenantId,
+      venueId: input.venueId,
+      origin: 'guest',
+      actor: { kind: 'guest' },
+      jobId: input.jobId ?? `guest-booking-${randomUUID()}`,
+      via: 'guest_page',
+      ...(input.now === undefined ? {} : { now: input.now }),
+    },
+    input.queueJobs === undefined ? {} : { queueJobs: input.queueJobs },
   )
   return result
 }

@@ -18,7 +18,14 @@
 //
 // The logic sits here, apart from the route files, so tests can call it with their own pool.
 
-import { type HumanCheck, readBookingNight, requestBooking } from '@restro/core/service'
+import { JOB_NAMES } from '@restro/core'
+import {
+  guestEmailJobOf,
+  type HumanCheck,
+  readBookingNight,
+  requestBooking,
+  type ServiceOptions,
+} from '@restro/core/service'
 import type { DbPool } from '@restro/db'
 import {
   BOOKING_API_MAX_BYTES,
@@ -35,6 +42,7 @@ import {
 import { serverEnv } from './env'
 import { BAD_CODE_LIMITS, BadCodeLimiter, clientNetwork } from './guard/bad-codes'
 import { readCapped } from './guest-api'
+import { enqueueJobIn } from './jobs'
 import { logError, logInfo } from './log'
 import { turnstileCheck } from './turnstile'
 
@@ -45,6 +53,10 @@ export interface BookingApiDeps {
   readonly now?: () => Date
   readonly requests?: BadCodeLimiter
   readonly nights?: BadCodeLimiter
+  /** The key the guest's own link is made with (#579); without it a request gets no link. */
+  readonly guestLinkKey?: string
+  /** Queues the request's email in the command's transaction (#579); tests pass their own. */
+  readonly queueJobs?: ServiceOptions['queueJobs']
 }
 
 const HEADERS = {
@@ -146,6 +158,8 @@ export async function handleBookingRequest(
       humanCheck: deps.humanCheck,
       onGuard: (kind) => logInfo('booking_guard', { guard: kind, venueId: form.venue }),
       ...(deps.now === undefined ? {} : { now: deps.now() }),
+      ...(deps.guestLinkKey === undefined ? {} : { guestLinkKey: deps.guestLinkKey }),
+      queueJobs: deps.queueJobs ?? queueRequestEmail(form),
     })
     if (result.status === 'accepted') {
       logInfo('booking_requested', { venueId: form.venue })
@@ -161,7 +175,26 @@ export async function handleBookingRequest(
   }
 }
 
-/** The handlers' dependencies in the app: its pool and Turnstile. */
+/**
+ * The request's "We got your request" email with the guest's own link (#579), queued in the
+ * command's own transaction (#592): a request is never saved without its email.
+ */
+function queueRequestEmail(scope: {
+  readonly organization: string
+  readonly venue: string
+}): NonNullable<ServiceOptions['queueJobs']> {
+  return async (result, queue) => {
+    const job = guestEmailJobOf(result, { tenantId: scope.organization, venueId: scope.venue })
+    if (job !== null) await enqueueJobIn(queue, JOB_NAMES.guestEmail, job)
+  }
+}
+
+/** The handlers' dependencies in the app: its pool, Turnstile and the guest link's key. */
 export function bookingApiDeps(pool: DbPool): BookingApiDeps {
-  return { pool, humanCheck: turnstileCheck(serverEnv().TURNSTILE_SECRET_KEY) }
+  const env = serverEnv()
+  return {
+    pool,
+    humanCheck: turnstileCheck(env.TURNSTILE_SECRET_KEY),
+    ...(env.GUEST_LINK_KEY === undefined ? {} : { guestLinkKey: env.GUEST_LINK_KEY }),
+  }
 }

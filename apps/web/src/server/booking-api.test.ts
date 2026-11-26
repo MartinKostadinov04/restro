@@ -155,6 +155,27 @@ describe('POST /api/booking', () => {
     )
   })
 
+  it("gives core the guest link's key and the request email's queue (#579)", async () => {
+    core.requestBooking.mockResolvedValue({
+      status: 'accepted',
+      actionId: ACTION,
+      ref: null,
+      details: {},
+    })
+    const queueJobs = vi.fn(async () => {})
+    const key = 'k'.repeat(40)
+    await handleBookingRequest(post(FORM), { ...deps(), guestLinkKey: key, queueJobs })
+    expect(core.requestBooking).toHaveBeenCalledWith(
+      pool,
+      expect.objectContaining({ guestLinkKey: key, queueJobs }),
+    )
+    await handleBookingRequest(post(FORM), deps())
+    const second = core.requestBooking.mock.calls[1]?.[1] as Record<string, unknown>
+    expect(second).not.toHaveProperty('guestLinkKey')
+    // Without a queue of its own the handler brings the app's: the email is never left out.
+    expect(second.queueJobs).toEqual(expect.any(Function))
+  })
+
   it('refuses a status, a spot or an id the guest tries to choose', async () => {
     for (const extra of [{ status: 'confirmed' }, { spotId: newId('sp') }, { id: newId('rv') }]) {
       const response = await handleBookingRequest(post({ ...FORM, ...extra }), deps())

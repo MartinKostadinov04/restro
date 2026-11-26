@@ -132,4 +132,28 @@ describe('the answer to a request (#578)', () => {
       expect(`${subject}\n${text}`).not.toMatch(/sorry|apolog|regret|съжал|извин|отмен/i)
     }
   })
+
+  it('says a request was taken, in both languages, in the venue’s voice (#579)', () => {
+    const bg = guestEmailWords('reservation_requested', 'bg', FACTS)
+    expect(bg.subject).toBe('Получихме заявката Ви')
+    expect(bg.text.split('\n')[0]).toBe(
+      'Club Нощ получи заявката Ви за резервация. Ще Ви пишем отново, когато отговорим.',
+    )
+    const en = guestEmailWords('reservation_requested', 'en', FACTS)
+    expect(en.subject).toBe('We got your request')
+    expect(en.text.split('\n')[0]).toBe(
+      'Club Нощ has your reservation request. We will write again once we answer.',
+    )
+  })
+
+  it('ends every kind with the guest’s own link when it has one, and only then (#579)', () => {
+    const link = 'https://restro.example/book/club/nosht/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_ABCD'
+    for (const kind of GUEST_EMAIL_KINDS) {
+      const bg = guestEmailWords(kind, 'bg', { ...FACTS, link }).text.split('\n')
+      expect(bg.slice(-2)).toEqual(['', `Вижте резервацията си тук: ${link}`])
+      const en = guestEmailWords(kind, 'en', { ...FACTS, link }).text.split('\n')
+      expect(en.slice(-2)).toEqual(['', `See your reservation here: ${link}`])
+      expect(guestEmailWords(kind, 'en', FACTS).text).not.toContain('See your reservation')
+    }
+  })
 })

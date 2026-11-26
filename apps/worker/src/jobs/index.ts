@@ -84,7 +84,13 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
     log.warn('GUEST_EMAIL_FROM_ADDRESS is not set: no guest is emailed about a reservation')
   }
   const noticeJobs = [createProviderNoticesJob({ providers }), createWalletDomainJob({ providers })]
-  const guestEmailJobs = [createGuestEmailJob({ sender: guestSender })]
+  // The guest's own link to an online booking (#579) is worked out from GUEST_LINK_KEY; without it
+  // the emails go without one, and the log says so once.
+  const guestLink = config.guestLink ?? null
+  if (guestSender !== null && guestLink === null) {
+    log.warn('GUEST_LINK_KEY is not set: guest emails carry no link to the booking')
+  }
+  const guestEmailJobs = [createGuestEmailJob({ sender: guestSender, guestLink })]
   // The floor reading (#71) needs no credentials (the simulated POS has none) and no sealing keys,
   // so every worker runs it unless WORKER_POS_SYNC is off (it is a POS read); a `sim` instance is
   // refused in production inside it.

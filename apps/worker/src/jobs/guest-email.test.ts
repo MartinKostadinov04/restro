@@ -2,6 +2,7 @@
 // in which language, what it logs (never the address, never the name), and when it sends nothing.
 
 import { type GuestEmailJob, newId } from '@restro/core'
+import { guestLinkToken, guestLinkTokenHash } from '@restro/core/service'
 import type { DbPool } from '@restro/db'
 import { beforeEach, describe, expect, it } from 'vitest'
 
@@ -11,7 +12,12 @@ import {
   type FakeEmailSender,
 } from '../../tests/fake-email-sender'
 import { createLogger } from '../logger'
-import { type GuestEmailNews, guestEmailDecision, sendGuestEmailOf } from './guest-email'
+import {
+  type GuestEmailNews,
+  guestEmailDecision,
+  guestLinkOf,
+  sendGuestEmailOf,
+} from './guest-email'
 
 const ADDRESS = 'maria.guest@example.test'
 const NAME = 'Мария Петрова'
@@ -157,6 +163,88 @@ describe('the answer to a request (#578)', () => {
       send: true,
     })
     expect(guestEmailDecision(declined, { ...NEWS, status: 'cancelled' })).toEqual({
+      send: false,
+      reason: 'news_changed',
+    })
+  })
+})
+
+describe('the guest’s own link in the email (#579)', () => {
+  const KEY = 'a-guest-link-key-of-thirty-two-chars-or-more'
+  const config = { key: KEY, baseUrl: 'https://menu.restro.example' }
+  const token = guestLinkToken(KEY, job.reservationId)
+  const parts = {
+    tokenHash: guestLinkTokenHash(token),
+    organization: 'club-nosht',
+    venue: 'main-bar',
+  }
+  const link = `https://menu.restro.example/book/club-nosht/main-bar/${token}`
+
+  it('ends the email with the link the stored hash was made from', async () => {
+    const news = { ...NEWS, linkParts: parts }
+    expect(guestLinkOf(job.reservationId, news, config)).toBe(link)
+    await sendGuestEmailOf(job, {
+      pool,
+      log: await log(),
+      sender,
+      read: async () => news,
+      guestLink: config,
+    })
+    expect(sender.guestSent[0]?.words.text.split('\n').at(-1)).toBe(
+      `Вижте резервацията си тук: ${link}`,
+    )
+    // The token opens the booking: it is in the email and in nothing the job logs.
+    expect(lines.join('\n')).not.toContain(token)
+  })
+
+  it('carries no link without the key, for a booking staff took, or when the key was changed', () => {
+    expect(guestLinkOf(job.reservationId, { linkParts: parts }, null)).toBeUndefined()
+    expect(guestLinkOf(job.reservationId, {}, config)).toBeUndefined()
+    expect(
+      guestLinkOf(job.reservationId, { linkParts: { ...parts, tokenHash: null } }, config),
+    ).toBeUndefined()
+    const other = { key: 'another-guest-link-key-of-thirty-two-chars', baseUrl: config.baseUrl }
+    expect(guestLinkOf(job.reservationId, { linkParts: parts }, other)).toBeUndefined()
+    expect(
+      guestLinkOf(job.reservationId, { linkParts: { ...parts, organization: null } }, config),
+    ).toBeUndefined()
+  })
+
+  it('warns, with the reservation only, when the key does not give the stored hash', async () => {
+    const other = { key: 'another-guest-link-key-of-thirty-two-chars', baseUrl: config.baseUrl }
+    const news = { ...NEWS, linkParts: parts }
+    lines.length = 0
+    await sendGuestEmailOf(job, {
+      pool,
+      log: await log(),
+      sender,
+      read: async () => news,
+      guestLink: other,
+    })
+    const text = lines.join('\n')
+    expect(text).toContain('guest link left out')
+    expect(text).toContain(job.reservationId)
+    for (const secret of [token, parts.tokenHash, guestLinkToken(other.key, job.reservationId)]) {
+      expect(text).not.toContain(secret)
+    }
+    // A booking with no stored hash (staff took it) is no mismatch: nothing to warn about.
+    lines.length = 0
+    await sendGuestEmailOf(job, {
+      pool,
+      log: await log(),
+      sender,
+      read: async () => ({ ...news, linkParts: { ...parts, tokenHash: null } }),
+      guestLink: config,
+    })
+    expect(lines.join('\n')).not.toContain('guest link left out')
+  })
+
+  it('sends the request email only while the request is still unanswered', () => {
+    const requested = { ...job, kind: 'reservation_requested' } as const
+    expect(guestEmailDecision(requested, { ...NEWS, status: 'requested' })).toMatchObject({
+      send: true,
+    })
+    expect(guestEmailDecision(requested, { ...NEWS, status: 'reserved' })).toEqual({
       send: false,
       reason: 'news_changed',
     })

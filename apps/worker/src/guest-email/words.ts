@@ -1,6 +1,7 @@
 // What a guest email about his reservation says (#576; D136, D101), in his one language: the
 // venue's name, what happened, the date, the hour and the party. Plain and short: no image, no
-// link that tracks, nothing but these words; and never the word "receipt" (that email is the
+// link that tracks, nothing but these words and, for an online booking, the guest's own link to it
+// (#579), which opens that one booking; and never the word "receipt" (that email is the
 // POS's, `../email/sender.ts`). Every kind of news is one entry of `NEWS`, in both languages
 // (copy-rules.md). A new kind is its words here, its Log kind in core (`GUEST_EMAIL_LOG_KINDS`)
 // and the state it leaves (`STILL_TRUE` in the job); the job and the sender keep their shape.
@@ -33,6 +34,11 @@ export interface ReservationFacts {
    * confirmed email names them: a cancelled or declined booking holds none. Left out: none.
    */
   readonly spotNames?: readonly string[]
+  /**
+   * The guest's own link to the booking (#579), the full address: every email about an online
+   * booking carries it. Left out: a booking staff took, or a worker without `GUEST_LINK_KEY`.
+   */
+  readonly link?: string
 }
 
 /** The words of each piece of news, per language: the subject, and the line that says it. */
@@ -74,14 +80,42 @@ const NEWS: Readonly<
       headline: (venue) => `${venue} could not take your reservation.`,
     },
   },
+  // #579: the booking page took the request; the club answers it, and the guest hears again then.
+  reservation_requested: {
+    bg: {
+      subject: 'Получихме заявката Ви',
+      headline: (venue) =>
+        `${venue} получи заявката Ви за резервация. Ще Ви пишем отново, когато отговорим.`,
+    },
+    en: {
+      subject: 'We got your request',
+      headline: (venue) =>
+        `${venue} has your reservation request. We will write again once we answer.`,
+    },
+  },
 }
 
 /** The labels of the reservation's lines. */
 const LABELS: Readonly<
-  Record<GuestEmailLanguage, { date: string; hour: string; party: string; spots: string }>
+  Record<
+    GuestEmailLanguage,
+    { date: string; hour: string; party: string; spots: string; link: string }
+  >
 > = {
-  bg: { date: 'Дата', hour: 'Час', party: 'Гости', spots: 'Места' },
-  en: { date: 'Date', hour: 'Time', party: 'Guests', spots: 'Spots' },
+  bg: {
+    date: 'Дата',
+    hour: 'Час',
+    party: 'Гости',
+    spots: 'Места',
+    link: 'Вижте резервацията си тук',
+  },
+  en: {
+    date: 'Date',
+    hour: 'Time',
+    party: 'Guests',
+    spots: 'Spots',
+    link: 'See your reservation here',
+  },
 }
 
 const WEEKDAYS: Readonly<Record<GuestEmailLanguage, readonly string[]>> = {
@@ -167,6 +201,7 @@ export function guestEmailWords(
     facts.spotNames.length > 0
       ? [`${labels.spots}: ${facts.spotNames.join(', ')}`]
       : []),
+    ...(facts.link === undefined ? [] : ['', `${labels.link}: ${facts.link}`]),
   ]
   return { subject: news.subject, text: lines.join('\n') }
 }
