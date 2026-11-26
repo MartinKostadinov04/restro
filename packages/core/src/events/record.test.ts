@@ -203,26 +203,30 @@ describe.skipIf(!hasDatabase)('recordEvents (as the restro_app role)', () => {
     expect(statements).toBe(1)
   })
 
-  it('tells one statement from several (so the check above can fail)', async () => {
-    // Two calls in one transaction are two inserts, and a second transaction is a second writer;
-    // a check that said "one" for either would prove nothing about the batch.
+  // The controls for the check above: a check that said "one" in these cases would prove nothing.
+  it('counts two inserts in one transaction as two statements', async () => {
     const twice = await withTenantWrite(world.app, world.tenantId, async (tx) => {
       const first = await recordEvents(tx, scope(), menuOpened(25))
       const second = await recordEvents(tx, scope(), menuOpened(25))
       return statementsThatWrote(tx, GUEST_EVENTS_TABLE, 'seq', [...first, ...second])
     })
     expect(twice).toBe(2)
+  })
+
+  it('counts two transactions as two writers', async () => {
     const [first, second] = await Promise.all([record(menuOpened(3)), record(menuOpened(3))])
-    const both = [...first, ...second]
     // Read back in a transaction of its own: two earlier transactions, so two writers.
     const separate = await withTenantWrite(world.app, world.tenantId, (tx) =>
-      statementsThatWrote(tx, GUEST_EVENTS_TABLE, 'seq', both),
+      statementsThatWrote(tx, GUEST_EVENTS_TABLE, 'seq', [...first, ...second]),
     )
     expect(separate).toBe(2)
-    // And no rows asked about is no statements.
-    await withTenantWrite(world.app, world.tenantId, async (tx) => {
-      expect(await statementsThatWrote(tx, GUEST_EVENTS_TABLE, 'seq', [])).toBe(0)
-    })
+  })
+
+  it('counts no rows asked about as no statements', async () => {
+    const none = await withTenantWrite(world.app, world.tenantId, (tx) =>
+      statementsThatWrote(tx, GUEST_EVENTS_TABLE, 'seq', []),
+    )
+    expect(none).toBe(0)
   })
 
   it('hides one venue’s events from another tenant (row security)', async () => {

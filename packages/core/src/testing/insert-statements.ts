@@ -37,6 +37,11 @@ export async function statementsThatWrote(
   keyColumn: string,
   keys: readonly (number | string)[],
 ): Promise<number> {
+  // Names are quoted, but only plain lower-case names are accepted: a test helper has no use for more.
+  for (const name of [table.schema, table.name, keyColumn]) {
+    if (!/^[a-z_][a-z0-9_]*$/.test(name))
+      throw new Error(`not a plain table or column name: ${name}`)
+  }
   if (keys.length === 0) return 0
   const wanted = sql.join(
     keys.map((key) => sql`${key}`),
