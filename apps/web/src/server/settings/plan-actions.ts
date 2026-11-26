@@ -13,11 +13,15 @@
 //      `invalid_command`;
 //   3. the database's constraints (`0050_floor_plan_shapes`) are the last word: a check it refuses
 //      answers `plan_refused`, and a name another spot took meanwhile answers `spot_name_taken`.
+//
+// The booking page draws the plans where guests pick their own spot (#580), so every plan write
+// queues the venue's booking file in its own transaction, as the other booking settings do.
 import { idSchema, SPOT_SYMBOLS, SpotPlaceSchema } from '@restro/core'
 import { postgresCode } from '@restro/core/service'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
+import { queueBookingFile } from './booking-file'
 import { INVALID, inSettingsScope, runSettingsCommand, type SettingsResult } from './scope'
 
 const venueId = idSchema('vn')
@@ -71,7 +75,7 @@ const RemoveKind = z.strictObject({ venueId, key: kindKey })
 /** Runs one command at the venue and refreshes the page on success. */
 async function runAt(venue: string, command: Record<string, unknown>): Promise<SettingsResult> {
   return inSettingsScope(venue, async (scope) => {
-    const result = await runSettingsCommand(scope, command)
+    const result = await runSettingsCommand(scope, command, { service: queueBookingFile(scope) })
     if (result.ok) revalidatePath(`/venues/${scope.venueId}`)
     return result
   })
@@ -97,7 +101,11 @@ export async function startPlanAction(input: unknown): Promise<SettingsResult> {
       })
       if (!saved.ok) return saved
     }
-    const result = await runSettingsCommand(scope, { type: 'plan.save', name, makeCurrent: true })
+    const result = await runSettingsCommand(
+      scope,
+      { type: 'plan.save', name, makeCurrent: true },
+      { service: queueBookingFile(scope) },
+    )
     revalidatePath(`/venues/${scope.venueId}`)
     return result
   })
@@ -123,12 +131,11 @@ export async function saveSpotAction(input: unknown): Promise<SettingsResult> {
   }
   return inSettingsScope(venue, async (scope) => {
     try {
-      const result = await runSettingsCommand(scope, {
-        type: 'spot.save',
-        ...spot,
-        ...place.data,
-        tableId,
-      })
+      const result = await runSettingsCommand(
+        scope,
+        { type: 'spot.save', ...spot, ...place.data, tableId },
+        { service: queueBookingFile(scope) },
+      )
       if (result.ok) revalidatePath(`/venues/${scope.venueId}`)
       return result
     } catch (error) {

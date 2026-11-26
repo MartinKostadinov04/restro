@@ -18,6 +18,7 @@ import {
   type BookingForm,
   BookingFormSchema,
   type BookingHostProps,
+  type BookingSpotState,
   bookingNightText,
   stringsFor,
 } from '@restro/shell'
@@ -91,7 +92,8 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
   // What the guest may choose beyond the night (#580): an Area, or his own spots.
   const offersAreas = booking.guestMay === 'area' && booking.areas.length > 0
   const offersSpots = booking.guestMay === 'spot' && booking.plans.length > 0
-  const spotStates = binding?.night?.night === night ? binding.night.spots : undefined
+  const spotStates: Readonly<Record<string, BookingSpotState>> | undefined =
+    binding?.night?.night === night ? binding.night.spots : undefined
   // A spot the night's answer now says is taken is no longer picked.
   const pickedNow = picked.filter((spotId) => spotStates?.[spotId] !== 'taken')
   const toggleSpot = (spotId: string) =>

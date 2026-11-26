@@ -15,7 +15,8 @@ import type { GuestEmailJob } from '../../jobs'
 import { DEFAULT_ORDERING_SETTINGS, type ServiceHours } from '../../ordering-settings'
 import { openServiceWorld, type ServiceWorld } from '../../testing/service-world'
 import { applyService } from '../apply-service'
-import { readBookingFile, readBookingSpots, requestBooking } from '../booking'
+import { forbiddenPaths } from '../bill'
+import { bookingBackendValues, readBookingFile, readBookingSpots, requestBooking } from '../booking'
 import type { ServiceActor, ServiceContext } from '../context'
 import type { HumanCheck } from '../guest'
 import type { ServiceCommand } from '../index'
@@ -256,6 +257,12 @@ describe.skipIf(!hasDatabase)(
       for (const tableId of world.tables) expect(text).not.toContain(tableId)
       expect(text).not.toContain(world.tenantId)
       expect(text).not.toContain('"Table"')
+      // The worker's walk finds nothing either: no table id, code or code hash, no tenant id.
+      if (file === null) throw new Error('no file')
+      const scope = { tenantId: world.tenantId, venueId: world.venueId }
+      const backend = await bookingBackendValues(world.app, file, scope)
+      for (const tableId of world.tables) expect(backend.has(tableId)).toBe(true)
+      expect(forbiddenPaths(file, backend)).toEqual([])
     })
 
     it('says free or taken per spot, and nothing else; a blocked spot reads taken', async () => {

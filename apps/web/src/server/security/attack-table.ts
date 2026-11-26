@@ -614,6 +614,12 @@ export const ATTACKS: readonly Attack[] = [
     call: (v) =>
       reservations.saveOnlineBookingAction({ venueId: v.venues[0].id, bookingPage: true }),
   },
+  // What guests may choose (#580): B may not change what A's booking page offers.
+  {
+    action: 'saveOnlineGuestsAction',
+    call: (v) =>
+      reservations.saveOnlineGuestsAction({ venueId: v.venues[0].id, guestMay: 'night' }),
+  },
   {
     action: 'startPlanAction',
     call: (v) =>

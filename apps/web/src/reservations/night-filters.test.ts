@@ -23,6 +23,7 @@ const row = (over: Partial<RvRowView> = {}): RvRowView => ({
   name: 'Ivanova',
   partySize: 4,
   spots: ['Table 7'],
+  askedFor: null,
   note: null,
   reason: null,
   late: false,

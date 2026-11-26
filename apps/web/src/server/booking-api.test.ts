@@ -9,12 +9,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BAD_CODE_LIMITS, BadCodeLimiter, type BadCodeLimits } from './guard/bad-codes'
 
-const core = vi.hoisted(() => ({ readBookingNight: vi.fn(), requestBooking: vi.fn() }))
+const core = vi.hoisted(() => ({
+  readBookingNight: vi.fn(),
+  readBookingSpots: vi.fn(),
+  requestBooking: vi.fn(),
+}))
 const log = vi.hoisted(() => ({ logError: vi.fn(), logInfo: vi.fn(), logWarn: vi.fn() }))
 
 vi.mock('@restro/core/service', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@restro/core/service')>()),
   readBookingNight: core.readBookingNight,
+  readBookingSpots: core.readBookingSpots,
   requestBooking: core.requestBooking,
 }))
 vi.mock('./log', () => log)
@@ -70,6 +75,8 @@ function logged(): string {
 
 beforeEach(() => {
   core.readBookingNight.mockReset()
+  core.readBookingSpots.mockReset()
+  core.readBookingSpots.mockResolvedValue(null)
   core.requestBooking.mockReset()
   log.logError.mockReset()
   log.logInfo.mockReset()
@@ -117,6 +124,26 @@ describe('GET /api/booking/night', () => {
     expect(response.status).toBe(404)
   })
 
+  it('adds free or taken per spot for an open night where guests pick their spot (#580)', async () => {
+    const SPOT = newId('sp')
+    core.readBookingNight.mockResolvedValue('open')
+    core.readBookingSpots.mockResolvedValue({ [SPOT]: 'taken' })
+    const response = await handleBookingNight(
+      night(`organization=${ORG}&venue=${VENUE}&night=2026-12-24`),
+      deps(),
+    )
+    expect(await response.json()).toEqual({
+      night: '2026-12-24',
+      answer: 'open',
+      spots: { [SPOT]: 'taken' },
+    })
+    // A night that cannot be booked never asks about its spots.
+    core.readBookingSpots.mockClear()
+    core.readBookingNight.mockResolvedValue('closed_date')
+    await handleBookingNight(night(`organization=${ORG}&venue=${VENUE}&night=2026-12-24`), deps())
+    expect(core.readBookingSpots).not.toHaveBeenCalled()
+  })
+
   it('makes a network that asks too often wait', async () => {
     core.readBookingNight.mockResolvedValue('open')
     const limited = deps({ blockAfter: 2 })
@@ -153,6 +180,51 @@ describe('POST /api/booking', () => {
         humanCheck,
       }),
     )
+  })
+
+  it('passes an Area and spots, and answers confirmed when the booking confirmed itself', async () => {
+    const AREA = newId('ar')
+    const SPOT = newId('sp')
+    const queued: unknown[] = []
+    const enqueueIn = vi.fn(async (_queue: unknown, name: string, data: unknown) => {
+      queued.push({ name, data })
+      return 'job-1'
+    })
+    core.requestBooking.mockImplementation(async (_pool, input) => {
+      // The command owes its email inside the transaction: core calls queueJobs there.
+      await input.queueJobs(
+        { status: 'accepted' },
+        { query: vi.fn() },
+        {
+          guestEmails: [{ reservationId: newId('rv'), kind: 'reservation_confirmed', entry: 'lg' }],
+        },
+      )
+      return { status: 'accepted', actionId: ACTION, ref: null, details: { status: 'reserved' } }
+    })
+    const response = await handleBookingRequest(post({ ...FORM, areaId: AREA, spotIds: [SPOT] }), {
+      ...deps(),
+      enqueueIn,
+    })
+    expect(await response.json()).toEqual({ ok: true, confirmed: true })
+    expect(core.requestBooking).toHaveBeenCalledWith(
+      pool,
+      expect.objectContaining({ areaId: AREA, spotIds: [SPOT] }),
+    )
+    expect(queued).toEqual([
+      { name: 'guest-email', data: expect.objectContaining({ kind: 'reservation_confirmed' }) },
+    ])
+  })
+
+  it('says a spot somebody just took in the page words', async () => {
+    core.requestBooking.mockResolvedValue({
+      status: 'refused',
+      actionId: ACTION,
+      code: 'spot_taken',
+      details: {},
+    })
+    const response = await handleBookingRequest(post({ ...FORM, spotIds: [newId('sp')] }), deps())
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({ ok: false, refusal: 'spot_taken' })
   })
 
   it('refuses a status, a spot or an id the guest tries to choose', async () => {

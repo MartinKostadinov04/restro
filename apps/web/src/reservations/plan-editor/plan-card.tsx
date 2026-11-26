@@ -292,7 +292,7 @@ export function PlanCard({ view, runner }: { view: ReservationsView; runner: Run
 
   if (plan === null) {
     return (
-      <section className="grid grid-cols-1 gap-3" data-testid="pe-card">
+      <section id="rs-plan" className="grid grid-cols-1 gap-3 scroll-mt-4" data-testid="pe-card">
         {heading}
         <Empty className="border" data-testid="pe-empty">
           <EmptyHeader>
@@ -318,7 +318,7 @@ export function PlanCard({ view, runner }: { view: ReservationsView; runner: Run
   }
 
   return (
-    <section className="grid grid-cols-1 gap-4" data-testid="pe-card">
+    <section id="rs-plan" className="grid grid-cols-1 gap-4 scroll-mt-4" data-testid="pe-card">
       {heading}
 
       <div className="flex flex-wrap items-center gap-2">

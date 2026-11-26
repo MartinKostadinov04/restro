@@ -1,10 +1,13 @@
 // The booking page's two endpoints (#577; spec #322 stories 1–9, 32, 33):
 //
 //   GET  /api/booking/night?organization=<tn_>&venue=<vn_>&night=<YYYY-MM-DD>
-//        the one narrow answer: can this night be booked, and if not, why. Nothing else.
+//        the one narrow answer: can this night be booked, and if not, why. Where guests pick
+//        their own spot (#580), also free or taken per spot of the plans; nothing else (story 32).
 //   POST /api/booking
 //        a guest's request for a night, behind Turnstile (D127 §5.1, story 33): core's
-//        `requestBooking`, the guest command `reservation.request` through `applyService`.
+//        `requestBooking`, the guest command `reservation.request` through `applyService`. With
+//        an Area or spots (#580); a booking that confirmed itself queues its confirmed email in
+//        the command's own transaction (#592), and answers `confirmed`.
 //
 // The page knows the organisation and the venue from the published organisation index (rule 4);
 // row-level security confines every read and the write to that organisation, so a venue of another
@@ -18,7 +21,14 @@
 //
 // The logic sits here, apart from the route files, so tests can call it with their own pool.
 
-import { type HumanCheck, readBookingNight, requestBooking } from '@restro/core/service'
+import { JOB_NAMES, type JobPayload, type ProducedJobName } from '@restro/core'
+import {
+  type HumanCheck,
+  type QueueExecutor,
+  readBookingNight,
+  readBookingSpots,
+  requestBooking,
+} from '@restro/core/service'
 import type { DbPool } from '@restro/db'
 import {
   BOOKING_API_MAX_BYTES,
@@ -35,6 +45,7 @@ import {
 import { serverEnv } from './env'
 import { BAD_CODE_LIMITS, BadCodeLimiter, clientNetwork } from './guard/bad-codes'
 import { readCapped } from './guest-api'
+import { enqueueJobIn } from './jobs'
 import { logError, logInfo } from './log'
 import { turnstileCheck } from './turnstile'
 
@@ -45,6 +56,12 @@ export interface BookingApiDeps {
   readonly now?: () => Date
   readonly requests?: BadCodeLimiter
   readonly nights?: BadCodeLimiter
+  /** Queues a job in the command's transaction (`enqueueJobIn`); tests pass their own. */
+  readonly enqueueIn?: <N extends ProducedJobName>(
+    queue: QueueExecutor,
+    name: N,
+    data: JobPayload<N>,
+  ) => Promise<string | null>
 }
 
 const HEADERS = {
@@ -99,15 +116,19 @@ export async function handleBookingNight(
   if (!allowed(deps.nights ?? bookingNights, request)) return json({ code: 'rate_limited' }, 429)
   const { organization, venue, night } = parsed.data
   try {
-    const answer = await readBookingNight(
-      deps.pool,
-      organization,
-      venue,
-      night,
-      deps.now?.() ?? new Date(),
-    )
+    const now = deps.now?.() ?? new Date()
+    const answer = await readBookingNight(deps.pool, organization, venue, night, now)
     if (answer === null) return json({ code: 'unknown_venue' }, 404)
-    return json(BookingNightReplySchema.parse({ night, answer } satisfies BookingNightReply))
+    // Free or taken per spot, only for an open night of a venue whose guests pick their spot.
+    const spots =
+      answer === 'open' ? await readBookingSpots(deps.pool, organization, venue, night, now) : null
+    return json(
+      BookingNightReplySchema.parse({
+        night,
+        answer,
+        ...(spots === null ? {} : { spots }),
+      } satisfies BookingNightReply),
+    )
   } catch (error) {
     logError('booking_night_failed', error)
     return json({ code: 'failed' }, 500)
@@ -142,14 +163,30 @@ export async function handleBookingRequest(
       phone: form.phone,
       email: form.email,
       note: form.note,
+      areaId: form.areaId,
+      spotIds: form.spotIds,
       ...(form.humanToken === undefined ? {} : { humanToken: form.humanToken }),
       humanCheck: deps.humanCheck,
       onGuard: (kind) => logInfo('booking_guard', { guard: kind, venueId: form.venue }),
       ...(deps.now === undefined ? {} : { now: deps.now() }),
+      // A booking that confirmed itself owes its email: queued with the booking or not at all.
+      queueJobs: async (_accepted, queue, owed) => {
+        const enqueueIn = deps.enqueueIn ?? enqueueJobIn
+        for (const job of owed.guestEmails) await enqueueIn(queue, JOB_NAMES.guestEmail, job)
+      },
     })
     if (result.status === 'accepted') {
-      logInfo('booking_requested', { venueId: form.venue })
-      return json(BookingReplySchema.parse({ ok: true } satisfies BookingReply))
+      const confirmed = result.details.status === 'reserved'
+      logInfo('booking_requested', {
+        venueId: form.venue,
+        status: confirmed ? 'reserved' : 'requested',
+      })
+      return json(
+        BookingReplySchema.parse({
+          ok: true,
+          ...(confirmed ? { confirmed: true } : {}),
+        } satisfies BookingReply),
+      )
     }
     const code = bookingRefusalOf(result.code)
     if (code === 'unavailable')
