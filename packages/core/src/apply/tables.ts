@@ -65,6 +65,7 @@ import { sealTableCode } from '../seal'
 import { sortKeyBetween } from '../sort-keys'
 import { codeFileNames } from './code-files'
 import { resolveRoutesIn } from './menu-routes'
+import { type QueueExecutor, queueExecutorOf } from './queue-executor'
 import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
 export { codeFileNames } from './code-files'
@@ -711,8 +712,9 @@ export async function setTableHidden(
   tenantId: string,
   tableId: string,
   hidden: boolean,
+  owed?: TablesOwedJobs,
 ): Promise<TableChange | TableWriteRefusal> {
-  return withTenantWrite(pool, tenantId, async (tx) => {
+  return writeOwing(pool, tenantId, owed, async (tx) => {
     const found = await lockTable(tx, tableId)
     if ('ok' in found) return found
     const venueId = found.table.venueId as VenueId
@@ -738,11 +740,12 @@ export async function moveTable(
   pool: DbPool,
   tenantId: string,
   input: { readonly tableId: string; readonly areaId: string; readonly after: string | null },
+  owed?: TablesOwedJobs,
 ): Promise<TableChange | TableWriteRefusal> {
   if (input.after !== null && !isId('tb', input.after)) {
     return refusal('invalid_input', '`after` must be a tb_ id or null')
   }
-  return withTenantWrite(pool, tenantId, async (tx) => {
+  return writeOwing(pool, tenantId, owed, async (tx) => {
     const found = await lockTable(tx, input.tableId)
     if ('ok' in found) return found
     const venueId = found.table.venueId as VenueId
@@ -758,6 +761,30 @@ export async function moveTable(
   })
 }
 
+/**
+ * What a change owes beyond its own rows, queued in its own transaction (the outbox pattern, #592):
+ * the caller's job inserts, on `queue`, once the change is accepted, so they are saved with it or
+ * not at all. The Tables & QR tab queues the venue's booking file with an Area or a Table change
+ * that can change what the booking page offers (#580 review). A throw rolls the change back.
+ */
+export type TablesOwedJobs = (queue: QueueExecutor, venueId: VenueId) => Promise<void>
+
+/** `withTenantWrite`, with the owed jobs queued in the same transaction once the change is accepted. */
+async function writeOwing<T extends { readonly ok: boolean }>(
+  pool: DbPool,
+  tenantId: string,
+  owed: TablesOwedJobs | undefined,
+  write: (tx: WriteTx) => Promise<T>,
+): Promise<T> {
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const result = await write(tx)
+    if (owed !== undefined && result.ok && 'venueId' in result) {
+      await owed(queueExecutorOf(tx), result.venueId as VenueId)
+    }
+    return result
+  })
+}
+
 // --- writing: areas -----------------------------------------------------------------------------
 
 /** Renames an area: trimmed, 1 to 60 characters. */
@@ -766,12 +793,13 @@ export async function renameArea(
   tenantId: string,
   areaId: string,
   name: string,
+  owed?: TablesOwedJobs,
 ): Promise<AreaChange | TableWriteRefusal> {
   const next = tidy(name)
   if (next === null || next.length > MAX_AREA_NAME_LENGTH) {
     return refusal('invalid_input', `an area name has 1 to ${MAX_AREA_NAME_LENGTH} characters`)
   }
-  return withTenantWrite(pool, tenantId, async (tx) => {
+  return writeOwing(pool, tenantId, owed, async (tx) => {
     const area = await lockArea(tx, areaId)
     if ('ok' in area) return area
     const updated = area.name === next ? area : await updatedArea(tx, area.id, { name: next })
@@ -790,8 +818,9 @@ export async function setAreaHidden(
   tenantId: string,
   areaId: string,
   hidden: boolean,
+  owed?: TablesOwedJobs,
 ): Promise<AreaChange | TableWriteRefusal> {
-  return withTenantWrite(pool, tenantId, async (tx) => {
+  return writeOwing(pool, tenantId, owed, async (tx) => {
     const area = await lockArea(tx, areaId)
     if ('ok' in area) return area
     const venueId = area.venueId as VenueId
@@ -808,11 +837,12 @@ export async function moveArea(
   tenantId: string,
   areaId: string,
   after: string | null,
+  owed?: TablesOwedJobs,
 ): Promise<AreaChange | TableWriteRefusal> {
   if (after !== null && !isId('ar', after)) {
     return refusal('invalid_input', '`after` must be an ar_ id or null')
   }
-  return withTenantWrite(pool, tenantId, async (tx) => {
+  return writeOwing(pool, tenantId, owed, async (tx) => {
     const area = await lockArea(tx, areaId)
     if ('ok' in area) return area
     const siblings = (
@@ -931,8 +961,9 @@ export async function deleteTable(
   pool: DbPool,
   tenantId: string,
   tableId: string,
+  owed?: TablesOwedJobs,
 ): Promise<TableChange | TableWriteRefusal> {
-  return withTenantWrite(pool, tenantId, async (tx) => {
+  return writeOwing(pool, tenantId, owed, async (tx) => {
     const found = await lockTable(tx, tableId)
     if ('ok' in found) return found
     if (await servesTill(tx, found.table.venueId)) {
@@ -953,8 +984,9 @@ export async function deleteArea(
   pool: DbPool,
   tenantId: string,
   areaId: string,
+  owed?: TablesOwedJobs,
 ): Promise<AreaChange | TableWriteRefusal> {
-  return withTenantWrite(pool, tenantId, async (tx) => {
+  return writeOwing(pool, tenantId, owed, async (tx) => {
     const area = await lockArea(tx, areaId)
     if ('ok' in area) return area
     if (await servesTill(tx, area.venueId)) {

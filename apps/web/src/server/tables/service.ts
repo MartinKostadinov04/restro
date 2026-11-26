@@ -5,6 +5,13 @@
 // public file must go or change. The web app never writes the publish store: the job is the one
 // writer of the `t/<hash>.json` files.
 //
+// An Area or a Table change can change what the venue's booking page offers (#580 review): an
+// Area's name and order, which Areas and spots are shown (D95: hiding an Area hides its tables
+// from guests), and which Area a spot reaches through its Table. Renaming, moving, hiding or
+// removing an Area, and moving, hiding or removing a Table, queue the worker's `publish-booking`
+// job in the change's own transaction (`enqueueIn`, the outbox pattern of #592), as the plan's
+// and the spots' edits do; the worker writes the file only when its bytes differ.
+//
 // A code is stored as its hash and a copy sealed for the worker (#70, D122 §9): the tab draws the
 // codes the worker reveals to the signed-in owner or admin (`revealCodes`: once per page load and
 // once per new code, never in the tab's own render, so an action's refresh waits on no worker),
@@ -50,6 +57,7 @@ import {
   setTableHidden,
   setTableName,
   setTableNumber,
+  type TablesOwedJobs,
   type TableWriteRefusal,
   tableLabel,
   type VenueTable,
@@ -57,6 +65,7 @@ import {
 import {
   applyService,
   type PaymentTableBoard,
+  type QueueExecutor,
   type RefusalCode,
   readPayFirstTablesBoard,
   readPayingOffer,
@@ -112,6 +121,31 @@ export interface TablesServices {
     data: JobPayload<N>,
   ) => Promise<string | null>
   readonly sealPublicKey: string | undefined
+  /**
+   * `enqueue` inside the change's own transaction (`enqueueJobIn`): the booking file's job is saved
+   * with an Area or a Table change, or not at all. Without it (a test that does not ask) nothing is
+   * owed.
+   */
+  readonly enqueueIn?: <N extends ProducedJobName>(
+    queue: QueueExecutor,
+    name: N,
+    data: JobPayload<N>,
+  ) => Promise<string | null>
+}
+
+/** The venue's booking file, owed with an Area or a Table change (#580 review). */
+function bookingFileOwed(
+  scope: TablesScope,
+  services: TablesServices | undefined,
+): TablesOwedJobs | undefined {
+  const enqueueIn = services?.enqueueIn
+  if (enqueueIn === undefined) return undefined
+  return async (queue, venueId) => {
+    await enqueueIn(queue, JOB_NAMES.publishBooking, {
+      tenantId: scope.tenantId as TenantId,
+      venueId,
+    })
+  }
 }
 
 // --- reading ------------------------------------------------------------------------------------
@@ -666,11 +700,18 @@ export async function renameAreaOf(
   scope: TablesScope,
   areaId: string,
   name: string,
+  services?: TablesServices,
 ): Promise<TablesActionResult> {
   if (!scope.canManage) return FORBIDDEN
   const areas = await listVenueAreas(scope.pool, scope.tenantId, scope.venue.id)
   if (!areas.some((area) => area.id === areaId)) return NOT_FOUND
-  const result = await renameArea(scope.pool, scope.tenantId, areaId, name)
+  const result = await renameArea(
+    scope.pool,
+    scope.tenantId,
+    areaId,
+    name,
+    bookingFileOwed(scope, services),
+  )
   return result.ok ? DONE : refused(result)
 }
 
@@ -684,7 +725,13 @@ export async function hideArea(
   if (!scope.canManage) return FORBIDDEN
   const areas = await listVenueAreas(scope.pool, scope.tenantId, scope.venue.id)
   if (!areas.some((area) => area.id === areaId)) return NOT_FOUND
-  const result = await setAreaHidden(scope.pool, scope.tenantId, areaId, hidden)
+  const result = await setAreaHidden(
+    scope.pool,
+    scope.tenantId,
+    areaId,
+    hidden,
+    bookingFileOwed(scope, services),
+  )
   if (!result.ok) return refused(result)
   return answer(scope, services, result.venueId, result.retired, !hidden)
 }
@@ -694,12 +741,19 @@ export async function moveAreaOf(
   scope: TablesScope,
   areaId: string,
   position: number,
+  services?: TablesServices,
 ): Promise<TablesActionResult> {
   if (!scope.canManage) return FORBIDDEN
   const areas = await listVenueAreas(scope.pool, scope.tenantId, scope.venue.id)
   if (!areas.some((area) => area.id === areaId)) return NOT_FOUND
   const siblings = areas.filter((area) => area.id !== areaId)
-  const result = await moveArea(scope.pool, scope.tenantId, areaId, afterFor(siblings, position))
+  const result = await moveArea(
+    scope.pool,
+    scope.tenantId,
+    areaId,
+    afterFor(siblings, position),
+    bookingFileOwed(scope, services),
+  )
   return result.ok ? DONE : refused(result)
 }
 
@@ -712,7 +766,12 @@ export async function removeArea(
   if (!scope.canManage) return FORBIDDEN
   const areas = await listVenueAreas(scope.pool, scope.tenantId, scope.venue.id)
   if (!areas.some((area) => area.id === areaId)) return NOT_FOUND
-  const result = await deleteArea(scope.pool, scope.tenantId, areaId)
+  const result = await deleteArea(
+    scope.pool,
+    scope.tenantId,
+    areaId,
+    bookingFileOwed(scope, services),
+  )
   if (!result.ok) return refused(result)
   return answer(scope, services, result.venueId, result.retired, false)
 }
@@ -756,7 +815,13 @@ export async function hideTable(
 ): Promise<TablesActionResult> {
   if (!scope.canManage) return FORBIDDEN
   if ((await tableOfVenue(scope, tableId)) === null) return NOT_FOUND
-  const result = await setTableHidden(scope.pool, scope.tenantId, tableId, hidden)
+  const result = await setTableHidden(
+    scope.pool,
+    scope.tenantId,
+    tableId,
+    hidden,
+    bookingFileOwed(scope, services),
+  )
   if (!result.ok) return refused(result)
   return answer(
     scope,
@@ -796,11 +861,12 @@ export async function moveTableOf(
     return { ok: false, error: 'from_till' }
   }
   const siblings = tables.filter((other) => other.areaId === target && other.id !== tableId)
-  const result = await moveTable(scope.pool, scope.tenantId, {
-    tableId,
-    areaId: target,
-    after: afterFor(siblings, position),
-  })
+  const result = await moveTable(
+    scope.pool,
+    scope.tenantId,
+    { tableId, areaId: target, after: afterFor(siblings, position) },
+    bookingFileOwed(scope, services),
+  )
   if (!result.ok) return refused(result)
   // Another area may show another menu (D95): the table's file says which.
   return answer(
@@ -820,7 +886,12 @@ export async function removeTable(
 ): Promise<TablesActionResult> {
   if (!scope.canManage) return FORBIDDEN
   if ((await tableOfVenue(scope, tableId)) === null) return NOT_FOUND
-  const result = await deleteTable(scope.pool, scope.tenantId, tableId)
+  const result = await deleteTable(
+    scope.pool,
+    scope.tenantId,
+    tableId,
+    bookingFileOwed(scope, services),
+  )
   if (!result.ok) return refused(result)
   return answer(scope, services, result.venueId, result.retired, false)
 }

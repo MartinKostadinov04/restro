@@ -135,6 +135,11 @@ export const RESERVATION_REFUSALS = [
   'areas_missing',
   /** A booking confirms itself only where the guest picks his own spot (D136, #580). */
   'auto_confirm_needs_spot',
+  /**
+   * The guest already asked for this night, with another choice of Area or spots: the first
+   * request stands, and the club writes to him (#580 review). A true repeat is answered instead.
+   */
+  'already_requested',
 ] as const
 
 /** One reservation refusal code. */
@@ -217,6 +222,36 @@ export async function lockNightWrites(
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${nightWritesLockKey(venueId, serviceDate)}, 0))`,
   )
+}
+
+/** The text `lockSpotWrites` hashes: one key per venue and spot, with a prefix of its own. */
+export function spotWritesLockKey(venueId: string, spotId: string): string {
+  return `restro:reservation-spot:${venueId}:${spotId}`
+}
+
+/**
+ * Lines up every claim on these spots, whatever night it is for, until the transaction ends (#580
+ * review). The night's lock serialises the claims of one night; a block with no end holds its
+ * spots on every later night too, while it locks only its first night, so a block saved from
+ * Tuesday and a guest's Friday request on the same spot would each read the other as not there
+ * yet. Every claim goes through `claimSpots`, which takes these after every night lock it needs
+ * and before it reads who holds the spots.
+ *
+ * Taken in spot-id order, and last of a claim's locks: after the reservation, the nights and the
+ * guest a command holds. Advisory locks are re-entrant, so a command that claims for two parties
+ * (Change tables' swap) takes the union first, in one call, and each claim after it waits on
+ * nothing.
+ */
+export async function lockSpotWrites(
+  tx: Pick<ServiceTx['tx'], 'execute'>,
+  venueId: string,
+  spotIds: readonly string[],
+): Promise<void> {
+  for (const spotId of [...new Set(spotIds)].sort()) {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${spotWritesLockKey(venueId, spotId)}, 0))`,
+    )
+  }
 }
 
 /**

@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { createArea } from '../../apply/tables'
+import { createArea, setAreaHidden } from '../../apply/tables'
 import { hasDatabase } from '../../apply/test-database'
 import { BookingFileSchema } from '../../guest-files'
 import type { GuestEmailJob } from '../../jobs'
@@ -353,6 +353,93 @@ describe.skipIf(!hasDatabase)(
           entry: Number(moves.rows[1]?.seq),
         },
       ])
+    })
+
+    it('answers a true repeat once, and refuses a repeat with another pick by name (#580 review)', async () => {
+      const mine = phone()
+      const first = await ask({ phone: mine, serviceDate: NEXT_FRIDAY, spotIds: [spot('T1')] })
+      expect(first).toMatchObject({ status: 'accepted', details: { repeated: false } })
+      if (first.status !== 'accepted') return
+      // The same pick again is the same request: answered with the booking he has.
+      expect(
+        await ask({ phone: mine, serviceDate: NEXT_FRIDAY, spotIds: [spot('T1')] }),
+      ).toMatchObject({
+        status: 'accepted',
+        details: { reservationId: first.details.reservationId, repeated: true },
+      })
+      // Another spot, or none, is not dropped without a word: the page says he already asked.
+      for (const spotIds of [[spot('T3')], []]) {
+        expect(await ask({ phone: mine, serviceDate: NEXT_FRIDAY, spotIds })).toMatchObject({
+          status: 'refused',
+          code: 'already_requested',
+        })
+      }
+      const held = await world.owner.query<{ spot_id: string }>(
+        `select spot_id from restro.reservation_spots
+        where reservation_id = $1 and released_at is null`,
+        [first.details.reservationId],
+      )
+      expect(held.rows.map((row) => row.spot_id)).toEqual([spot('T1')])
+    })
+
+    it('leaves the spots of a hidden Area out of the file and refuses them at the write (D95)', async () => {
+      const hidden = await setAreaHidden(world.app, world.tenantId, hallId, true)
+      expect(hidden.ok).toBe(true)
+      try {
+        const file = await readBookingFile(world.app, world.tenantId, world.venueId, NOW)
+        // A spot with no Table belongs to no Area, and stays bookable.
+        expect(file?.plans[0]?.spots.map((one) => one.name)).toEqual(['Bar 1'])
+        expect(await ask({ serviceDate: NEXT_FRIDAY, spotIds: [spot('T3')] })).toMatchObject({
+          status: 'refused',
+          code: 'spot_missing',
+        })
+      } finally {
+        const shown = await setAreaHidden(world.app, world.tenantId, hallId, false)
+        expect(shown.ok).toBe(true)
+      }
+      const file = await readBookingFile(world.app, world.tenantId, world.venueId, NOW)
+      expect(file?.plans[0]?.spots.map((one) => one.name)).toEqual(['Bar 1', 'T1', 'T2', 'T3'])
+    })
+
+    it('lets exactly one of a block with no end and a guest on a later night have a spot (#580 review)', async () => {
+      const plan = await world.owner.query<{ plan_id: string }>(
+        'select plan_id from restro.spots where id = $1',
+        [spot('Bar 1')],
+      )
+      const nine = await accept({
+        type: 'spot.save',
+        planId: plan.rows[0]?.plan_id,
+        name: 'Bar 9',
+        kind: 'table',
+        shape: 'rect',
+        x: 0,
+        y: 200,
+        width: 80,
+        height: 80,
+      } as ServiceCommand)
+      const spotId = nine.spotId as string
+      // The block starts on Friday and has no end: it is in the way of the guest's next Friday.
+      const answers = await world.saveTogether([
+        () =>
+          run({
+            type: 'block.save',
+            serviceDate: FRIDAY,
+            startsAt: FRIDAY_OPENS,
+            spotIds: [spotId],
+          } as ServiceCommand),
+        () => ask({ serviceDate: NEXT_FRIDAY, spotIds: [spotId], guestName: 'Late guest' }),
+      ])
+      const won = answers.filter((answer) => answer.status === 'accepted')
+      const lost = answers.filter((answer) => answer.status === 'refused')
+      expect(won).toHaveLength(1)
+      expect(lost).toHaveLength(1)
+      expect(lost[0]).toMatchObject({ code: 'spot_taken' })
+      const holders = await world.owner.query<{ reservation_id: string }>(
+        `select reservation_id from restro.reservation_spots
+        where spot_id = $1 and released_at is null`,
+        [spotId],
+      )
+      expect(holders.rows).toHaveLength(1)
     })
   },
 )

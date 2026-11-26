@@ -45,17 +45,34 @@ export async function drawBookingPlan(
   )
   const tableId = table.rows[0]?.id
   if (tableId === undefined) throw new Error('Demo Bar has no table')
-  for (const [name, kind, shape, x, tableOf] of [
-    ['Table 1', 'table', 'rect', 20, tableId],
-    ['Bar 1', 'stool', 'circle', 160, null],
-    ['Bar 2', 'stool', 'circle', 300, null],
+  // "Bar counter" is long and thin (300 × 30), as a real counter is: the plan must still draw it
+  // at least 44 px tall on a 390 px phone (#580 review).
+  for (const [name, kind, shape, x, y, width, height, tableOf] of [
+    ['Table 1', 'table', 'rect', 20, 20, 80, 80, tableId],
+    ['Bar 1', 'stool', 'circle', 160, 20, 80, 80, null],
+    ['Bar 2', 'stool', 'circle', 300, 20, 80, 80, null],
+    ['Bar counter', 'stool', 'rect', 20, 140, 300, 30, null],
   ] as const) {
     await owner.query(
       `insert into restro.spots
          (id, tenant_id, venue_id, plan_id, name, kind, shape, x, y, width, height, rotation,
           seats, table_id, source, actor, job_id)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, 20, 80, 80, 0, null, $9, $10, $11, $12)`,
-      [newId('sp'), tenantId, venueId, planId, name, kind, shape, x, tableOf, ...SEED],
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, null, $12, $13, $14, $15)`,
+      [
+        newId('sp'),
+        tenantId,
+        venueId,
+        planId,
+        name,
+        kind,
+        shape,
+        x,
+        y,
+        width,
+        height,
+        tableOf,
+        ...SEED,
+      ],
     )
   }
 }

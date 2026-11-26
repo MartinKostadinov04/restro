@@ -58,7 +58,7 @@ import {
 } from './arrive'
 import { openTables } from './arrive-checks'
 import { claimSpots, releaseHeldSpots, writeHeldSpots } from './book'
-import { lockReservation, openNight, type Reservation, refuse } from './rows'
+import { lockReservation, lockSpotWrites, openNight, type Reservation, refuse } from './rows'
 import { isEndStatus, type ReservationStatus } from './status'
 
 /** One party's side of the change: the spots the screen saw, and the spots it is to end on. */
@@ -311,6 +311,14 @@ export async function changeTables(
   for (const side of sides) {
     if (side.removed.length > 0) await releaseHeldSpots(stx, side.reservation.id, side.removed)
   }
+  // Both parties' new spots are locked together, in spot-id order, before either claim: each claim
+  // takes its own spots' locks again (`lockSpotWrites` is re-entrant), so the swap never takes
+  // them in two orders against another claim.
+  await lockSpotWrites(
+    stx.tx,
+    stx.venueId,
+    sides.flatMap((side) => side.added),
+  )
   for (const side of sides) {
     if (side.added.length === 0) continue
     const row = locked.get(side.reservation.id) as Reservation

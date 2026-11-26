@@ -7,23 +7,42 @@
 // and ticked, and every toggle's name says its spot, its seats and its state.
 //
 // The plan keeps the drawing's proportions at any width. On a phone a plan of many small spots
-// would shrink them below a finger, so the plan's box never draws its smallest spot narrower than
-// a touch target: the plan scrolls sideways inside its own frame instead, and the page never does.
+// would shrink them below a finger, so the plan's box never draws its narrowest spot narrower, or
+// its shortest spot shorter, than a touch target (a bar counter is long and thin): the plan
+// scrolls sideways inside its own frame instead, and the page never does. The box grows to at
+// most `PLAN_MAX_PX`.
+//
+// A request carries at most `BOOKING_SPOTS_PICKED_MAX` spots: once that many are picked, the free
+// spots cannot be pressed until one is let go.
 
-import type { BookingPlanView, BookingSpotState, BookingStrings } from '@restro/shell'
+import {
+  BOOKING_SPOTS_PICKED_MAX,
+  type BookingPlanView,
+  type BookingSpotState,
+  type BookingStrings,
+} from '@restro/shell'
 import type { CSSProperties } from 'react'
 
-/** The narrowest a spot is drawn, in CSS pixels: the touch rule of the service screens. */
+/** The narrowest and shortest a spot is drawn, in CSS pixels: the touch rule of the service screens. */
 const SPOT_MIN_PX = 44
 
 /** The widest a plan's box grows to keep its smallest spot touchable, in CSS pixels. */
-const PLAN_MAX_PX = 1_200
+export const PLAN_MAX_PX = 1_200
 
-/** The box width (px) at which the plan's narrowest spot is a touch target, or null for 100%. */
-function planMinWidth(plan: BookingPlanView): number | null {
+/**
+ * The box width (px) at which every spot of the plan is a touch target both ways, capped at
+ * `PLAN_MAX_PX`, or null for 100%. A spot's box is in per cent of the plan's box, whose height is
+ * its width times `aspect`, so a spot `h`% tall is `h / 100 × width × aspect` pixels tall.
+ */
+export function planMinWidth(plan: BookingPlanView): number | null {
   const narrowest = Math.min(...plan.spots.map((spot) => spot.box.width))
-  if (!Number.isFinite(narrowest) || narrowest <= 0) return null
-  return Math.min(PLAN_MAX_PX, Math.ceil((SPOT_MIN_PX * 100) / narrowest))
+  const shortest = Math.min(...plan.spots.map((spot) => spot.box.height))
+  const needs = [
+    narrowest > 0 ? (SPOT_MIN_PX * 100) / narrowest : Number.NaN,
+    shortest > 0 && plan.aspect > 0 ? (SPOT_MIN_PX * 100) / (shortest * plan.aspect) : Number.NaN,
+  ].filter(Number.isFinite)
+  if (needs.length === 0) return null
+  return Math.min(PLAN_MAX_PX, Math.ceil(Math.max(...needs)))
 }
 
 export interface BookingPlanPickerProps {
@@ -41,6 +60,7 @@ export interface BookingPlanPickerProps {
 /** The plans, the legend and what is picked. */
 export function BookingPlanPicker(props: BookingPlanPickerProps) {
   const { id, plans, states, picked, onToggle, words, enabled } = props
+  const full = picked.length >= BOOKING_SPOTS_PICKED_MAX
   const names = plans
     .flatMap((plan) => plan.spots)
     .filter((spot) => picked.includes(spot.id))
@@ -95,7 +115,7 @@ export function BookingPlanPicker(props: BookingPlanPickerProps) {
                       data-state={shown}
                       aria-pressed={isPicked}
                       aria-label={label}
-                      disabled={!enabled || (!isPicked && state !== 'free')}
+                      disabled={!enabled || (!isPicked && (state !== 'free' || full))}
                       onClick={() => onToggle(spot.id)}
                       style={
                         {

@@ -7,8 +7,8 @@
 //          date three nights from today; then the venue's booking file, written as the worker's
 //          `publish-booking` job writes it.
 //          With `area` or `spot` (#580) it also draws the plan "Ground floor": "Table 1" on Demo
-//          Bar's Table 1 (in the Area "Main hall"), and the bar stools "Bar 1" and "Bar 2" with no
-//          Table. Guests then choose an Area, or pick their own spot with bookings that confirm
+//          Bar's Table 1 (in the Area "Main hall"), and the bar stools "Bar 1" and "Bar 2" and the
+//          long thin "Bar counter" with no Table (scripts/e2e/booking-plan.ts). Guests then choose an Area, or pick their own spot with bookings that confirm
 //          themselves. Every run starts with every spot free: the spots earlier runs held are let go.
 //
 //   booked <night>      prints the venue's online bookings on that night, Requested or Reserved, with

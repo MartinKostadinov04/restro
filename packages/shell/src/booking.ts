@@ -29,6 +29,9 @@ import {
 } from '@restro/core'
 import { z } from 'zod'
 
+/** The most spots one request picks (the file's own cap), for a face to stop the picker at. */
+export { BOOKING_SPOTS_PICKED_MAX }
+
 import { type BookingStrings, stringsFor } from './strings'
 import type { ViewModel } from './view-model'
 
@@ -130,6 +133,7 @@ export const BOOKING_REFUSALS = [
   'invalid_request',
   'unavailable',
   'spot_taken',
+  'already_requested',
 ] as const
 
 export type BookingRefusal = (typeof BOOKING_REFUSALS)[number]

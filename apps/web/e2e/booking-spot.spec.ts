@@ -1,7 +1,7 @@
 // The booking page where guests pick their own spot (#580; spec #322 stories 5, 32), on a
 // production build, on a 390 px phone: Booking Club's Demo Bar, whose plan "Ground floor" holds
-// "Table 1" (Main hall) and the bar stools "Bar 1" and "Bar 2", with bookings that confirm
-// themselves switched on.
+// "Table 1" (Main hall), the bar stools "Bar 1" and "Bar 2", and the long thin "Bar counter", with
+// bookings that confirm themselves switched on.
 //
 //   - the plan is readable at 390 px: every spot is a touch target with its name, its seats and
 //     free or taken in words, and the page never scrolls sideways;
@@ -53,7 +53,8 @@ test.describe('the booking page where guests pick their own spot', () => {
     await expect(plan).toBeVisible()
     await expect(spot(page, 'Table 1')).toHaveAccessibleName('Table 1, Main hall, 4 seats, free')
     await expect(spot(page, 'Bar 1')).toHaveAccessibleName('Bar 1, 1 seat, free')
-    for (const name of ['Table 1', 'Bar 1', 'Bar 2']) {
+    // The counter is 300 × 30: the plan is sized from its height too, so it is no thinner than 44.
+    for (const name of ['Table 1', 'Bar 1', 'Bar 2', 'Bar counter']) {
       const button = spot(page, name)
       await expect(button).toBeEnabled()
       const box = await button.boundingBox()

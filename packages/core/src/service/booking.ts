@@ -47,8 +47,17 @@ import { bookingCalendarOf, bookingPageOn } from './reservations/online'
 import { readOnlineSettings } from './reservations/online-settings'
 import { refused, type ServiceResult } from './results'
 
-/** The venue and its reservation settings, as the two reads need them; null for no live venue. */
-async function bookingVenue(pool: DbPool, tenantId: string, venueId: string) {
+/**
+ * The venue and its reservation settings, as the reads need them; null for no live venue. The
+ * plans and Areas are read only where `withOffer` (the night's verdict needs none of them, so the
+ * night endpoint reads them once, for the spots).
+ */
+async function bookingVenue(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+  { withOffer = true }: { readonly withOffer?: boolean } = {},
+) {
   return withTenant(pool, tenantId, async (tx) => {
     const [venue] = await tx
       .select({
@@ -73,7 +82,10 @@ async function bookingVenue(pool: DbPool, tenantId: string, venueId: string) {
     const guestMay = bookingPageOn(settings ?? null)
       ? readOnlineSettings(settings?.online).guestMay
       : 'night'
-    const offer = guestMay === 'night' ? { areas: [], plans: [] } : await bookingPlanOf(tx, venueId)
+    const offer =
+      guestMay === 'night' || !withOffer
+        ? { areas: [], plans: [] }
+        : await bookingPlanOf(tx, venueId)
     return { venue, settings: settings ?? null, guestMay, offer }
   })
 }
@@ -180,7 +192,7 @@ export async function readBookingNight(
   night: string,
   now: Date,
 ): Promise<BookingNightAnswer | null> {
-  const found = await bookingVenue(pool, tenantId, venueId)
+  const found = await bookingVenue(pool, tenantId, venueId, { withOffer: false })
   if (found === null) return null
   if (!bookingPageOn(found.settings)) return 'booking_off'
   const calendar = bookingCalendarOf(found.venue, found.settings?.closedDates ?? [])

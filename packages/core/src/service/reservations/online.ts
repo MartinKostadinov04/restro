@@ -22,7 +22,10 @@
 // its number (`guests_key_present`).
 //
 // Asking twice is answered once (`by_nature`): the same guest asking again for a night he already
-// has a request or a booking on gets that reservation back, and nothing new is written.
+// has a request or a booking on gets that reservation back, and nothing new is written. Asking
+// again with another choice (another Area, other spots, or one where the first had none) is
+// refused `already_requested`: the page says he already asked and the club will write to him, so
+// the new pick is never dropped without a word (#580 review).
 //
 // **An Area or a spot** (#580): where the venue offers it, the guest also names the Area he asks
 // for (stored, and the hostess places the party) or picks his own spots (claimed by the booking
@@ -54,6 +57,7 @@ import {
   type ReservationSettings,
   readSettings,
   refuse,
+  spotsOfReservation,
 } from './rows'
 
 /** The venue's booking calendar: its clock, its weekly hours and its closed dates. */
@@ -170,7 +174,11 @@ export async function requestReservation(
   const guestId = await guestOfRequest(stx, phoneKey, command)
 
   const [already] = await stx.tx
-    .select({ id: reservations.id, status: reservations.status })
+    .select({
+      id: reservations.id,
+      status: reservations.status,
+      requestedAreaId: reservations.requestedAreaId,
+    })
     .from(reservations)
     .where(
       and(
@@ -184,6 +192,12 @@ export async function requestReservation(
     )
     .limit(1)
   if (already !== undefined) {
+    const held = (await spotsOfReservation(stx, already.id)).map((row) => row.spotId)
+    const samePick =
+      already.requestedAreaId === pick.areaId &&
+      held.length === pick.spotIds.length &&
+      pick.spotIds.every((spotId) => held.includes(spotId))
+    if (!samePick) return refuse('already_requested')
     return accepted(null, {
       details: { reservationId: already.id, repeated: true, status: already.status },
     })

@@ -32,6 +32,7 @@ export {
   BOOKING_NIGHT_ANSWERS,
   BOOKING_REFUSALS,
   BOOKING_SPOT_STATES,
+  BOOKING_SPOTS_PICKED_MAX,
   type BookingAreaView,
   type BookingBinding,
   type BookingForm,

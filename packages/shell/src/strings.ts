@@ -513,6 +513,8 @@ export interface BookingStrings {
     readonly unavailable: string
     /** Somebody took a picked spot meanwhile (#580): the plan is shown again. */
     readonly spot_taken: string
+    /** The guest asked for this night before, with another choice: the first request stands. */
+    readonly already_requested: string
   }
 }
 
@@ -987,6 +989,7 @@ const EN: Strings = {
       invalid_request: 'Check the form and try again.',
       unavailable: 'The request did not go through. Try again in a moment.',
       spot_taken: 'Someone just took that spot. Pick another one on the plan.',
+      already_requested: 'You already asked for this night. The club will write to you.',
     },
   },
 }
@@ -1447,6 +1450,7 @@ const BG: Strings = {
       invalid_request: 'Проверете формата и опитайте отново.',
       unavailable: 'Заявката не беше изпратена. Опитайте отново след малко.',
       spot_taken: 'Някой току-що зае това място. Изберете друго от плана.',
+      already_requested: 'Вече сте заявили тази вечер. Клубът ще ви пише.',
     },
   },
 }

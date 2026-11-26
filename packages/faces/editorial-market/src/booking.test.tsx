@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import type { BookingBinding, BookingView } from '@restro/shell'
+import { BOOKING_SPOTS_PICKED_MAX, type BookingBinding, type BookingView } from '@restro/shell'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { EditorialMarketBooking } from './booking'
 import { BOOKING_CSS } from './booking-css'
+import { PLAN_MAX_PX, planMinWidth } from './booking-plan'
 import { EDITORIAL_CSS } from './css'
 import { richView } from './test-views'
 
@@ -370,5 +371,62 @@ describe('the booking stylesheet', () => {
     for (const name of BOOKING_CSS.match(/\.bk-[\w-]+/g) ?? []) {
       expect(EDITORIAL_CSS, name).not.toContain(name)
     }
+  })
+})
+
+describe('the plan stays touchable (#580 review)', () => {
+  const counter = (height: number): BookingView['plans'][number] => ({
+    ...PLAN,
+    spots: [
+      ...PLAN.spots,
+      {
+        id: 'sp_CNTaaaaaaaaaaaaaaaaaaa',
+        name: 'Counter',
+        symbol: 'stool',
+        seats: null,
+        area: null,
+        shape: 'rect',
+        rotation: 0,
+        box: { left: 5, top: 80, width: 90, height },
+      },
+    ],
+  })
+
+  it('sizes the plan from its shortest spot as well as its narrowest, capped', () => {
+    // 20 % wide, and 40 % of a box half as tall as it is wide: both need a 220 px box.
+    expect(planMinWidth(PLAN)).toBe(220)
+    // A long thin counter 10 % tall is 5 % of the width tall: 44 px needs an 880 px box.
+    expect(planMinWidth(counter(10))).toBe(880)
+    expect(planMinWidth(counter(1))).toBe(PLAN_MAX_PX)
+  })
+
+  it('stops the picker once a request holds as many spots as it may', () => {
+    const many = Array.from({ length: BOOKING_SPOTS_PICKED_MAX + 1 }, (_, index) => ({
+      id: `sp_M${String(index).padStart(2, '0')}aaaaaaaaaaaaaaaaaa`,
+      name: `M${index}`,
+      symbol: 'stool' as const,
+      seats: null,
+      area: null,
+      shape: 'circle' as const,
+      rotation: 0,
+      box: { left: index * 8, top: 10, width: 6, height: 40 },
+    }))
+    const binding = bindingOf({
+      night: {
+        night: '2026-11-26',
+        answer: 'open',
+        spots: Object.fromEntries(many.map((spot) => [spot.id, 'free' as const])),
+      },
+    })
+    const booking: BookingView = { ...SPOTS, plans: [{ ...PLAN, spots: many }] }
+    render(<EditorialMarketBooking view={view} booking={booking} binding={binding} />)
+    const button = (name: string) =>
+      screen.getByRole('button', { name: new RegExp(`^${name},`) }) as HTMLButtonElement
+    for (const spot of many.slice(0, BOOKING_SPOTS_PICKED_MAX)) fireEvent.click(button(spot.name))
+    const last = many[BOOKING_SPOTS_PICKED_MAX]?.name ?? ''
+    expect(button(last).disabled).toBe(true)
+    expect(button('M0').disabled).toBe(false)
+    fireEvent.click(button('M0'))
+    expect(button(last).disabled).toBe(false)
   })
 })

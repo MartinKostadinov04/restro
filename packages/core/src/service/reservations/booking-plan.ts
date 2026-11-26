@@ -8,6 +8,11 @@
 // booked only by picking it. The Areas offered are the visible ones that hold at least one spot
 // of a plan still drawn; the hostess places a party that asked for one.
 //
+// **A hidden Area hides its spots** (D95: hiding an Area hides its tables from guests). A spot
+// whose Table is hidden, or sits in a hidden Area, is left out of the file, and so refused at the
+// write too (`guestPickOf` checks a pick against this very read: `spot_missing`). A spot with no
+// Table belongs to no Area and stays bookable.
+//
 // **Public by design.** What is read here goes into the published booking file (rule 3): a plan's
 // prefixed id, name and drawing, an Area's prefixed id and name, a spot's prefixed id, name, its
 // kind's symbol, its seats and its Area. Never a table id, a Table's name or code, a kind's own
@@ -97,9 +102,11 @@ export async function bookingPlanOf(tx: ReadTx, venueId: string): Promise<Bookin
       seats: spots.seats,
       kindSymbol: venueSpotKinds.symbol,
       kindSeats: venueSpotKinds.defaultSeats,
+      tableHidden: venueTables.hidden,
       areaId: areas.id,
       areaName: areas.name,
       areaSortKey: areas.sortKey,
+      areaHidden: areas.hidden,
     })
     .from(spots)
     .leftJoin(
@@ -125,7 +132,6 @@ export async function bookingPlanOf(tx: ReadTx, venueId: string): Promise<Bookin
       and(
         eq(areas.tenantId, venueTables.tenantId),
         eq(areas.id, venueTables.areaId),
-        eq(areas.hidden, false),
         isNull(areas.archivedAt),
       ),
     )
@@ -152,6 +158,8 @@ export async function bookingPlanOf(tx: ReadTx, venueId: string): Promise<Bookin
       rotation: row.rotation,
     })
     if (!checked.ok) continue
+    // Hidden from guests with its Table or its Area (D95).
+    if (row.tableHidden === true || row.areaHidden === true) continue
     if (row.areaId !== null && row.areaName !== null && row.areaSortKey !== null) {
       offered.set(row.areaId, { name: row.areaName, sortKey: row.areaSortKey })
     }
