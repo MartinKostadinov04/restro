@@ -9,11 +9,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../apply/test-database'
 import { newId } from '../ids'
+import { statementsThatWrote } from '../testing/insert-statements'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import { GUEST_EVENT_BATCH_MAX, type GuestEventInput } from './kinds'
 import { type GuestEventScope, recordEvents } from './record'
 
 const DAY = '2026-11-07'
+const GUEST_EVENTS_TABLE = { schema: 'restro', name: 'guest_events' } as const
 
 interface Row {
   readonly kind: string
@@ -181,13 +183,46 @@ describe.skipIf(!hasDatabase)('recordEvents (as the restro_app role)', () => {
     expect(await rows()).toEqual([])
   })
 
+  const menuOpened = (count: number): GuestEventInput[] =>
+    Array.from({ length: count }, () => ({ kind: 'menu.opened' as const }))
+
   it('writes a batch at the cap in one statement', async () => {
-    const seqs = await record(
-      Array.from({ length: GUEST_EVENT_BATCH_MAX }, () => ({ kind: 'menu.opened' as const })),
-    )
+    // One insert is shown by the rows themselves, read in the transaction that wrote them: every
+    // row of the batch has the same writer (transaction and command). A run of gapless `seq`
+    // values would not show it: the sequence is shared with every other test file running at once,
+    // so another session can draw numbers in the middle of one insert (see `statementsThatWrote`).
+    const { seqs, statements } = await withTenantWrite(world.app, world.tenantId, async (tx) => {
+      const written = await recordEvents(tx, scope(), menuOpened(GUEST_EVENT_BATCH_MAX))
+      return {
+        seqs: written,
+        statements: await statementsThatWrote(tx, GUEST_EVENTS_TABLE, 'seq', written),
+      }
+    })
     expect(seqs).toHaveLength(GUEST_EVENT_BATCH_MAX)
-    // One insert: the sequence has no gap across the batch.
-    expect((seqs.at(-1) as number) - (seqs[0] as number)).toBe(GUEST_EVENT_BATCH_MAX - 1)
+    expect(new Set(seqs).size).toBe(GUEST_EVENT_BATCH_MAX)
+    expect(statements).toBe(1)
+  })
+
+  it('tells one statement from several (so the check above can fail)', async () => {
+    // Two calls in one transaction are two inserts, and a second transaction is a second writer;
+    // a check that said "one" for either would prove nothing about the batch.
+    const twice = await withTenantWrite(world.app, world.tenantId, async (tx) => {
+      const first = await recordEvents(tx, scope(), menuOpened(25))
+      const second = await recordEvents(tx, scope(), menuOpened(25))
+      return statementsThatWrote(tx, GUEST_EVENTS_TABLE, 'seq', [...first, ...second])
+    })
+    expect(twice).toBe(2)
+    const [first, second] = await Promise.all([record(menuOpened(3)), record(menuOpened(3))])
+    const both = [...first, ...second]
+    // Read back in a transaction of its own: two earlier transactions, so two writers.
+    const separate = await withTenantWrite(world.app, world.tenantId, (tx) =>
+      statementsThatWrote(tx, GUEST_EVENTS_TABLE, 'seq', both),
+    )
+    expect(separate).toBe(2)
+    // And no rows asked about is no statements.
+    await withTenantWrite(world.app, world.tenantId, async (tx) => {
+      expect(await statementsThatWrote(tx, GUEST_EVENTS_TABLE, 'seq', [])).toBe(0)
+    })
   })
 
   it('hides one venue’s events from another tenant (row security)', async () => {
