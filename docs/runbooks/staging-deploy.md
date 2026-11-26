@@ -38,10 +38,17 @@ comes from the branch called `staging`, never from `main` directly. The reposito
 environment allows no other branch, so a run started from anywhere else is refused before it can
 touch the database, and the approval bar below is a second lock, not the only one.
 
-`staging` does not follow `main` on its own. When you want staging to catch up, it is
-fast-forwarded to `main` first (`git push origin origin/main:staging`, which a lead can do when
-you ask) and deployed after. That is the point of it: `main` keeps moving while staging stays on
-a commit you chose.
+`staging` is kept level with `main` (Martin 11-26). Every time a pull request lands on `main`,
+the lead fast-forwards `staging` onto it (`git push origin origin/main:staging`), so the branch
+staging deploys from is never behind what has been reviewed and merged. Nothing is ever committed
+to `staging` itself: it only ever points at a commit that is already on `main`, and it is only
+ever moved forward.
+
+Moving the branch deploys nothing. It moves a pointer, and both things that read it still wait
+for you: the migration runner below needs your approval, and Coolify is wired to the public
+repository with no webhook, so it builds only when you press deploy (`staging-coolify.md` §4.1).
+If you ever want staging held back on an older commit while `main` moves on, say so and it is
+left where it is — that is a change to this routine, not something that happens on its own.
 
 ## 2. The five GitHub environment secrets (about 20 minutes)
 
