@@ -217,13 +217,15 @@ export function clientAddressFrom(
 export const MAX_BOOKING_FRAME_ANCESTORS = 3
 
 /**
- * One origin a site may frame the booking page from: `https://` and a host name or address (a port
- * is fine), with no path, query, `#part`, name and password, `*`, or anything else the policy would
- * read as its own syntax (`;`, quotes); plain `http://` only for this PC and the local
+ * One origin a site may frame the booking page from: `https://` and a host name or IPv4 address (a
+ * port is fine), with no path, query, `#part`, name and password, `*`, or anything else the policy
+ * would read as its own syntax (`;`, quotes); plain `http://` only for this PC and the local
  * network (`isLocalHost`, the rule of the QR base address). A trailing `/` is tolerated. Returned as
  * the browser writes an origin (`URL.origin`: scheme and host in lower case, no default port).
+ * No IPv6 address (`[::1]`): a policy's host-source has no form for one, so the browser would drop
+ * it and the setting would quietly do nothing. A name outside ASCII is written in punycode (`xn--…`).
  */
-const ORIGIN_SHAPE = /^https?:\/\/(?:[a-z0-9-]+(?:\.[a-z0-9-]+)*|\[[0-9a-f:.]+\])(?::\d{1,5})?\/?$/i
+const ORIGIN_SHAPE = /^https?:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*(?::\d{1,5})?\/?$/i
 const FrameOriginSchema = z.string().transform((text, context) => {
   let url: URL | null = null
   try {
@@ -248,7 +250,10 @@ const BookingFrameAncestorsSchema = z
       .map((part) => part.trim())
       .filter((part) => part !== ''),
   )
-  .pipe(z.array(FrameOriginSchema).max(MAX_BOOKING_FRAME_ANCESTORS))
+  .pipe(z.array(FrameOriginSchema))
+  // The same site named twice counts once, before the limit.
+  .transform((origins) => [...new Set(origins)])
+  .pipe(z.array(z.string()).max(MAX_BOOKING_FRAME_ANCESTORS))
 
 /** The last value read and what it gave, so the proxy parses the setting once, not per request. */
 let frameAncestorsRead: { raw: string | undefined; origins: readonly string[] } | undefined
@@ -275,7 +280,7 @@ export function bookingFrameAncestors(
         'and the local network; or leave it unset).',
     )
   }
-  const origins = Object.freeze([...new Set(parsed.data)])
+  const origins = Object.freeze(parsed.data)
   frameAncestorsRead = { raw, origins }
   return origins
 }

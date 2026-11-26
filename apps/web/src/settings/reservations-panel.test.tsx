@@ -180,7 +180,7 @@ describe('Settings › Reservations', () => {
     )
   })
 
-  it('shows no embed block when the organisation has no address yet (#581)', () => {
+  it('shows no address and no snippet without a full address: no organisation address, or no absolute origin (#581)', () => {
     renderWithIntl(
       <ReservationsPanel view={view({ bookingPage: true }, { bookingAddress: null })} />,
     )

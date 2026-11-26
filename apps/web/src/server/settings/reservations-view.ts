@@ -23,8 +23,9 @@ export interface ReservationsView {
   readonly settings: ReservationSettingsView
   /**
    * The venue's booking page (#577): `<guest pages' origin>/book/<organisation>/<venue>`, the
-   * address a web designer links or frames (#581); the path alone when no origin is configured;
-   * null when the organisation has no address yet.
+   * address a web designer links or frames (#581); null when the organisation has no address yet,
+   * or when no absolute origin is configured (a bare path framed on the club's own site would load
+   * that site's own `/book/…`, a page it does not have).
    */
   readonly bookingAddress: string | null
   /** The floor plan as the editor draws it (#397). */
@@ -35,29 +36,31 @@ export interface ReservationsView {
   readonly email: string
 }
 
-/** The origin of an address, or '' when there is none or it is not one. */
-function originOf(base: string | null): string {
-  if (base === null) return ''
+/** The origin of an http(s) address, or null when there is none or it is not one. */
+function originOf(base: string | null): string | null {
+  if (base === null) return null
   try {
     const url = new URL(base)
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.origin : ''
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.origin : null
   } catch {
-    return ''
+    return null
   }
 }
 
 /**
- * The booking page's address, or null when the names cannot make one. Its origin is the guest
- * pages' (`PUBLIC_BASE_URL`, else `BETTER_AUTH_URL`: the guest link in an email uses the same).
+ * The booking page's full address, or null when the names cannot make one or no absolute origin is
+ * known. Its origin is the guest pages' (`PUBLIC_BASE_URL`, else `BETTER_AUTH_URL`: the guest link
+ * in an email uses the same).
  */
 export function bookingAddressOf(
   organization: string | null,
   venue: string,
   base: string | null,
 ): string | null {
-  if (organization === null) return null
+  const origin = originOf(base)
+  if (organization === null || origin === null) return null
   try {
-    return `${originOf(base)}${guestBookingPath({ organization, venue })}`
+    return `${origin}${guestBookingPath({ organization, venue })}`
   } catch {
     return null
   }

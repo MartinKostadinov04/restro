@@ -158,8 +158,18 @@ describe('the sites that may frame the booking page (#581, D178)', () => {
     expect(
       read(' https://Club.Example/ , https://www.club.example:8443,https://a.b.example '),
     ).toEqual(['https://club.example', 'https://www.club.example:8443', 'https://a.b.example'])
-    // The same site twice is named once.
+    // The same site twice is named once, and counts once against the limit of three.
     expect(read('https://club.example,https://club.example/')).toEqual(['https://club.example'])
+    expect(
+      read('https://a.example,https://a.example,https://A.example/,https://a.example'),
+    ).toEqual(['https://a.example'])
+    expect(
+      read('https://a.example,https://b.example,https://c.example,https://b.example/'),
+    ).toEqual(['https://a.example', 'https://b.example', 'https://c.example'])
+  })
+
+  it('takes a name outside ASCII written in punycode', () => {
+    expect(read('https://xn--80aaxgrpt.example')).toEqual(['https://xn--80aaxgrpt.example'])
   })
 
   it('takes plain http only for this PC and the local network', () => {
@@ -183,6 +193,10 @@ describe('the sites that may frame the booking page (#581, D178)', () => {
     ['a name and password', 'https://user:hunter2@club.example'],
     ['no scheme', 'club.example'],
     ['another scheme', 'ftp://club.example'],
+    // A policy's host-source has no IPv6 form: the browser would drop it, and nothing would frame.
+    ['an IPv6 loopback', 'http://[::1]:3000'],
+    ['an IPv6 address', 'https://[2001:db8::1]'],
+    ['a name outside ASCII', 'https://клуб.example'],
   ])('refuses %s, naming the variable and never the value', (_case, value) => {
     let message = ''
     try {
