@@ -23,7 +23,7 @@ holds, and this one points back to it where it does. The order and the reasons b
 | | Why |
 | --- | --- |
 | #375 merged into `main` | it puts the Dockerfile and `docker-compose.staging.yml` into the repository; Coolify builds from them |
-| #554 merged (`or/foundation` into `main`) | staging deploys from `main` |
+| #554 merged (`or/foundation` into `main`) | staging deploys from the `staging` branch, fast-forwarded from `main` (`staging-deploy.md` §1) |
 | PR #199 merged, the five secrets set, the migration run | `docs/runbooks/staging-deploy.md` §2 and §3, unchanged: the database must have its tables before the app starts |
 | A Turnstile widget for the staging address (§2) | `staging-deploy.md` §4, with that host name as the widget's domain |
 
@@ -60,8 +60,8 @@ projects on the same server.
 
 1. In `Restro` → `staging` → **+ New** → **Public Repository**. The repository is public, so
    Coolify needs no access to your GitHub account, and it does not redeploy on its own when
-   `main` changes: you deploy when you choose.
-2. Repository URL: `https://github.com/MartinKostadinov04/restro`. Branch: **`main`**.
+   `staging` changes: you deploy when you choose.
+2. Repository URL: `https://github.com/MartinKostadinov04/restro`. Branch: **`staging`**.
 3. **Build Pack:** `Docker Compose`.
 4. **Base Directory:** `/` (the repository root; the build needs the whole workspace).
    **Docker Compose Location:** `/docker-compose.staging.yml`. Then **Continue**.
