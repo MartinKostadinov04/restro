@@ -53,6 +53,18 @@ export {
   bookingRefusalOf,
   bookingStringsFor,
   bookingViewOf,
+  GUEST_LINK_REFUSALS,
+  type GuestCancelReply,
+  GuestCancelReplySchema,
+  type GuestCancelRequest,
+  GuestCancelRequestSchema,
+  type GuestLinkBinding,
+  type GuestLinkBooking,
+  GuestLinkBookingSchema,
+  GuestLinkQuerySchema,
+  type GuestLinkRefusal,
+  type GuestLinkStage,
+  guestLinkRefusalOf,
 } from './booking'
 export { buildViewModel } from './build'
 export {
@@ -341,6 +353,7 @@ export {
 } from './sharing'
 export { isOutOfStock, refusedOutOfStock } from './stock'
 export {
+  type BookingLinkStrings,
   type BookingStrings,
   type GuestStrings,
   type PayingStrings,

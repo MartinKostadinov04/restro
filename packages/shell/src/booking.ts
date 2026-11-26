@@ -14,6 +14,7 @@
 import {
   type BookingCalendar,
   type BookingFile,
+  GUEST_BOOKING_STATES,
   idSchema,
   isServiceDay,
   type Locale,
@@ -193,6 +194,99 @@ export interface BookingBinding {
   readonly send: (form: BookingForm) => void
 }
 
+// ─── The guest's own link (#579; spec #322 stories 8 and 34) ─────────────────────────────────────
+// `/book/<organisation>/<venue>/<token>` opens one booking: the face's booking screen draws it
+// instead of the form when the host binds `guestLink`. The page reads the booking through one
+// narrow endpoint keyed by the token in its path (`GET /api/booking/link/<token>`), and its Cancel
+// is `POST` to the same path, behind Turnstile. The token travels in the path only, never in a
+// query string; the query names the organisation and the venue, as the night endpoint's does.
+// An unknown, malformed or expired token is one answer (404, `link_unknown`): one plain page.
+
+/** `GET /api/booking/link/<token>?organization=<tn_>&venue=<vn_>`: the venue the link is of. */
+export const GuestLinkQuerySchema = z.strictObject({
+  organization: idSchema('tn'),
+  venue: idSchema('vn'),
+})
+
+/** What the link shows of its booking: nothing about anyone else, no phone, no note, no id. */
+export const GuestLinkBookingSchema = z.strictObject({
+  night: DaySchema,
+  /** The hour it starts, on the venue's clock. */
+  time: z.string().regex(/^\d{2}:\d{2}$/),
+  partySize: z
+    .int()
+    .min(1)
+    .max(BOOKING_LIMITS.partySize * 10)
+    .nullable(),
+  /** The spots it holds, by the plan's names; none before the club gives it any. */
+  spots: z.array(z.string().min(1).max(80)).max(50),
+  state: z.enum(GUEST_BOOKING_STATES),
+  /** True while its night is still to come and it is asked for or booked. */
+  canCancel: z.boolean(),
+  /** True once its night has started (the venue's service day): a change is a call to the club. */
+  nightStarted: z.boolean(),
+})
+
+export type GuestLinkBooking = z.output<typeof GuestLinkBookingSchema>
+
+/** `POST /api/booking/link/<token>`: the venue, the page's action id and Turnstile's token. */
+export const GuestCancelRequestSchema = z.strictObject({
+  organization: idSchema('tn'),
+  venue: idSchema('vn'),
+  actionId: z.uuid(),
+  humanToken: z.string().min(1).max(HUMAN_TOKEN_MAX).optional(),
+})
+
+export type GuestCancelRequest = z.output<typeof GuestCancelRequestSchema>
+
+/** Why the link could not do what was asked, as the page words it. */
+export const GUEST_LINK_REFUSALS = [
+  'night_started',
+  'link_unknown',
+  'human_check',
+  'rate_limited',
+  'invalid_request',
+  'unavailable',
+] as const
+
+export type GuestLinkRefusal = (typeof GUEST_LINK_REFUSALS)[number]
+
+/** The Cancel's answer: the booking as it stands now, or why not. */
+export const GuestCancelReplySchema = z.discriminatedUnion('ok', [
+  z.strictObject({ ok: z.literal(true), booking: GuestLinkBookingSchema }),
+  z.strictObject({ ok: z.literal(false), refusal: z.enum(GUEST_LINK_REFUSALS) }),
+])
+
+export type GuestCancelReply = z.output<typeof GuestCancelReplySchema>
+
+/** A refusal code from the command, as the link's words know it; anything else is `unavailable`. */
+export function guestLinkRefusalOf(code: string): GuestLinkRefusal {
+  return (GUEST_LINK_REFUSALS as readonly string[]).includes(code)
+    ? (code as GuestLinkRefusal)
+    : 'unavailable'
+}
+
+/**
+ * Where the link's page stands: reading the booking, showing it, the one plain page for a link
+ * that opens nothing, or a read that failed (the page offers to try again).
+ */
+export type GuestLinkStage = 'loading' | 'shown' | 'gone' | 'failed'
+
+/** What the host binds for a guest's own link: the booking and the one thing it can ask (D72). */
+export interface GuestLinkBinding {
+  readonly stage: GuestLinkStage
+  /** The booking as the server last said it; null unless `shown`. */
+  readonly booking: GuestLinkBooking | null
+  /** True while the Cancel is on its way. */
+  readonly cancelling: boolean
+  /** The last Cancel's refusal, or null. */
+  readonly refusal: GuestLinkRefusal | null
+  /** Calls the booking off. The page shows it cancelled only once the server says so. */
+  readonly cancel: () => void
+  /** Reads the booking again after a failed read. */
+  readonly retry: () => void
+}
+
 /** What a face's booking screen receives from its host. */
 export interface BookingHostProps {
   /** The venue's menu, for its Style (theme and design): the page looks like the menu. */
@@ -206,6 +300,8 @@ export interface BookingHostProps {
   readonly fontStacks?: Readonly<Record<string, string>>
   /** Forced colour scheme; `auto` follows the guest's screen. */
   readonly scheme?: 'auto' | 'light' | 'dark'
+  /** Set: the page is a guest's own link (#579), and draws that booking instead of the form. */
+  readonly guestLink?: GuestLinkBinding
 }
 
 /** The words of the booking page for a locale. */
