@@ -27,10 +27,13 @@ function seed(...args: string[]): string {
 async function signIn(page: Page, email: string) {
   await signInAs(page, email, { lands: /\/venues\/vn_[^/?]+|\/venues$/ })
   if (/\/venues\/vn_/.test(page.url())) return
+  // A staff-only account is sent on into its venue a moment after the list address shows, and the
+  // link may be gone with the page it was on: then the address is the answer, not the click.
   await page
     .getByRole('link', { name: /Tonight Club/ })
     .first()
-    .click({ timeout: 20_000 })
+    .click({ timeout: 5_000 })
+    .catch(() => undefined)
   await expect(page).toHaveURL(/\/venues\/vn_/, { timeout: 20_000 })
 }
 
