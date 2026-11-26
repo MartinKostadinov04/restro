@@ -229,6 +229,7 @@ test('a Cancel after the club answered shows the booking as it stands, with no d
     .poll(async () => (await facts(page)).Status, { timeout: 20_000 })
     .toBe('The club could not take it')
   await expect(page.getByRole('button', { name: 'Cancel the booking' })).toHaveCount(0)
-  await expect(page.getByRole('alert')).toHaveCount(0)
+  // No refusal line on the booking screen (Next's route announcer is an alert of its own).
+  await expect(page.locator('[data-page="booking"]').getByRole('alert')).toHaveCount(0)
   expect(booked(seeded.open, name).status).toBe('declined')
 })
