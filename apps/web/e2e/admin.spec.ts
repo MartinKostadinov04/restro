@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 
+import { leaveRoomForSignIn, noteSignIn, signInAs } from './sign-in'
 import { ADMIN_EMAIL, ADMIN_PASSWORD, VENUE_NAME } from './support'
 
 // The whole admin frame on a production build, in Bulgarian (the default language) and English:
@@ -24,6 +25,11 @@ test('a wrong password is refused with a message and stays on the sign-in page',
   await page.goto('/login')
   await page.getByLabel('Имейл').fill(ADMIN_EMAIL)
   await page.getByLabel('Парола').fill(`${ADMIN_PASSWORD}-wrong`)
+  // The form is filled by hand, because the refusal is what this test is about; the limiter counts
+  // a refused password like any other sign-in, and a fourth one would be answered with 429 and a
+  // different message, so it waits for room and is counted like the helper's.
+  await leaveRoomForSignIn(page)
+  noteSignIn()
   await page.getByRole('button', { name: 'Вход' }).click()
   await expect(page.getByTestId('login-error')).toHaveText('Имейлът или паролата не са верни.')
   await expect(page).toHaveURL(/\/login/)
@@ -33,11 +39,7 @@ test('sign in, open a venue, switch tabs (the URL follows), switch language, sig
   page,
 }) => {
   // --- sign in ----------------------------------------------------------------------------
-  await page.goto('/venues')
-  await page.getByLabel('Имейл').fill(ADMIN_EMAIL)
-  await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-  await page.getByRole('button', { name: 'Вход' }).click()
-  await expect(page).toHaveURL(/\/venues$/)
+  await signInAs(page, ADMIN_EMAIL, { lands: /\/venues$/ })
 
   // --- venue grid: only this organisation's venue -------------------------------------------
   await expect(page.getByRole('heading', { name: 'Заведения', level: 1 })).toBeVisible()
