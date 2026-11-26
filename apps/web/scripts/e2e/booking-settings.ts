@@ -1,6 +1,6 @@
 // The booking page fixture's reservation rules (#577): the venue's turn time, the online booking
-// switch and its closed dates, and what guests may choose with the self-confirm switch (#580), written as the database owner like the night's book
-// (reservations-night.ts). A fixture stands in for the owner's Settings › Reservations here; the
+// switch and its closed dates, and what guests may choose with the self-confirm switch (#580),
+// written as the database owner like the night's book (reservations-night.ts). A fixture stands in for the owner's Settings › Reservations here; the
 // app itself writes these only through core/service.
 import type pg from 'pg'
 

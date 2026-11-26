@@ -226,7 +226,7 @@ describe.skipIf(!hasDatabase)('the booking page (as the restro_app role)', () =>
     }
   })
 
-  it('takes no status, spot, time or id from the guest', async () => {
+  it('takes no status, time or id from the guest, and a spot only where one is offered', async () => {
     const command = {
       type: 'reservation.request',
       actionId: randomUUID(),
@@ -246,13 +246,19 @@ describe.skipIf(!hasDatabase)('the booking page (as the restro_app role)', () =>
     }
     for (const extra of [
       { status: 'reserved' },
-      { spotIds: ['sp_0123456789ABCDEFGHIJKL'] },
       { startsAt: '2026-10-23T20:00:00.000Z' },
       { reservationId: 'rv_0123456789ABCDEFGHIJKL' },
     ]) {
       const { result } = await applyService(world.app, { ...command, ...extra }, guest)
       expect(result, JSON.stringify(extra)).toMatchObject({ code: 'invalid_command' })
     }
+    // A spot is the guest's to pick only where the venue offers it (#580); this venue offers a night.
+    const spot = await applyService(
+      world.app,
+      { ...command, spotIds: ['sp_0123456789ABCDEFGHIJKL'] },
+      guest,
+    )
+    expect(spot.result).toMatchObject({ code: 'choice_not_offered' })
     // And a staff screen cannot send a guest's request.
     expect(await run(command as ServiceCommand)).toMatchObject({ code: 'origin_not_allowed' })
   })
