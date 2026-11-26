@@ -4,7 +4,7 @@ import path from 'node:path'
 import { type Browser, expect, type Page, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
-import { ADMIN_PASSWORD } from './support'
+import { signInAs } from './sign-in'
 
 // Pay first on Tables & QR (#217; screen plan for #201, part B) on a production build, in Bulgarian
 // (the longest words), at the Paying Club venue on the simulated POS (scripts/seed-paying-e2e.ts),
@@ -29,20 +29,7 @@ const OFF = 'Изключено: всичко по сметката'
 let venueId = ''
 
 async function signIn(page: Page, email: string) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(email)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(page).toHaveURL(/\/venues(\/vn_[^/?]+)?(\?.*)?$/, { timeout: 8_000 })
-      return
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  await signInAs(page, email, { lands: /\/venues(\/vn_[^/?]+)?(\?.*)?$/ })
 }
 
 async function open(browser: Browser, email: string, width = 1280, height = 900) {

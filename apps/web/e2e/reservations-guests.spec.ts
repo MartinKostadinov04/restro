@@ -12,6 +12,7 @@
 import { type BrowserContext, expect, type Page, test } from '@playwright/test'
 
 import { runScriptWith } from './global-setup'
+import { signInAs } from './sign-in'
 import {
   ADMIN_PASSWORD,
   TONIGHT_OWNER_EMAIL,
@@ -34,20 +35,7 @@ function seed(...args: string[]): string {
 }
 
 async function signIn(page: Page, email: string) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(email)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(page).toHaveURL(/\/venues(\/vn_[^/?]+\?tab=\w+)?$/, { timeout: 8_000 })
-      return
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  await signInAs(page, email, { lands: /\/venues(\/vn_[^/?]+\?tab=\w+)?$/ })
 }
 
 async function person(

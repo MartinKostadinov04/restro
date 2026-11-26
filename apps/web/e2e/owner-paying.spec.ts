@@ -4,6 +4,7 @@ import path from 'node:path'
 import { type Browser, expect, type Page, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
+import { signInAs } from './sign-in'
 import { ADMIN_EMAIL, ADMIN_PASSWORD, VENUE_NAME } from './support'
 
 // The owner's Settings › Paying (#116; plan `docs/deliverables/2026-10-29-settings-paying-plan.md`)
@@ -42,21 +43,8 @@ const LEGAL = {
 let venueId = ''
 
 async function signIn(page: Page, email: string, password = ADMIN_PASSWORD) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(email)
-    await page.getByLabel('Парола').fill(password)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      // A staff-only account (the viewer) lands on its venue's Tonight page, not on the list.
-      await expect(page).toHaveURL(/\/venues(\/vn_[^/?]+)?(\?.*)?$/, { timeout: 8_000 })
-      return
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  // A staff-only account (the viewer) lands on its venue's Tonight page, not on the list.
+  await signInAs(page, email, { lands: /\/venues(\/vn_[^/?]+)?(\?.*)?$/, password })
 }
 
 async function open(browser: Browser, email: string, width = 1280, height = 900) {

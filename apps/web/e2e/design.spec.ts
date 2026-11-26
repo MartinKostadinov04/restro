@@ -6,7 +6,7 @@ import pg from 'pg'
 
 import { runScript } from './global-setup'
 import { addressOfVenue } from './menu-path'
-import { ADMIN_PASSWORD } from './support'
+import { signInAs } from './sign-in'
 
 // The Studio's Design page in Simple (D129, #175) on a production build, with the REAL worker running
 // beside it. The venue is the fixture of scripts/seed-design-e2e.ts: three drinks, no design, nothing
@@ -61,20 +61,7 @@ let guestPath = ''
 let ownerState: Awaited<ReturnType<BrowserContext['storageState']>>
 
 async function signIn(target: Page, email: string) {
-  // Better Auth allows a few sign-ins per 10 seconds, and the other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await target.goto('/venues')
-    await target.getByLabel('Имейл').fill(email)
-    await target.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await target.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(target).toHaveURL(/\/venues$/, { timeout: 5_000 })
-      return
-    } catch {
-      await target.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  await signInAs(target, email, { lands: /\/venues$/ })
 }
 
 const designUrl = () => `/venues/${venueId}/design`

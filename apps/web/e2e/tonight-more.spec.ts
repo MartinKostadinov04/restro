@@ -13,8 +13,8 @@
 import { type BrowserContext, expect, type Locator, type Page, test } from '@playwright/test'
 
 import { runScriptWith } from './global-setup'
+import { signInAs } from './sign-in'
 import {
-  ADMIN_PASSWORD,
   TONIGHT_OWNER_EMAIL,
   TONIGHT_PIN_PEPPER,
   TONIGHT_TABLET_EMAIL,
@@ -36,27 +36,17 @@ function seed(...args: string[]): string {
 }
 
 async function signIn(page: Page, email: string) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(email)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+|\/venues$/, { timeout: 8_000 })
-      if (/\/venues\/vn_/.test(page.url())) return
-      // The owner lands on the venues list: open the Tonight Club.
-      await page
-        .getByRole('link', { name: /Tonight Club/ })
-        .first()
-        .click()
-      await expect(page).toHaveURL(/\/venues\/vn_/)
-      return
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  await signInAs(page, email, { lands: /\/venues\/vn_[^/?]+|\/venues$/ })
+  if (/\/venues\/vn_/.test(page.url())) return
+  // The owner lands on the venues list: open the Tonight Club.
+  // A staff-only account is sent on into its venue a moment after the list address shows, and the
+  // link may be gone with the page it was on: then the address is the answer, not the click.
+  await page
+    .getByRole('link', { name: /Tonight Club/ })
+    .first()
+    .click({ timeout: 5_000 })
+    .catch(() => undefined)
+  await expect(page).toHaveURL(/\/venues\/vn_/, { timeout: 20_000 })
 }
 
 /** The taps of one story, counted: every click on a control goes through `tap`. */

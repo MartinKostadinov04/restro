@@ -2,8 +2,8 @@ import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
 import { expect, type Locator, type Page, type Response, test } from '@playwright/test'
-
-import { ADMIN_EMAIL, ADMIN_PASSWORD } from './support'
+import { signInAs } from './sign-in'
+import { ADMIN_EMAIL } from './support'
 
 // The composer on a production build, in Bulgarian, against the demo menu that `pnpm db:seed:dev`
 // builds (four sections, 20 items, one hidden by barsy, two unsorted). One sign-in, one page, the
@@ -23,19 +23,7 @@ test.beforeAll(async ({ browser }) => {
   // Tall enough that a whole section of the demo menu is on screen, under the subtabs and the menu
   // bar (S6): a mouse drag can only start on a handle that is inside the viewport.
   page = await browser.newPage({ viewport: { width: 1280, height: 1300 } })
-  // Better Auth allows a few sign-ins per 10 seconds, and the other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(ADMIN_EMAIL)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(page).toHaveURL(/\/venues$/, { timeout: 5_000 })
-      break
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
+  await signInAs(page, ADMIN_EMAIL, { lands: /\/venues$/ })
   await page.getByTestId('venue-card').first().getByRole('link', { name: 'Отвори' }).click()
   await expect(page.getByTestId('composer')).toBeVisible()
 })

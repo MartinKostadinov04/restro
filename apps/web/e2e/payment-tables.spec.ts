@@ -4,6 +4,7 @@ import path from 'node:path'
 import { type Browser, expect, type Page, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
+import { leaveRoomForSignIn, noteSignIn, signInAs } from './sign-in'
 import { ADMIN_EMAIL, ADMIN_PASSWORD, VENUE_NAME } from './support'
 
 // Marking payment tables on Tables & QR (#215; screen plan for #201, part A) on a production build,
@@ -33,43 +34,9 @@ const PAYING_VENUE = 'Paying Club Sofia'
 
 let venueId = ''
 
-// Better Auth's limiter lets 3 sign-ins through per path, then refuses until 10 s have passed since
-// the last one it let through (a refused one does not move that clock). The password dialog signs in
-// too, so it is one more of the same count. Every sign-in this file makes is noted here, so a test
-// that needs one more can wait for room instead of meeting "Too many attempts" when the machine is fast.
-const SIGN_IN_LIMIT = 3
-const SIGN_IN_WINDOW_MS = 10_000
-const signIns = { count: 0, last: 0 }
-
-function noteSignIn() {
-  const now = Date.now()
-  signIns.count = now - signIns.last >= SIGN_IN_WINDOW_MS ? 1 : signIns.count + 1
-  signIns.last = now
-}
-
-/** Waits until the limiter has room for one more sign-in (the dialog's). */
-async function leaveRoomForSignIn(page: Page) {
-  const waitMs = signIns.last + SIGN_IN_WINDOW_MS + 500 - Date.now()
-  if (signIns.count >= SIGN_IN_LIMIT && waitMs > 0) await page.waitForTimeout(waitMs)
-}
-
 async function signIn(page: Page, email: string) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(email)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    noteSignIn()
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      // A person who holds more than an operator's rights lands on the venue itself.
-      await expect(page).toHaveURL(/\/venues(\/vn_[^/?]+)?(\?.*)?$/, { timeout: 8_000 })
-      return
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  // A person who holds more than an operator's rights lands on the venue itself.
+  await signInAs(page, email, { lands: /\/venues(\/vn_[^/?]+)?(\?.*)?$/ })
 }
 
 async function open(browser: Browser, email: string, width = 1280, height = 900) {

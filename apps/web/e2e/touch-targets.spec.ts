@@ -1,9 +1,9 @@
 import { expect, type Frame, type Page, test } from '@playwright/test'
 
 import { runScriptWith } from './global-setup'
+import { signInAs } from './sign-in'
 import {
   ADMIN_EMAIL,
-  ADMIN_PASSWORD,
   INTEGRATION_OWNER_EMAIL,
   TONIGHT_OWNER_EMAIL,
   TONIGHT_PIN_PEPPER,
@@ -200,21 +200,8 @@ async function expectFloor(
 }
 
 async function signIn(page: Page, email: string, lands = /\/venues(\/vn_[^/?]+\?tab=\w+)?$/) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(email)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      // A person with one venue may land on it straight away.
-      await expect(page).toHaveURL(lands, { timeout: 5_000 })
-      return
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  // A person with one venue may land on it straight away.
+  await signInAs(page, email, { lands })
 }
 
 const phone = {

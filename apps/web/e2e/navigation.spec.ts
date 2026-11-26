@@ -4,7 +4,7 @@ import path from 'node:path'
 import { type Browser, type BrowserContext, expect, type Page, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
-import { ADMIN_PASSWORD } from './support'
+import { signInAs } from './sign-in'
 
 // The sidebar and the organisation's Settings (CF-09a, D74, D161) on a production build. Off a
 // venue's page the sidebar lists the organisation's venues, "All venues", "New venue" (owners and
@@ -37,20 +37,7 @@ let owner: BrowserContext
 let page: Page
 
 async function signIn(target: Page, email: string) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await target.goto('/venues')
-    await target.getByLabel('Имейл').fill(email)
-    await target.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await target.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(target).toHaveURL(/\/venues$/, { timeout: 5_000 })
-      return
-    } catch {
-      await target.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  await signInAs(target, email, { lands: /\/venues$/ })
 }
 
 /** A signed-in page of another person, in English, at the given size. */

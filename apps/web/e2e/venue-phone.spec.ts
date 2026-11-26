@@ -6,9 +6,9 @@
 import { type Browser, expect, type Page, test } from '@playwright/test'
 
 import { runScriptWith } from './global-setup'
+import { signInAs } from './sign-in'
 import {
   ADMIN_EMAIL,
-  ADMIN_PASSWORD,
   TONIGHT_OWNER_EMAIL,
   TONIGHT_PIN_PEPPER,
   TONIGHT_WAITER_EMAIL,
@@ -30,25 +30,9 @@ function seed(...args: string[]): string {
 async function signIn(browser: Browser, email: string): Promise<Page> {
   const context = await browser.newContext({ viewport: PHONE })
   const page = await context.newPage()
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(email)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=\w+|\/venues$/, {
-        timeout: 30_000,
-      })
-      await context.addCookies([
-        { name: 'NEXT_LOCALE', value: 'en', url: new URL(page.url()).origin },
-      ])
-      return page
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  await signInAs(page, email, { lands: /\/venues\/vn_[^/?]+\?tab=\w+|\/venues$/ })
+  await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: new URL(page.url()).origin }])
+  return page
 }
 
 /** A bar still streaming in has a hidden copy for a moment: only what is on screen counts. */

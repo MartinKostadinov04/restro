@@ -1,7 +1,7 @@
 import { type Browser, type BrowserContext, expect, type Page, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
-import { ADMIN_PASSWORD } from './support'
+import { signInAs } from './sign-in'
 
 // The plan editor (#397) on a production build, in Bulgarian, at a venue that is new on every run
 // (`scripts/seed-reservations-e2e.ts plan-editor`): no plan, no spot kind, no settings. Nothing of
@@ -24,20 +24,7 @@ let firstSpot = ''
 let owner: { context: BrowserContext; page: Page }
 
 async function signIn(page: Page, email: string) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(email)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(page).toHaveURL(/\/venues(\/vn_[^/?]+)?(\?.*)?$/, { timeout: 8_000 })
-      return
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  await signInAs(page, email, { lands: /\/venues(\/vn_[^/?]+)?(\?.*)?$/ })
 }
 
 async function person(browser: Browser, email: string) {

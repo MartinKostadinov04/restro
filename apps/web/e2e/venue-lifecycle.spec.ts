@@ -4,7 +4,7 @@ import path from 'node:path'
 import { type Browser, type BrowserContext, expect, type Page, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
-import { ADMIN_PASSWORD } from './support'
+import { signInAs } from './sign-in'
 
 // Renaming, deleting and restoring a venue (CF-18, D76) on a production build, with the real
 // worker beside it:
@@ -53,20 +53,7 @@ let owner: BrowserContext
 let page: Page
 
 async function signIn(target: Page, email: string) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await target.goto('/venues')
-    await target.getByLabel('Имейл').fill(email)
-    await target.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await target.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(target).toHaveURL(/\/venues$/, { timeout: 5_000 })
-      return
-    } catch {
-      await target.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  await signInAs(target, email, { lands: /\/venues$/ })
 }
 
 /** A signed-in page of one person, in English. */

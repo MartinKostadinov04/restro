@@ -16,7 +16,8 @@ import QRCode from 'qrcode'
 import { svgFromDataUri } from '../src/tables/svg-uri'
 import { runScript, startScript } from './global-setup'
 import { addressOfVenue, type VenueAddress } from './menu-path'
-import { ADMIN_EMAIL, ADMIN_PASSWORD, GUEST_SLUG } from './support'
+import { signInAs } from './sign-in'
+import { ADMIN_EMAIL, GUEST_SLUG } from './support'
 
 /** The plain member `seed-tables-e2e.ts member` adds to the demo organisation. */
 const MEMBER_EMAIL = 'tables-member@demo-club.test'
@@ -87,21 +88,9 @@ const hallNames = () =>
     .getByTestId('hall-name')
     .evaluateAll((all) => all.map((element) => (element as HTMLInputElement).value))
 
-/** Signs in on a fresh page; Better Auth allows a few sign-ins per 10 seconds. Fails after three. */
+/** Signs in on a fresh page. */
 async function signIn(target: Page, email: string) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await target.goto('/venues')
-    await target.getByLabel('Имейл').fill(email)
-    await target.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await target.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(target).toHaveURL(/\/venues$/, { timeout: 5_000 })
-      return
-    } catch {
-      await target.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email} in three attempts`)
+  await signInAs(target, email, { lands: /\/venues$/ })
 }
 
 /**

@@ -2,7 +2,8 @@ import { type Browser, type BrowserContext, expect, type Page, test } from '@pla
 
 import { runScript } from './global-setup'
 import { addressOfVenue } from './menu-path'
-import { ADMIN_PASSWORD, PUBLISH_OWNER_EMAIL } from './support'
+import { signInAs } from './sign-in'
+import { PUBLISH_OWNER_EMAIL } from './support'
 
 // A venue with no till (CF-01, D64, D66) on a production build with the REAL worker beside it:
 // an owner makes a venue from the list, makes its menu by hand (a section, an item with a price),
@@ -30,20 +31,7 @@ let venueUrl = ''
 let guestPath = ''
 
 async function signIn(target: Page, email: string) {
-  // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await target.goto('/venues')
-    await target.getByLabel('Имейл').fill(email)
-    await target.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await target.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(target).toHaveURL(/\/venues$/, { timeout: 5_000 })
-      return
-    } catch {
-      await target.waitForTimeout(10_000)
-    }
-  }
-  throw new Error(`could not sign in as ${email}`)
+  await signInAs(target, email, { lands: /\/venues$/ })
 }
 
 /** A signed-in page in English for another person. */
