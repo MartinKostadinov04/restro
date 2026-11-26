@@ -17,7 +17,7 @@ import {
   updateRoleAction,
 } from '@/server/settings/staff-actions'
 import type { StaffView } from '@/server/settings/staff-view'
-import { renderWithIntl } from '@/test-utils'
+import { renderWithIntl, waitUntilClickable } from '@/test-utils'
 import { PIN_FALL_ROWS } from './pin-fall'
 import { StaffPanel } from './staff-panel'
 import { PIN_SHOWN_MS } from './staff-people'
@@ -282,7 +282,10 @@ describe('Settings › Staff and roles', () => {
     await user.click(screen.getByRole('button', { name: 'Ana' }))
     await user.click(await screen.findByRole('menuitem', { name: 'New PIN' }))
     expect(await screen.findByText('Enter your password to change settings')).toBeTruthy()
-    await user.type(screen.getByLabelText('Password'), 'secret-pass')
+    // The dialog's text lands a render before Radix gives the layer its pointer events back.
+    const password = screen.getByLabelText('Password')
+    await waitUntilClickable(password)
+    await user.type(password, 'secret-pass')
     await user.click(screen.getByRole('button', { name: 'Confirm' }))
     await waitFor(() =>
       expect(authClient.signIn.email).toHaveBeenCalledWith({
