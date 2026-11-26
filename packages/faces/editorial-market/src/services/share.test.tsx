@@ -332,6 +332,8 @@ describe('in Bulgarian', () => {
   })
 
   it('fits the longest Bulgarian words of the taking screen, the invite and every refusal', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(Date.parse('2026-11-25T23:21:00.000Z'))
     const host = fakeHost({ ...base(), share: shareView() })
     const { sheet } = openPay(host, 'bg_BG')
     expect(within(sheet).getByRole('button', { name: 'Твоята част' })).toBeTruthy()
