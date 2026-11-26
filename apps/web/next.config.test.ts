@@ -10,12 +10,16 @@ describe('the guest pages send no referrer (A5-F5)', () => {
     vi.restoreAllMocks()
   })
 
-  it('defines Referrer-Policy: no-referrer for the menu and the table address', () => {
-    expect(GUEST_PAGE_SOURCES).toEqual(['/m/:path*', '/t/:path*'])
+  it('defines Referrer-Policy: no-referrer for the menu, the table address and the booking page', () => {
+    expect(GUEST_PAGE_SOURCES).toEqual(['/m/:path*', '/t/:path*', '/book/:path*'])
     for (const rule of guestHeaders()) {
       expect(rule.headers[0]).toEqual({ key: 'Referrer-Policy', value: 'no-referrer' })
     }
-    expect(guestHeaders().map((rule) => rule.source)).toEqual(['/m/:path*', '/t/:path*'])
+    expect(guestHeaders().map((rule) => rule.source)).toEqual([
+      '/m/:path*',
+      '/t/:path*',
+      '/book/:path*',
+    ])
   })
 
   it('has next.config.ts return them from headers()', async () => {

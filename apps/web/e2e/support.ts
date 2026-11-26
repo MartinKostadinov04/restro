@@ -46,3 +46,5 @@ export const TONIGHT_WAITER_EMAIL = 'tonight-waiter@demo-club.test'
 export const TONIGHT_TABLET_EMAIL = 'tonight-tablet@demo-club.test'
 export const TONIGHT_VENUE_NAME = 'Tonight Club Sofia'
 export const TONIGHT_PIN_PEPPER = 'e2e-only-pin-pepper-not-used-anywhere-else-0123456789'
+/** The guest link's key (#579) of the test servers: the spec works a booking's token out with it. */
+export const E2E_GUEST_LINK_KEY = 'e2e-only-guest-link-key-not-used-anywhere-else-0123456789'

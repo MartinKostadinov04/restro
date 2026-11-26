@@ -52,7 +52,7 @@ export function checkGuestLinkKey(key: string): string {
 }
 
 function linkKey(key: string): Buffer {
-  return createHmac('sha256', checkGuestLinkKey(key)).update(DOMAIN).digest()
+  return createHmac('sha256', checkGuestLinkKey(key)).update(DOMAIN, 'utf8').digest()
 }
 
 /** The token of a reservation's link. Never log it: it opens the booking. */

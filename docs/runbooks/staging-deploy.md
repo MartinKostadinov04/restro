@@ -143,6 +143,7 @@ What goes where, so you can check the lead's work:
 | `PAYMENTS_PROVIDER` | `stripe` |
 | `STRIPE_NOTICE_SECRET` | the signing secret of a **test-mode** endpoint in Stripe, created in step 7 |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | the `pk_test_…` key |
+| `GUEST_LINK_KEY` | a fresh random value (the guest's own booking link, #579); the worker gets the same one |
 
 **Worker service**
 
@@ -154,6 +155,8 @@ What goes where, so you can check the lead's work:
 | `REVEAL_SERVICE_TOKEN` | the same value as the web service's |
 | `WORKER_HEALTH_PORT` | `8081` |
 | `BILL_ID_KEY` | a fresh random value |
+| `GUEST_LINK_KEY` | the same value as the web service's |
+| `PUBLIC_BASE_URL` | the `https://…up.railway.app` address (the guest link in an email leads there) |
 | `ASSET_STORE`, `PUBLISH_STORE` | both `local` |
 | `PAYMENTS_ENV` | `staging` |
 | `STRIPE_SECRET_KEY` | the `rk_test_…` key |

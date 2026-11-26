@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig, devices } from '@playwright/test'
 
 import { e2eSealEnvironment } from '../worker/src/e2e-seal-keys'
-import { TONIGHT_PIN_PEPPER } from './e2e/support'
+import { E2E_GUEST_LINK_KEY, TONIGHT_PIN_PEPPER } from './e2e/support'
 
 // The repo keeps one `.env.local` at its root (README): use it for the database address when
 // there is one. Values already in the environment win; CI sets DATABASE_URL itself.
@@ -60,6 +60,9 @@ const serverEnvironment = (origin: string) => ({
     process.env.GUEST_PASS_KEY ?? 'e2e-only-guest-pass-key-not-used-anywhere-else-0123456789',
   // The PIN pepper (#72) for the Tonight screen's PIN sheet (#85), for the test servers only.
   STAFF_PIN_PEPPER: process.env.STAFF_PIN_PEPPER ?? TONIGHT_PIN_PEPPER,
+  // The guest link's key (#579), the web servers' and the worker's alike, for the test servers
+  // only: the booking link spec works a booking's token out with it. Never the runner's own.
+  GUEST_LINK_KEY: E2E_GUEST_LINK_KEY,
   PAYMENTS_PROVIDER: 'sim-pay',
   // Not production: the simulated provider's stand-in onboarding page (#398) is offered only where
   // the environment is named and is not production, as the worker's simulator is.
@@ -86,6 +89,8 @@ const workerEnvironment = {
   // The worker takes all three VAPID settings or none: here none, so it pushes nothing.
   VAPID_PUBLIC_KEY: '',
   WORKER_ID: 'e2e-worker',
+  // Where the guest link in an email leads (#579): the key above needs it.
+  PUBLIC_BASE_URL: ORIGIN,
   WORKER_HEALTH_PORT: String(WORKER_PORT),
   LOG_LEVEL: process.env.E2E_WORKER_LOG_LEVEL ?? 'warn',
   ...SEAL_KEYS.worker,

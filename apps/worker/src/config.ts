@@ -23,6 +23,8 @@ import { isSealKeyPair, parseSealPrivateKey } from '@restro/core/seal-open'
 import type { SimEnv } from '@restro/sim-pos'
 import { z } from 'zod'
 
+import type { GuestLinkConfig } from './guest-email/link'
+
 /** Port of the health endpoint when WORKER_HEALTH_PORT is not set. */
 export const DEFAULT_HEALTH_PORT = 8081
 
@@ -114,13 +116,8 @@ export interface WorkerConfig {
   readonly guestLink?: GuestLinkConfig | null
 }
 
-/** How the worker writes a guest's own booking link (#579). */
-export interface GuestLinkConfig {
-  /** GUEST_LINK_KEY. A secret. */
-  readonly key: string
-  /** The address the guest pages are served from, without a trailing slash. */
-  readonly baseUrl: string
-}
+/** How the worker writes a guest's own booking link (#579): `guest-email/link.ts`. */
+export type { GuestLinkConfig }
 
 /** How the database is backed up (ticket #320; D103). */
 export interface BackupConfig {
@@ -248,7 +245,8 @@ const BAD_BILL_ID_KEY =
   'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).'
 const BAD_GUEST_LINK_KEY =
   'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).'
-const BAD_PUBLIC_BASE_URL = 'must be an https:// address (http:// only for localhost).'
+const BAD_PUBLIC_BASE_URL =
+  'must be an https:// address (http:// only for this PC and the local network).'
 const PUBLIC_BASE_URL_MISSING = 'is not set. The guest link (GUEST_LINK_KEY) needs it.'
 const BAD_POS_SYNC = 'must be on or off.'
 const BAD_TELEGRAM_TOKEN = 'must be the bot token BotFather gave (digits, a colon, then letters).'
@@ -417,9 +415,12 @@ function environmentSchema(defaultWorkerId: () => string) {
         z
           .string()
           .trim()
-          .regex(/^(https:\/\/[^\s/]+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)\/?$/, {
-            error: BAD_PUBLIC_BASE_URL,
-          })
+          // The web app's rule for the same value: plain http only for this PC and the local
+          // network (the QR codes of a phone on the same Wi-Fi, .env.example).
+          .regex(
+            /^(https:\/\/[^\s/]+|http:\/\/(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?)\/?$/,
+            { error: BAD_PUBLIC_BASE_URL },
+          )
           .optional(),
       ),
       WORKER_POS_SYNC: z.preprocess(

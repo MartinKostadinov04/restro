@@ -293,6 +293,14 @@ describe('loadConfig', () => {
     })
     expect(short.map((line) => line.split(' ')[0])).toEqual(['GUEST_LINK_KEY', 'PUBLIC_BASE_URL'])
     expect([...missing, ...short].join('\n')).not.toMatch(/s3cret/)
+    // The local network's plain http, as the QR codes have it (.env.example).
+    expect(
+      loadConfig({
+        DATABASE_URL: URL,
+        GUEST_LINK_KEY: key,
+        PUBLIC_BASE_URL: 'http://192.168.1.20:3000',
+      }).guestLink,
+    ).toEqual({ key, baseUrl: 'http://192.168.1.20:3000' })
   })
 
   it('refuses the simulated POS in production, by NODE_ENV or by BARSY_ENV, and nowhere else', () => {

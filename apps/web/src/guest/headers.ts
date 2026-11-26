@@ -5,7 +5,8 @@
 // code is the only access control there is (D27) and it sits in the address (`/t/<code>`, then
 // the fragment of `/m/<venue>#t=<code>`, D122 §9; an older link may still carry `?t=`). Without a
 // policy the browser sends the address as `Referer` to every other origin the page loads from,
-// such as a CDN that serves the photos (A5-F5).
+// such as a CDN that serves the photos (A5-F5). The same on `/book/*`: a guest's own link to his
+// booking carries its token in the path (`/book/<organisation>/<venue>/<token>`, #579).
 //
 // `Content-Security-Policy` (#114, D127; design §11): the page loads a payment provider's card
 // form, so it says where scripts may come from, which frames it may open and where it may talk to.
@@ -65,7 +66,7 @@ export interface HeaderRule {
 }
 
 /** The paths of the guest's pages, as Next.js header sources (`:path*` also matches no segment). */
-export const GUEST_PAGE_SOURCES = ['/m/:path*', '/t/:path*'] as const
+export const GUEST_PAGE_SOURCES = ['/m/:path*', '/t/:path*', '/book/:path*'] as const
 
 /** Cloudflare's Turnstile (a script and a frame, #76). */
 const TURNSTILE_HOST = 'https://challenges.cloudflare.com'
