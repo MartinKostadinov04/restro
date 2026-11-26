@@ -124,6 +124,13 @@ export const RESERVATION_REFUSALS = [
   'outside_hours',
   /** The night lies past how far ahead the booking page takes requests (#577). */
   'too_far',
+  /**
+   * The guest's link opens no booking (#579): no such token, a booking taken out of the book, or a
+   * link past its days. One code for all three, so a refusal says nothing about which it was.
+   */
+  'link_unknown',
+  /** The booking's night has started (the venue's service day): the guest calls the club (#579). */
+  'night_started',
 ] as const
 
 /** One reservation refusal code. */

@@ -353,6 +353,8 @@ export const GUEST_EMAIL_KINDS = [
   'reservation_cancelled',
   'reservation_confirmed',
   'reservation_declined',
+  // The booking page's request was taken (#579): it carries the guest's own link.
+  'reservation_requested',
 ] as const
 
 /** One kind of guest email. */

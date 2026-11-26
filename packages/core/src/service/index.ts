@@ -96,10 +96,27 @@ export {
 export {
   type BookingNightAnswer,
   type BookingRequestInput,
+  cancelGuestBooking,
+  type GuestCancelInput,
+  type GuestLinkBooking,
   readBookingFile,
   readBookingNight,
+  readGuestBooking,
   requestBooking,
 } from './booking'
+export {
+  checkGuestLinkKey,
+  GUEST_LINK_DAYS,
+  GUEST_LINK_HASH_PATTERN,
+  GUEST_LINK_TOKEN_PATTERN,
+  guestLinkExpired,
+  guestLinkHashesEqual,
+  guestLinkToken,
+  guestLinkTokenHash,
+  MAX_GUEST_LINK_KEY_LENGTH,
+  MAX_GUEST_LINK_TOKEN_LENGTH,
+  MIN_GUEST_LINK_KEY_LENGTH,
+} from './booking-link'
 export {
   BREAKER,
   BREAKER_CAUSES,
@@ -454,6 +471,7 @@ export {
   guestEmailJobOf,
   oweNightEndEmail,
 } from './reservations/guest-email'
+export { guestCanCancel } from './reservations/guest-link'
 export { phoneKeyOf, regionOfLocale } from './reservations/guests'
 export {
   type GuestBooking,

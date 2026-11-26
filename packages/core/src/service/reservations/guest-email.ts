@@ -36,6 +36,7 @@ export const GUEST_EMAIL_LOG_KINDS: Readonly<Record<GuestEmailKind, LogKind>> = 
   reservation_cancelled: 'reservation.status',
   reservation_confirmed: 'reservation.status',
   reservation_declined: 'reservation.status',
+  reservation_requested: 'reservation.created',
 }
 
 /**

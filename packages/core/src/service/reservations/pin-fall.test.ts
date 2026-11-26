@@ -38,6 +38,8 @@ const ACTION_OF: Readonly<Record<string, PinFallAction | null>> = {
   // #577: the booking page's switch is settings-class, and a guest's request has no PIN at all.
   'reservation_online.set': null,
   'reservation.request': null,
+  // #579: the guest's own link has no PIN either.
+  'reservation.guest_cancel': null,
   'guest.save': null,
   'guest.private_note': null,
   'guest.erase': null,
