@@ -69,6 +69,9 @@ export const TURNSTILE_PAY_ACTION = 'pay_start'
 /** The Turnstile action a booking request's widget names (#577). */
 export const TURNSTILE_BOOKING_ACTION = 'booking_request'
 
+/** The Turnstile action the Cancel of a guest's own booking link names (#579). */
+export const TURNSTILE_BOOKING_CANCEL_ACTION = 'booking_cancel'
+
 /**
  * The header of the payment handle (D127 2.2): the secret only the paying phone holds, kept in
  * `sessionStorage`. Never in an address or a body, never logged; only its hash is stored.

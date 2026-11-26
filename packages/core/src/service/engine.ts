@@ -108,6 +108,11 @@ export interface ServiceOptions {
   readonly pinPepper?: string
   /** The bill-id key (`BILL_ID_KEY`), for recording a reading of a table's bill (#74). */
   readonly billIdKey?: string
+  /**
+   * The guest-link key (`GUEST_LINK_KEY`, #579), for a booking request: its link's token hash is
+   * written with it. Without it a request is taken with no link.
+   */
+  readonly guestLinkKey?: string
   /** The table's menu for a Send (`loadSendMenu`), read before the transaction (#77). */
   readonly sendMenu?: SendMenu
   /**
@@ -319,6 +324,7 @@ export async function executeCommand(
         sealPublicKey: options.sealPublicKey ?? null,
         pinPepper: options.pinPepper ?? null,
         billIdKey: options.billIdKey ?? null,
+        guestLinkKey: options.guestLinkKey ?? null,
         consentVersion: context.consentVersion ?? null,
         sendMenu: options.sendMenu ?? null,
         dbNow,

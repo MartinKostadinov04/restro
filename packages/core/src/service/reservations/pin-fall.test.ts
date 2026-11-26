@@ -40,6 +40,8 @@ const ACTION_OF: Readonly<Record<string, PinFallAction | null>> = {
   // #580: what guests may choose and the self-confirm switch are settings-class too.
   'reservation_online_guests.set': null,
   'reservation.request': null,
+  // #579: the guest's own link has no PIN either.
+  'reservation.guest_cancel': null,
   'guest.save': null,
   'guest.private_note': null,
   'guest.erase': null,

@@ -140,6 +140,13 @@ export const RESERVATION_REFUSALS = [
    * request stands, and the club writes to him (#580 review). A true repeat is answered instead.
    */
   'already_requested',
+  /**
+   * The guest's link opens no booking (#579): no such token, a booking taken out of the book, or a
+   * link past its days. One code for all three, so a refusal says nothing about which it was.
+   */
+  'link_unknown',
+  /** The booking's night has started (the venue's service day): the guest calls the club (#579). */
+  'night_started',
 ] as const
 
 /** One reservation refusal code. */

@@ -23,11 +23,13 @@
 
 import { JOB_NAMES, type JobPayload, type ProducedJobName } from '@restro/core'
 import {
+  guestEmailJobOf,
   type HumanCheck,
   type QueueExecutor,
   readBookingNight,
   readBookingSpots,
   requestBooking,
+  type ServiceOptions,
 } from '@restro/core/service'
 import type { DbPool } from '@restro/db'
 import {
@@ -56,6 +58,10 @@ export interface BookingApiDeps {
   readonly now?: () => Date
   readonly requests?: BadCodeLimiter
   readonly nights?: BadCodeLimiter
+  /** The key the guest's own link is made with (#579); without it a request gets no link. */
+  readonly guestLinkKey?: string
+  /** Queues the request's email in the command's transaction (#579); tests pass their own. */
+  readonly queueJobs?: ServiceOptions['queueJobs']
   /** Queues a job in the command's transaction (`enqueueJobIn`); tests pass their own. */
   readonly enqueueIn?: <N extends ProducedJobName>(
     queue: QueueExecutor,
@@ -169,11 +175,8 @@ export async function handleBookingRequest(
       humanCheck: deps.humanCheck,
       onGuard: (kind) => logInfo('booking_guard', { guard: kind, venueId: form.venue }),
       ...(deps.now === undefined ? {} : { now: deps.now() }),
-      // A booking that confirmed itself owes its email: queued with the booking or not at all.
-      queueJobs: async (_accepted, queue, owed) => {
-        const enqueueIn = deps.enqueueIn ?? enqueueJobIn
-        for (const job of owed.guestEmails) await enqueueIn(queue, JOB_NAMES.guestEmail, job)
-      },
+      ...(deps.guestLinkKey === undefined ? {} : { guestLinkKey: deps.guestLinkKey }),
+      queueJobs: deps.queueJobs ?? queueRequestEmails(form, deps.enqueueIn ?? enqueueJobIn),
     })
     if (result.status === 'accepted') {
       const confirmed = result.details.status === 'reserved'
@@ -198,7 +201,28 @@ export async function handleBookingRequest(
   }
 }
 
-/** The handlers' dependencies in the app: its pool and Turnstile. */
+/**
+ * The request's email, queued in the command's own transaction (#592): a request is never saved
+ * without it. "We got your request" (#579) rides in the answer's details; a booking that confirmed
+ * itself (#580) owes its confirmed email instead, beyond the answer. Both carry the guest's link.
+ */
+function queueRequestEmails(
+  scope: { readonly organization: string; readonly venue: string },
+  enqueueIn: NonNullable<BookingApiDeps['enqueueIn']>,
+): NonNullable<ServiceOptions['queueJobs']> {
+  return async (result, queue, owed) => {
+    const job = guestEmailJobOf(result, { tenantId: scope.organization, venueId: scope.venue })
+    if (job !== null) await enqueueIn(queue, JOB_NAMES.guestEmail, job)
+    for (const email of owed.guestEmails) await enqueueIn(queue, JOB_NAMES.guestEmail, email)
+  }
+}
+
+/** The handlers' dependencies in the app: its pool, Turnstile and the guest link's key. */
 export function bookingApiDeps(pool: DbPool): BookingApiDeps {
-  return { pool, humanCheck: turnstileCheck(serverEnv().TURNSTILE_SECRET_KEY) }
+  const env = serverEnv()
+  return {
+    pool,
+    humanCheck: turnstileCheck(env.TURNSTILE_SECRET_KEY),
+    ...(env.GUEST_LINK_KEY === undefined ? {} : { guestLinkKey: env.GUEST_LINK_KEY }),
+  }
 }

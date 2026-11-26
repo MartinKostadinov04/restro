@@ -55,8 +55,8 @@ export function seedChoice(mode: 'area' | 'spot'): Seeded {
 /** The online bookings of a night: Requested or Reserved, the Area asked for, the spots held. */
 export function booked(night: string): Booked[] {
   return lastLine<{ rows: Booked[] }>(
-    runScript('./scripts/seed-booking-e2e.ts', 'booked', night),
-    'seed_booking_e2e_booked',
+    runScript('./scripts/seed-booking-e2e.ts', 'asked', night),
+    'seed_booking_e2e_asked',
   ).rows
 }
 

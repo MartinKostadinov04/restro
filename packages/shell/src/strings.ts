@@ -518,6 +518,48 @@ export interface BookingStrings {
   }
 }
 
+/** The words of a guest's own link to his booking (#579). */
+export interface BookingLinkStrings {
+  readonly title: string
+  readonly night: string
+  readonly time: string
+  readonly partySize: string
+  readonly spots: string
+  readonly state: string
+  /** How the booking stands, by `GuestBookingState`. */
+  readonly states: {
+    readonly requested: string
+    readonly confirmed: string
+    readonly arrived: string
+    readonly cancelled: string
+    readonly declined: string
+    readonly ended: string
+  }
+  readonly cancel: string
+  /** The one question before a cancel: the club is told, and the link cannot undo it. */
+  readonly confirmText: string
+  readonly confirm: string
+  readonly keep: string
+  readonly cancelling: string
+  /** Once the club has the cancellation. */
+  readonly cancelledText: string
+  /** The night has started: a change is a call to the club. */
+  readonly nightStarted: string
+  /** The one page for a link that opens nothing: unknown, malformed or past its days. */
+  readonly goneTitle: string
+  readonly goneText: string
+  readonly loadFailedText: string
+  readonly retry: string
+  readonly refusals: {
+    readonly night_started: string
+    readonly link_unknown: string
+    readonly human_check: string
+    readonly rate_limited: string
+    readonly invalid_request: string
+    readonly unavailable: string
+  }
+}
+
 /** The words of one language. `lang` is the language the strings are really in. */
 export interface Strings {
   readonly lang: Locale
@@ -541,6 +583,7 @@ export interface Strings {
   readonly guest: GuestStrings
   readonly services: ServiceStrings
   readonly booking: BookingStrings
+  readonly bookingLink: BookingLinkStrings
 }
 
 const EN: Strings = {
@@ -990,6 +1033,41 @@ const EN: Strings = {
       unavailable: 'The request did not go through. Try again in a moment.',
       spot_taken: 'Someone just took that spot. Pick another one on the plan.',
       already_requested: 'You already asked for this night. The club will write to you.',
+    },
+  },
+  bookingLink: {
+    title: 'Your booking',
+    night: 'Night',
+    time: 'Time',
+    partySize: 'Guests',
+    spots: 'Spots',
+    state: 'Status',
+    states: {
+      requested: 'Waiting for the club’s answer',
+      confirmed: 'Confirmed',
+      arrived: 'You came',
+      cancelled: 'Cancelled',
+      declined: 'The club could not take it',
+      ended: 'The night is over',
+    },
+    cancel: 'Cancel the booking',
+    confirmText: 'Cancel this booking? The club will be told. You cannot undo this from the link.',
+    confirm: 'Yes, cancel it',
+    keep: 'No, keep it',
+    cancelling: 'Cancelling…',
+    cancelledText: 'Your booking is cancelled. The club has been told.',
+    nightStarted: 'The night has started. To change the booking, call the club.',
+    goneTitle: 'This booking has passed',
+    goneText: 'This link no longer opens a booking. Call the club if you need to.',
+    loadFailedText: 'The booking did not load. Try again in a moment.',
+    retry: 'Try again',
+    refusals: {
+      night_started: 'The night has started. To change the booking, call the club.',
+      link_unknown: 'This link no longer opens a booking. Call the club if you need to.',
+      human_check: 'We could not check that you are a person. Try again.',
+      rate_limited: 'Slow down a moment.',
+      invalid_request: 'Something went wrong. Try again.',
+      unavailable: 'The cancellation did not go through. Try again in a moment.',
     },
   },
 }
@@ -1451,6 +1529,42 @@ const BG: Strings = {
       unavailable: 'Заявката не беше изпратена. Опитайте отново след малко.',
       spot_taken: 'Някой току-що зае това място. Изберете друго от плана.',
       already_requested: 'Вече сте заявили тази вечер. Клубът ще ви пише.',
+    },
+  },
+  bookingLink: {
+    title: 'Вашата резервация',
+    night: 'Вечер',
+    time: 'Час',
+    partySize: 'Брой гости',
+    spots: 'Места',
+    state: 'Статус',
+    states: {
+      requested: 'Чака отговор от клуба',
+      confirmed: 'Потвърдена',
+      arrived: 'Посетена',
+      cancelled: 'Отменена',
+      declined: 'Клубът не можа да я приеме',
+      ended: 'Вечерта мина',
+    },
+    cancel: 'Отменете резервацията',
+    confirmText:
+      'Да отменим ли резервацията? Клубът ще бъде уведомен. От линка това не може да се върне.',
+    confirm: 'Да, отменете я',
+    keep: 'Не, запазете я',
+    cancelling: 'Отменя се…',
+    cancelledText: 'Резервацията ви е отменена. Клубът е уведомен.',
+    nightStarted: 'Вечерта вече започна. За промяна се обадете на клуба.',
+    goneTitle: 'Тази резервация е минала',
+    goneText: 'Този линк вече не отваря резервация. Обадете се на клуба, ако е нужно.',
+    loadFailedText: 'Резервацията не се зареди. Опитайте отново след малко.',
+    retry: 'Опитайте отново',
+    refusals: {
+      night_started: 'Вечерта вече започна. За промяна се обадете на клуба.',
+      link_unknown: 'Този линк вече не отваря резервация. Обадете се на клуба, ако е нужно.',
+      human_check: 'Не успяхме да проверим, че сте човек. Опитайте отново.',
+      rate_limited: 'Малко по-бавно, моля.',
+      invalid_request: 'Нещо се обърка. Опитайте отново.',
+      unavailable: 'Отмяната не мина. Опитайте отново след малко.',
     },
   },
 }

@@ -14,6 +14,7 @@
 import type { HumanCheck, HumanCheckVerdict } from '@restro/core/service'
 import {
   TURNSTILE_BOOKING_ACTION,
+  TURNSTILE_BOOKING_CANCEL_ACTION,
   TURNSTILE_PAY_ACTION,
   TURNSTILE_SEND_ACTION,
 } from '@restro/shell'
@@ -66,7 +67,9 @@ export function turnstileCheck(
         ? TURNSTILE_PAY_ACTION
         : use === 'booking'
           ? TURNSTILE_BOOKING_ACTION
-          : TURNSTILE_SEND_ACTION
+          : use === 'booking_cancel'
+            ? TURNSTILE_BOOKING_CANCEL_ACTION
+            : TURNSTILE_SEND_ACTION
     const expected = isTurnstileTestSecret(secret) ? [undefined, 'test', action] : [action]
     return expected.includes(answer.action) ? 'passed' : 'failed'
   }

@@ -38,6 +38,21 @@ export function guestBookingPath(address: GuestAddressParts): string {
   return `/book/${address.organization}/${address.venue}`
 }
 
+/** A guest link's token as a path segment: base64url, no padding (#579). */
+const LINK_TOKEN_SEGMENT = /^[A-Za-z0-9_-]{16,128}$/
+
+/**
+ * The path of a guest's own link to his booking (#579): `/book/<organisation>/<venue>/<token>`.
+ * The token travels in the path, never in a query string. Parts that are not slugs, or a token that
+ * is not a path segment of base64url, throw.
+ */
+export function guestBookingLinkPath(address: GuestAddressParts, token: string): string {
+  if (!LINK_TOKEN_SEGMENT.test(token)) {
+    throw new TypeError('a booking link token is base64url')
+  }
+  return `${guestBookingPath(address)}/${token}`
+}
+
 /** The parts of a venue its public address of before D84 is made of. */
 export interface MenuAddressParts {
   readonly slug: string

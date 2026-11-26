@@ -18,20 +18,33 @@
 //                       their party sizes and spots (`seed_booking_e2e_requested`): what the request
 //                       left behind, read as the database owner.
 //
+//   booked <night> <name>   prints the id and status of the newest booking that night for the guest
+//                       of that name (`seed_booking_e2e_booked`), for the guest link's test (#579),
+//                       and the path of the guest's own link as the worker writes it into his
+//                       emails (with GUEST_LINK_KEY set: the test servers' key; null when the
+//                       stored hash is not that key's).
+//
+//   owner <email>       makes that account (the admin password of .env.local) the owner of Booking
+//                       Club, so the guest link's test can read the club's list (#579).
+//
 // Like `db:seed:dev` this refuses to run unless NODE_ENV is development and the database is on this
 // machine. It prints one JSON line (`seed_booking_e2e_done`) with the page's path, a night that can
 // be booked (two from today) and the closed one.
 import { createPublishStore, publishStoreConfig } from '@restro/assets'
 import { addDaysToDay, guestBookingPath, serviceDate, type TenantId, WEEKDAYS } from '@restro/core'
-import { venues, withTenant } from '@restro/db'
-import { eq } from 'drizzle-orm'
+import { authMember, venues, withTenant } from '@restro/db'
+import { and, eq } from 'drizzle-orm'
 import pg from 'pg'
 
+import { guestLinkOf } from '../../worker/src/guest-email/link'
 import { writeBookingFile } from '../../worker/src/publish/booking'
-import { getPool } from '../src/server/db'
+import { createAuth } from '../src/server/auth'
+import { getAuthDb, getPool } from '../src/server/db'
+import { authModelId } from '../src/server/ids'
 import { drawBookingPlan } from './e2e/booking-plan'
 import { seedBookingSettings } from './e2e/booking-settings'
 import { DEMO_BAR_VENUE } from './lib/demo-bar'
+import { readAdminCredentials } from './lib/guard'
 import { seedDemoBarTable } from './lib/seed-demo-bar-table'
 
 const TENANT_ID = `tn_${'E2eBookingClub'.padEnd(22, '0')}` as TenantId
@@ -109,7 +122,8 @@ async function requested(night: string): Promise<void> {
   }
 }
 
-async function booked(night: string): Promise<void> {
+/** The online bookings of a night, Requested or Reserved, with the Area asked for and the spots (#580). */
+async function asked(night: string): Promise<void> {
   const owner = new pg.Pool({ connectionString: process.env.DATABASE_URL_OWNER, max: 1 })
   try {
     const { rows } = await owner.query<{ status: string; area: string | null; spots: string[] }>(
@@ -126,10 +140,102 @@ async function booked(night: string): Promise<void> {
           and r.status in ('requested', 'reserved')`,
       [TENANT_ID, DEMO_BAR_VENUE.slug, night],
     )
-    console.log(JSON.stringify({ level: 'info', event: 'seed_booking_e2e_booked', rows }))
+    console.log(JSON.stringify({ level: 'info', event: 'seed_booking_e2e_asked', rows }))
   } finally {
     await owner.end()
   }
+}
+
+async function booked(night: string, name: string): Promise<void> {
+  const owner = new pg.Pool({ connectionString: process.env.DATABASE_URL_OWNER, max: 1 })
+  try {
+    const { rows } = await owner.query<{
+      id: string
+      status: string
+      venue_id: string
+      guest_token_hash: string | null
+    }>(
+      `select r.id, r.status, r.venue_id, r.guest_token_hash
+         from restro.reservations r
+         join restro.venues v on v.id = r.venue_id
+         join restro.guests g on g.id = r.guest_id
+        where r.tenant_id = $1 and v.slug = $2 and r.service_date = $3 and g.name = $4
+        order by r.created_at desc
+        limit 1`,
+      [TENANT_ID, DEMO_BAR_VENUE.slug, night, name],
+    )
+    const found = rows[0]
+    if (found === undefined) throw new Error(`no booking that night for ${name}`)
+    // The link's path as the worker writes it into the guest's emails: worked out again from the id
+    // with the test servers' key, and only when it matches the hash the request stored.
+    const key = process.env.GUEST_LINK_KEY
+    const link =
+      key === undefined
+        ? undefined
+        : guestLinkOf(
+            found.id,
+            {
+              linkParts: {
+                tokenHash: found.guest_token_hash,
+                organization: ORGANIZATION_SLUG,
+                venue: DEMO_BAR_VENUE.slug,
+              },
+            },
+            { key, baseUrl: '' },
+          )
+    console.log(
+      JSON.stringify({
+        level: 'info',
+        event: 'seed_booking_e2e_booked',
+        id: found.id,
+        status: found.status,
+        venue_id: found.venue_id,
+        link: link ?? null,
+      }),
+    )
+  } finally {
+    await owner.end()
+  }
+}
+
+/** The account as Booking Club's owner, made or given back its password (as seed-tonight-e2e does). */
+async function makeOwner(email: string): Promise<void> {
+  const { password } = readAdminCredentials(process.env)
+  const auth = createAuth({ scripts: true })
+  const context = await auth.$context
+  const hash = await context.password.hash(password)
+  const existing = await context.internalAdapter.findUserByEmail(email)
+  let userId: string
+  if (existing) {
+    await context.internalAdapter.updatePassword(existing.user.id, hash)
+    userId = existing.user.id
+  } else {
+    const user = await context.internalAdapter.createUser(
+      { email, name: 'Booking Owner', emailVerified: true },
+      { method: 'admin' },
+    )
+    await context.internalAdapter.linkAccount({
+      userId: user.id,
+      providerId: 'credential',
+      accountId: user.id,
+      password: hash,
+    })
+    userId = user.id
+  }
+  const db = getAuthDb()
+  const [membership] = await db
+    .select({ id: authMember.id })
+    .from(authMember)
+    .where(and(eq(authMember.organizationId, TENANT_ID), eq(authMember.userId, userId)))
+    .limit(1)
+  if (membership === undefined) {
+    await db
+      .insert(authMember)
+      .values({ id: authModelId('member'), organizationId: TENANT_ID, userId, role: 'owner' })
+  } else {
+    await db.update(authMember).set({ role: 'owner' }).where(eq(authMember.id, membership.id))
+  }
+  console.log(JSON.stringify({ level: 'info', event: 'seed_booking_e2e_owner' }))
 }
 
 const [step, first, second, third] = process.argv.slice(2)
@@ -147,13 +253,17 @@ const run =
     ? seed(first, second === 'on', guestMay)
     : step === 'requested' && first !== undefined
       ? requested(first)
-      : step === 'booked' && first !== undefined
-        ? booked(first)
-        : Promise.reject(
-            new Error(
-              'seed <sim host> <on|off> [night|area|spot] | requested <night> | booked <night>',
-            ),
-          )
+      : step === 'asked' && first !== undefined
+        ? asked(first)
+        : step === 'booked' && first !== undefined && second !== undefined
+          ? booked(first, second)
+          : step === 'owner' && first !== undefined
+            ? makeOwner(first)
+            : Promise.reject(
+                new Error(
+                  'seed <sim host> <on|off> [night|area|spot] | requested <night> | asked <night> | booked <night> <name> | owner <email>',
+                ),
+              )
 run
   .then(async () => {
     await getPool().end()

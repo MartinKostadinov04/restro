@@ -43,10 +43,12 @@ import {
 } from '../../booking-nights'
 import { newId } from '../../ids'
 import { readOrderingSettings, WEEKDAYS, type Weekday } from '../../ordering-settings'
+import { guestLinkToken, guestLinkTokenHash } from '../booking-link'
 import type { ServiceTx } from '../definition'
 import { accepted, refused, type ServiceResult } from '../results'
 import { claimSpots, writeHeldSpots } from './book'
 import { closedDatesOf } from './closed-dates'
+import { guestEmailOwed } from './guest-email'
 import { venuePhoneKey } from './guests'
 import { confirmOwnPick, confirmsItself, guestPickOf } from './online-choice'
 import { readOnlineSettings } from './online-settings'
@@ -238,6 +240,11 @@ export async function requestReservation(
     madeBy: null,
     seatedAt: null,
     requestedAreaId: pick.areaId,
+    // The guest's own link (#579): only its token's hash is kept, never the token.
+    guestTokenHash:
+      stx.guestLinkKey === null
+        ? null
+        : guestLinkTokenHash(guestLinkToken(stx.guestLinkKey, reservationId)),
     ...stx.provenance,
   })
   await writeHeldSpots(stx, reservationId, pick.spotIds, grant.stretch, false)
@@ -256,18 +263,22 @@ export async function requestReservation(
       opened: '',
     },
   })
-  // With the switch on and his own spot picked, the booking confirms itself (D136, #580).
-  const confirmed = confirmsItself(online, pick.spotIds)
-  if (confirmed) {
+  // With the switch on and his own spot picked, the booking confirms itself (D136, #580): it owes
+  // the confirmed email in place of "We got your request" (#579). Either email carries the guest's
+  // link (the worker makes it from the hash stored above).
+  if (confirmsItself(online, pick.spotIds)) {
     await confirmOwnPick(stx, {
       reservationId,
       serviceDate: command.serviceDate,
       guestId,
       spotIds: pick.spotIds,
     })
+    return accepted(null, { details: { reservationId, repeated: false, status: 'reserved' } })
   }
+  // "We got your request" (#579), with the guest's link, to the address on his record.
+  const email = await guestEmailOwed(stx, { kind: 'booking', guestId }, 'reservation_requested')
   return accepted(null, {
-    details: { reservationId, repeated: false, status: confirmed ? 'reserved' : 'requested' },
+    details: { reservationId, repeated: false, status: 'requested', ...email },
   })
 }
 

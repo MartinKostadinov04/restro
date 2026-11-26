@@ -193,7 +193,8 @@ describe('POST /api/booking', () => {
     core.requestBooking.mockImplementation(async (_pool, input) => {
       // The command owes its email inside the transaction: core calls queueJobs there.
       await input.queueJobs(
-        { status: 'accepted' },
+        // A booking that confirmed itself owes no "We got your request" in its details.
+        { status: 'accepted', actionId: ACTION, ref: null, details: { status: 'reserved' } },
         { query: vi.fn() },
         {
           guestEmails: [{ reservationId: newId('rv'), kind: 'reservation_confirmed', entry: 'lg' }],
@@ -225,6 +226,27 @@ describe('POST /api/booking', () => {
     const response = await handleBookingRequest(post({ ...FORM, spotIds: [newId('sp')] }), deps())
     expect(response.status).toBe(409)
     expect(await response.json()).toEqual({ ok: false, refusal: 'spot_taken' })
+  })
+
+  it("gives core the guest link's key and the request email's queue (#579)", async () => {
+    core.requestBooking.mockResolvedValue({
+      status: 'accepted',
+      actionId: ACTION,
+      ref: null,
+      details: {},
+    })
+    const queueJobs = vi.fn(async () => {})
+    const key = 'k'.repeat(40)
+    await handleBookingRequest(post(FORM), { ...deps(), guestLinkKey: key, queueJobs })
+    expect(core.requestBooking).toHaveBeenCalledWith(
+      pool,
+      expect.objectContaining({ guestLinkKey: key, queueJobs }),
+    )
+    await handleBookingRequest(post(FORM), deps())
+    const second = core.requestBooking.mock.calls[1]?.[1] as Record<string, unknown>
+    expect(second).not.toHaveProperty('guestLinkKey')
+    // Without a queue of its own the handler brings the app's: the email is never left out.
+    expect(second.queueJobs).toEqual(expect.any(Function))
   })
 
   it('refuses a status, a spot or an id the guest tries to choose', async () => {

@@ -49,6 +49,7 @@ describe('loadConfig', () => {
       alerts: NO_ALERTS,
       receiptEmail: null,
       guestEmail: null,
+      guestLink: null,
     })
     expect(DEFAULT_HEALTH_PORT).toBe(8081)
   })
@@ -100,6 +101,7 @@ describe('loadConfig', () => {
       alerts: NO_ALERTS,
       receiptEmail: null,
       guestEmail: null,
+      guestLink: null,
     })
     // Unset, the Send follows the sync.
     expect(loadConfig({ DATABASE_URL: URL, WORKER_POS_SYNC: 'off' }).send).toBe(false)
@@ -269,6 +271,36 @@ describe('loadConfig', () => {
     })
     expect(bad.map((line) => line.split(' ')[0])).toEqual(['GUEST_EMAIL_FROM_ADDRESS'])
     expect(bad.join('\n')).not.toMatch(/s3cret/)
+  })
+
+  it('reads the guest link (#579): the key needs the guest pages’ address, and is never echoed', () => {
+    const key = `s3cret${'k'.repeat(30)}`
+    const config = loadConfig({
+      DATABASE_URL: URL,
+      GUEST_LINK_KEY: ` ${key} `,
+      PUBLIC_BASE_URL: 'https://menu.restro.example/',
+    })
+    expect(config.guestLink).toEqual({ key, baseUrl: 'https://menu.restro.example' })
+    expect(loadConfig({ DATABASE_URL: URL, PUBLIC_BASE_URL: 'https://x.example' }).guestLink).toBe(
+      null,
+    )
+    const missing = problemsOf({ DATABASE_URL: URL, GUEST_LINK_KEY: key })
+    expect(missing.map((line) => line.split(' ')[0])).toEqual(['PUBLIC_BASE_URL'])
+    const short = problemsOf({
+      DATABASE_URL: URL,
+      GUEST_LINK_KEY: 's3cret-short',
+      PUBLIC_BASE_URL: 'http://menu.example',
+    })
+    expect(short.map((line) => line.split(' ')[0])).toEqual(['GUEST_LINK_KEY', 'PUBLIC_BASE_URL'])
+    expect([...missing, ...short].join('\n')).not.toMatch(/s3cret/)
+    // The local network's plain http, as the QR codes have it (.env.example).
+    expect(
+      loadConfig({
+        DATABASE_URL: URL,
+        GUEST_LINK_KEY: key,
+        PUBLIC_BASE_URL: 'http://192.168.1.20:3000',
+      }).guestLink,
+    ).toEqual({ key, baseUrl: 'http://192.168.1.20:3000' })
   })
 
   it('refuses the simulated POS in production, by NODE_ENV or by BARSY_ENV, and nowhere else', () => {

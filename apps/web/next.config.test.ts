@@ -10,12 +10,16 @@ describe('the guest pages send no referrer (A5-F5)', () => {
     vi.restoreAllMocks()
   })
 
-  it('defines Referrer-Policy: no-referrer for the menu and the table address', () => {
-    expect(GUEST_PAGE_SOURCES).toEqual(['/m/:path*', '/t/:path*'])
+  it('defines Referrer-Policy: no-referrer for the menu, the table address and the booking page', () => {
+    expect(GUEST_PAGE_SOURCES).toEqual(['/m/:path*', '/t/:path*', '/book/:path*'])
     for (const rule of guestHeaders()) {
       expect(rule.headers[0]).toEqual({ key: 'Referrer-Policy', value: 'no-referrer' })
     }
-    expect(guestHeaders().map((rule) => rule.source)).toEqual(['/m/:path*', '/t/:path*'])
+    expect(guestHeaders().map((rule) => rule.source)).toEqual([
+      '/m/:path*',
+      '/t/:path*',
+      '/book/:path*',
+    ])
   })
 
   it('has next.config.ts return them from headers()', async () => {
@@ -28,5 +32,27 @@ describe('the guest pages send no referrer (A5-F5)', () => {
     const sources = (rules ?? []).map((rule) => rule.source)
     expect(sources).toContain('/m/:path*')
     expect(sources).toContain('/t/:path*')
+  })
+})
+
+describe("the guest link's token is never printed (#579)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("keeps the link's paths out of the request log, and only those", async () => {
+    vi.spyOn(process, 'loadEnvFile').mockImplementation(() => {})
+    const { default: config } = await import('./next.config')
+    const logging = config.logging
+    const ignore =
+      logging !== false && typeof logging?.incomingRequests === 'object'
+        ? (logging.incomingRequests.ignore ?? [])
+        : []
+    const hidden = (path: string) => ignore.some((pattern) => pattern.test(path))
+    expect(hidden(`/book/club-nosht/main-bar/${'Ab0_'.repeat(10)}Ab0`)).toBe(true)
+    expect(hidden('/api/booking/link/abc?organization=tn_x&venue=vn_y')).toBe(true)
+    expect(hidden('/book/club-nosht/main-bar')).toBe(false)
+    expect(hidden('/book/club-nosht/main-bar?lang=en')).toBe(false)
+    expect(hidden('/api/booking/request')).toBe(false)
   })
 })

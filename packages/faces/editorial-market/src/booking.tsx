@@ -33,6 +33,8 @@ import {
 } from 'react'
 
 import { BOOKING_CSS } from './booking-css'
+import { GuestLinkBody } from './booking-link'
+import { BOOKING_LINK_CSS } from './booking-link-css'
 import { BookingPlanPicker } from './booking-plan'
 import { EDITORIAL_CSS } from './css'
 import { bcp47, designAttributes, designVariables, themeVariables } from './model'
@@ -126,7 +128,10 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
   }
 
   let body: ReactNode
-  if (!booking.on) {
+  if (props.guestLink !== undefined) {
+    // A guest's own link (#579): that one booking, whether or not the page takes requests now.
+    body = <GuestLinkBody link={props.guestLink} locale={booking.locale} />
+  } else if (!booking.on) {
     body = (
       <section className="bk-answer" aria-labelledby={`${id}-off`}>
         <h2 id={`${id}-off`}>{words.offTitle}</h2>
@@ -314,10 +319,14 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
       }
     >
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: constant stylesheets from css.ts and booking-css.ts, no user input; React would escape `>` and quotes in them */}
-      <style dangerouslySetInnerHTML={{ __html: EDITORIAL_CSS + BOOKING_CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: EDITORIAL_CSS + BOOKING_CSS + BOOKING_LINK_CSS }} />
       <main className="bk-page">
         <p className="bk-venue">{booking.venueName}</p>
-        <h1 className="bk-title">{words.title}</h1>
+        <h1 className="bk-title">
+          {props.guestLink === undefined
+            ? words.title
+            : stringsFor(booking.locale).bookingLink.title}
+        </h1>
         {body}
       </main>
     </div>
