@@ -16,6 +16,11 @@
 // others' time, and the list command says so), so the plan is only less even until the numbers are
 // refreshed.
 //
+// Some specs only pass when no earlier spec of their shard has run (they share the shard's
+// database). Those pairs are listed under `apart` in the timings file, and the plan never puts both
+// in one shard. A spec that passes after a shard's change of neighbours is not proof it is free of
+// such a dependency: a new failure of this kind belongs in `apart`, with the reason.
+//
 // `--test-list` never fails on a name it does not know: a shard whose list matched nothing would run
 // zero tests and stay green. So the `check` command, run in CI's static job, compares the files the
 // shards are planned to run with the ones Playwright itself collects, and fails on any difference.
@@ -86,13 +91,15 @@ export function expectedSeconds(specs, measured) {
 /**
  * Cuts `specs` (in order) into `total` runs of neighbouring files so that the busiest run is as
  * short as it can be; among the plans with that busiest run, the one whose runs differ least from
- * each other. Every spec lands in exactly one shard.
+ * each other. Every spec lands in exactly one shard. A pair in `apart` (earlier spec, later spec)
+ * is never put in the same shard: a cut falls between them.
  * @param {string[]} specs
  * @param {Map<string, number>} seconds
  * @param {number} total
+ * @param {[string, string][]} [apart]
  * @returns {string[][]}
  */
-export function planShards(specs, seconds, total) {
+export function planShards(specs, seconds, total, apart = []) {
   if (!Number.isInteger(total) || total < 1) {
     throw new Error(`The shard count must be a whole number of 1 or more: ${total}`)
   }
@@ -105,8 +112,14 @@ export function planShards(specs, seconds, total) {
     running += value
     prefix.push(running)
   }
-  const span = (/** @type {number} */ from, /** @type {number} */ to) =>
-    (prefix[to] ?? 0) - (prefix[from] ?? 0)
+  // A run [from, to) may not hold both specs of a pair that is to be kept apart.
+  const pairs = apart.map(([earlier, later]) => [specs.indexOf(earlier), specs.indexOf(later)])
+  const span = (/** @type {number} */ from, /** @type {number} */ to) => {
+    for (const [early, late] of pairs) {
+      if (early !== undefined && late !== undefined && from <= early && late < to) return Infinity
+    }
+    return (prefix[to] ?? 0) - (prefix[from] ?? 0)
+  }
 
   // best.get(`${k}:${i}`): the best way to put the first i specs into k non-empty runs, as the
   // longest run and the sum of the squares of the runs (smaller is better, the longest first), and
@@ -119,6 +132,7 @@ export function planShards(specs, seconds, total) {
         const before = best.get(`${k - 1}:${cut}`)
         if (!before) continue
         const last = span(cut, i)
+        if (last === Infinity) continue
         const longest = Math.max(before.longest, last)
         const squares = before.squares + last * last
         const current = best.get(`${k}:${i}`)
@@ -262,7 +276,11 @@ export function currentPlan(total) {
   const specs = listSpecs()
   const file = JSON.parse(readFileSync(TIMINGS_FILE, 'utf8'))
   const { seconds, unmeasured } = expectedSeconds(specs, file.seconds)
-  return { shards: planShards(specs, seconds, total), seconds, unmeasured }
+  const apart = (file.apart ?? []).map((/** @type {{ earlier: string, later: string }} */ pair) => [
+    pair.earlier,
+    pair.later,
+  ])
+  return { shards: planShards(specs, seconds, total, apart), seconds, unmeasured, apart }
 }
 
 /** @param {string[]} args */
