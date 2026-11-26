@@ -12,7 +12,7 @@
 //     the choice is anything else; changing the choice away from spots turns it off (the command).
 //
 // A role without `settings.reservations` sees both values as text.
-import type { GuestMay } from '@restro/core/service'
+import type { BookingGuestMay as GuestMay } from '@restro/core'
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 

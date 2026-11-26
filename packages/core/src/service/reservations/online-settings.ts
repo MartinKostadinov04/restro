@@ -17,8 +17,10 @@
 
 import { z } from 'zod'
 
+import { BOOKING_GUEST_MAY } from '../../guest-files'
+
 /** What a guest may do on the booking page (D136, 12.7, 2.32). */
-export const GUEST_MAY_VALUES = ['night', 'area', 'spot'] as const
+export const GUEST_MAY_VALUES = BOOKING_GUEST_MAY
 
 /** One thing a guest may do on the booking page. */
 export type GuestMay = (typeof GUEST_MAY_VALUES)[number]

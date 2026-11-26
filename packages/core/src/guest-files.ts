@@ -28,7 +28,6 @@ import { z } from 'zod'
 import { idSchema } from './ids'
 import { WEEKDAYS, type Weekday } from './ordering-settings'
 import { PUBLIC_ID_PATTERN } from './public-id'
-import { GUEST_MAY_VALUES } from './service/reservations/online-settings'
 import { PLAN_GRID, SPOT_SHAPES, SPOT_SYMBOLS } from './spot-shapes'
 
 /** Venue slugs: lower-case kebab-case, 1 to 63 characters (`demo-club`). */
@@ -189,6 +188,12 @@ const BookingDayHoursSchema = z.strictObject({
 /** The most closed dates a booking file lists (the venue's own list is capped at 500). */
 export const BOOKING_FILE_CLOSED_DATES_MAX = 500
 
+/**
+ * What a guest may do on the booking page (#580; D136): ask for a night, choose an Area, or pick his
+ * own spot. The venue's stored choice (`GUEST_MAY_VALUES`, core/service) is these same values.
+ */
+export const BOOKING_GUEST_MAY = ['night', 'area', 'spot'] as const
+
 /** The most plans, and spots on one plan, a booking file carries (#580). */
 export const BOOKING_FILE_PLANS_MAX = 20
 export const BOOKING_FILE_SPOTS_MAX = 400
@@ -261,7 +266,7 @@ export const BookingFileSchema = z.strictObject({
    * What a guest may do beyond the night (#580): ask for the night only, choose an Area, or pick
    * his own spot. A file published before #580 has none, and reads as the night only.
    */
-  guest_may: z.enum(GUEST_MAY_VALUES).default('night'),
+  guest_may: z.enum(BOOKING_GUEST_MAY).default('night'),
   /** The Areas a guest may ask for, in the venue's order; empty unless Areas are offered. */
   areas: z.array(BookingAreaSchema).max(BOOKING_FILE_AREAS_MAX).default([]),
   /** The floor plans a guest picks his spot on, the current one first; empty unless offered. */
