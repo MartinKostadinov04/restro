@@ -210,6 +210,35 @@ describe('the guest’s own link in the email (#579)', () => {
     ).toBeUndefined()
   })
 
+  it('warns, with the reservation only, when the key does not give the stored hash', async () => {
+    const other = { key: 'another-guest-link-key-of-thirty-two-chars', baseUrl: config.baseUrl }
+    const news = { ...NEWS, linkParts: parts }
+    lines.length = 0
+    await sendGuestEmailOf(job, {
+      pool,
+      log: await log(),
+      sender,
+      read: async () => news,
+      guestLink: other,
+    })
+    const text = lines.join('\n')
+    expect(text).toContain('guest link left out')
+    expect(text).toContain(job.reservationId)
+    for (const secret of [token, parts.tokenHash, guestLinkToken(other.key, job.reservationId)]) {
+      expect(text).not.toContain(secret)
+    }
+    // A booking with no stored hash (staff took it) is no mismatch: nothing to warn about.
+    lines.length = 0
+    await sendGuestEmailOf(job, {
+      pool,
+      log: await log(),
+      sender,
+      read: async () => ({ ...news, linkParts: { ...parts, tokenHash: null } }),
+      guestLink: config,
+    })
+    expect(lines.join('\n')).not.toContain('guest link left out')
+  })
+
   it('sends the request email only while the request is still unanswered', () => {
     const requested = { ...job, kind: 'reservation_requested' } as const
     expect(guestEmailDecision(requested, { ...NEWS, status: 'requested' })).toMatchObject({

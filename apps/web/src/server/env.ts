@@ -117,8 +117,9 @@ export const ServerEnvSchema = z.object({
     }),
   /**
    * The key of a guest's own booking link (#579): the worker's `GUEST_LINK_KEY`, the same value.
-   * 32 to 256 characters (checked where it is used). Without it a booking request is still taken,
-   * with no link: the guest's emails then carry none. Empty counts as missing.
+   * 32 to 256 characters without spaces, the worker's rule: a bad key stops the app at start-up,
+   * not every booking request later. Without it a booking request is still taken, with no link:
+   * the guest's emails then carry none, and no link opens. Empty counts as missing.
    */
   GUEST_LINK_KEY: z
     .string()
@@ -126,7 +127,16 @@ export const ServerEnvSchema = z.object({
     .transform((value) => {
       const trimmed = value?.trim()
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
-    }),
+    })
+    .pipe(
+      z
+        .string()
+        .regex(/^\S{32,256}$/, {
+          error:
+            'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).',
+        })
+        .optional(),
+    ),
   /** The bearer token the reveal endpoint expects (the worker's REVEAL_SERVICE_TOKEN). */
   REVEAL_SERVICE_TOKEN: z
     .string()

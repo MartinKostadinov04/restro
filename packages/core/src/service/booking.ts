@@ -36,7 +36,12 @@ import { BOOKING_FILE_CLOSED_DATES_MAX, type BookingFile } from '../guest-files'
 import type { VenueId } from '../ids'
 import { serviceDate, wallClock } from '../service-day'
 import { applyService } from './apply-service'
-import { guestLinkExpired, guestLinkHashesEqual, guestLinkTokenHash } from './booking-link'
+import {
+  guestLinkExpired,
+  guestLinkHashesEqual,
+  guestLinkTokenFits,
+  guestLinkTokenHash,
+} from './booking-link'
 import type { ServiceOptions } from './engine'
 import type { HumanCheck } from './guest'
 import { guestCanCancel } from './reservations/guest-link'
@@ -202,9 +207,10 @@ export interface GuestLinkBooking {
 
 /**
  * The booking a guest's link opens, or null for every token that opens none: unknown, malformed,
- * taken out of the book, past its days, or of another venue. The token is hashed whatever it is,
- * the hash looked up, and the stored hash compared in constant time, so each of those takes the
- * same path. The token is never logged.
+ * taken out of the book, past its days, of another venue, or made under another key. The token is
+ * hashed whatever it is, the hash looked up, the stored hash compared in constant time and the
+ * token checked against the current key, so each of those takes the same path. The token is never
+ * logged.
  */
 export async function readGuestBooking(
   pool: DbPool,
@@ -212,6 +218,8 @@ export async function readGuestBooking(
     readonly tenantId: string
     readonly venueId: string
     readonly token: string
+    /** GUEST_LINK_KEY; without it no link opens. */
+    readonly guestLinkKey: string | undefined
     readonly now: Date
   },
 ): Promise<GuestLinkBooking | null> {
@@ -245,7 +253,10 @@ export async function readGuestBooking(
       )
       .limit(1)
     const same = guestLinkHashesEqual(found?.guestTokenHash ?? null, hash)
-    if (venue === undefined || found === undefined || !same) return null
+    // The stored hash alone opens nothing: the token must also be the current key's for this
+    // booking, so a changed key revokes every link already sent.
+    const fits = guestLinkTokenFits(input.guestLinkKey, found?.id ?? '', input.token)
+    if (venue === undefined || found === undefined || !same || !fits) return null
     const today = serviceDate(input.now, venue.timezone, venue.serviceDayEndsAt.slice(0, 5))
     if (guestLinkExpired(found.serviceDate, today)) return null
     const held = await tx
@@ -276,6 +287,8 @@ export interface GuestCancelInput {
   readonly venueId: string
   /** The link's token, from the page's path. Hashed here; never logged, never in a command. */
   readonly token: string
+  /** GUEST_LINK_KEY; without it no link opens, so every cancel is refused `link_unknown`. */
+  readonly guestLinkKey: string | undefined
   readonly actionId: string
   /** Turnstile's token; without it the cancel is refused `human_check`. */
   readonly humanToken?: string
@@ -290,8 +303,9 @@ export interface GuestCancelInput {
 }
 
 /**
- * The guest calls his booking off from his link: Turnstile first, then `reservation.guest_cancel`
- * as a guest command with the token's hash. The answer is the command's.
+ * The guest calls his booking off from his link: Turnstile first, then the link must open (the
+ * token is the current key's for that booking), then `reservation.guest_cancel` as a guest command
+ * with the token's hash. The answer is the command's.
  */
 export async function cancelGuestBooking(
   pool: DbPool,
@@ -307,6 +321,16 @@ export async function cancelGuestBooking(
     return refused(input.actionId, 'human_check')
   }
   if (verdict === 'unavailable') input.onGuard?.('human_check_open')
+  // The link must open first: a token made under another key (the key changed since) is refused
+  // as an unknown one, with the same code, before the command is issued.
+  const opens = await readGuestBooking(pool, {
+    tenantId: input.tenantId,
+    venueId: input.venueId,
+    token: input.token,
+    guestLinkKey: input.guestLinkKey,
+    now: input.now ?? new Date(),
+  })
+  if (opens === null) return refused(input.actionId, 'link_unknown')
   const { result } = await applyService(
     pool,
     {

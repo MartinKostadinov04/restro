@@ -28,6 +28,7 @@ const ACTION = '7d1f2c3a-4b5e-4f60-8a71-92b3c4d5e6f7'
 /** A token's shape; core is stubbed, so it opens what the stub says. */
 const TOKEN = `${'Ab0_'.repeat(10)}Ab0`
 const pool = { sentinel: 'pool' } as unknown as DbPool
+const LINK_KEY = `web-test-guest-link-key-${'w'.repeat(32)}`
 const humanCheck = vi.fn(async () => 'passed' as const)
 const queueJobs = vi.fn(async () => {})
 
@@ -60,7 +61,7 @@ function deps(limits: Partial<BadCodeLimits> = {}) {
     blockAfter: 100,
     ...limits,
   })
-  return { pool, humanCheck, limiter, queueJobs }
+  return { pool, humanCheck, limiter, queueJobs, guestLinkKey: LINK_KEY }
 }
 
 const read = (token = TOKEN, query = `organization=${ORG}&venue=${VENUE}`) =>
@@ -102,6 +103,7 @@ describe('GET /api/booking/link/<token>', () => {
       tenantId: ORG,
       venueId: VENUE,
       token: TOKEN,
+      guestLinkKey: LINK_KEY,
       now: expect.any(Date),
     })
   })
@@ -164,6 +166,7 @@ describe('POST /api/booking/link/<token>', () => {
         tenantId: ORG,
         venueId: VENUE,
         token: TOKEN,
+        guestLinkKey: LINK_KEY,
         actionId: ACTION,
         humanToken: 'turnstile-token',
         humanCheck,

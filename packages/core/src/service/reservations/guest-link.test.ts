@@ -97,13 +97,24 @@ describe.skipIf(!hasDatabase)("a guest's own link to his booking (as the restro_
     const id = result.details.reservationId as Id<'rv'>
     return { id, token: guestLinkToken(KEY, id), result }
   }
-  const open = (token: string, now: Date = NOW, venueId: string = world.venueId) =>
-    readGuestBooking(world.app, { tenantId: world.tenantId, venueId, token, now })
-  const cancel = (token: string, now: Date = NOW, withTurnstile = true) =>
+  const open = (
+    token: string,
+    now: Date = NOW,
+    venueId: string = world.venueId,
+    tenantId: string = world.tenantId,
+    guestLinkKey: string = KEY,
+  ) => readGuestBooking(world.app, { tenantId, venueId, token, guestLinkKey, now })
+  const cancel = (
+    token: string,
+    now: Date = NOW,
+    withTurnstile = true,
+    guestLinkKey: string = KEY,
+  ) =>
     cancelGuestBooking(world.app, {
       tenantId: world.tenantId,
       venueId: world.venueId,
       token,
+      guestLinkKey,
       actionId: randomUUID(),
       ...(withTurnstile ? { humanToken: 'token' } : {}),
       humanCheck: passes,
@@ -205,6 +216,46 @@ describe.skipIf(!hasDatabase)("a guest's own link to his booking (as the restro_
     expect(await open('')).toBeNull()
     expect(await open(guestLinkToken(`another-key-${'y'.repeat(32)}`, first.id))).toBeNull()
     expect(await open(first.token, NOW, 'vn_0123456789ABCDEFGHIJKL')).toBeNull()
+  })
+
+  it("opens nothing with another organisation's or another venue's address", async () => {
+    const { token } = await ask()
+    const other = await openServiceWorld('guest-link-other')
+    try {
+      // Another organisation with this venue, with its own venue, and this one with the other's.
+      expect(await open(token, NOW, world.venueId, other.tenantId)).toBeNull()
+      expect(await open(token, NOW, other.venueId, other.tenantId)).toBeNull()
+      expect(await open(token, NOW, other.venueId, world.tenantId)).toBeNull()
+      expect(await open(token)).toMatchObject({ state: 'requested' })
+    } finally {
+      await other.close()
+    }
+  })
+
+  it('stops every link made under a key once the key is changed', async () => {
+    const { id, token } = await ask()
+    const NEW_KEY = `the-changed-guest-link-key-${'n'.repeat(32)}`
+    // The old key's token still hashes to the stored hash, and is refused like an unknown one.
+    expect(await open(token, NOW, world.venueId, world.tenantId, NEW_KEY)).toBeNull()
+    expect(await cancel(token, NOW, true, NEW_KEY)).toMatchObject({
+      status: 'refused',
+      code: 'link_unknown',
+    })
+    // The changed key's token for the same booking is no link either: its hash was never stored.
+    const minted = guestLinkToken(NEW_KEY, id)
+    expect(await open(minted, NOW, world.venueId, world.tenantId, NEW_KEY)).toBeNull()
+    // Without a key no link opens at all (passed straight in: a default would fill `undefined`).
+    expect(
+      await readGuestBooking(world.app, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        token,
+        guestLinkKey: undefined,
+        now: NOW,
+      }),
+    ).toBeNull()
+    expect(await statusOf(id)).toBe('requested')
+    expect(await open(token)).toMatchObject({ state: 'requested' })
   })
 
   it('opens the booking up to seven days after its night, and nothing after', async () => {

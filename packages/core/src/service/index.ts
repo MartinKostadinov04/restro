@@ -112,6 +112,7 @@ export {
   guestLinkExpired,
   guestLinkHashesEqual,
   guestLinkToken,
+  guestLinkTokenFits,
   guestLinkTokenHash,
   MAX_GUEST_LINK_KEY_LENGTH,
   MAX_GUEST_LINK_TOKEN_LENGTH,

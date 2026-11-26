@@ -87,6 +87,27 @@ export function guestLinkHashesEqual(stored: string | null, given: string): bool
 }
 
 /**
+ * True when `token` is the one the current key gives this reservation, compared in constant time.
+ * What makes changing `GUEST_LINK_KEY` revoke every link already sent: a stored hash alone opens
+ * nothing. False without a key (after the same one comparison), and for a key the check refuses.
+ */
+export function guestLinkTokenFits(
+  key: string | undefined,
+  reservationId: string,
+  token: string,
+): boolean {
+  let expected: string | null = null
+  if (key !== undefined) {
+    try {
+      expected = guestLinkTokenHash(guestLinkToken(key, reservationId))
+    } catch {
+      expected = null
+    }
+  }
+  return guestLinkHashesEqual(expected, guestLinkTokenHash(token))
+}
+
+/**
  * True when a booking's link no longer opens it: its night is more than `GUEST_LINK_DAYS` before
  * `today` (the venue's service day). The night itself and the seven days after still open.
  */

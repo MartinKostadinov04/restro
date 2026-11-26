@@ -95,6 +95,22 @@ describe('the web app and the sealing private key', () => {
     )
   })
 
+  it('refuses a guest link key the worker would refuse (#579), at start-up, never naming it', () => {
+    const base = {
+      DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+      BETTER_AUTH_SECRET: 'x'.repeat(32),
+    }
+    expect(ServerEnvSchema.parse(base).GUEST_LINK_KEY).toBeUndefined()
+    expect(ServerEnvSchema.parse({ ...base, GUEST_LINK_KEY: ' ' }).GUEST_LINK_KEY).toBeUndefined()
+    const key = 'k'.repeat(32)
+    expect(ServerEnvSchema.parse({ ...base, GUEST_LINK_KEY: ` ${key} ` }).GUEST_LINK_KEY).toBe(key)
+    for (const bad of ['short-key', 'k'.repeat(257), `${'k'.repeat(20)} ${'k'.repeat(20)}`]) {
+      const parsed = ServerEnvSchema.safeParse({ ...base, GUEST_LINK_KEY: bad })
+      expect(parsed.success, bad).toBe(false)
+      expect(JSON.stringify(parsed.error?.issues)).not.toContain(bad)
+    }
+  })
+
   it('knows the address QR codes are printed with by default (PUBLIC_BASE_URL, else BETTER_AUTH_URL)', () => {
     const base = {
       DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',

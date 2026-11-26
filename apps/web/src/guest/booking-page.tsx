@@ -254,10 +254,14 @@ function useGuestLinkBinding(
         } else if (parsed.data.refusal === 'link_unknown') {
           setStage('gone')
           setBooking(null)
+        } else if (response.status === 409) {
+          // The booking changed since the page read it (its night started, or the club answered
+          // or cancelled it): read it again, so the page shows it as it stands and no dead button.
+          // Only the night's own line is worded; any other state speaks for itself.
+          setRefusal(parsed.data.refusal === 'night_started' ? 'night_started' : null)
+          setReads((n) => n + 1)
         } else {
           setRefusal(parsed.data.refusal)
-          // The night may have started since the page read it: read the booking again.
-          if (parsed.data.refusal === 'night_started') setReads((n) => n + 1)
         }
       } catch {
         setRefusal('unavailable')

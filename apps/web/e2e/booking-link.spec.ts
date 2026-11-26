@@ -93,6 +93,27 @@ async function facts(page: Page): Promise<Record<string, string>> {
   return Object.fromEntries(terms.map((term, index) => [term, values[index] ?? '']))
 }
 
+/** A guest books the bookable night on the booking page; answers the booking as stored. */
+async function bookNight(page: Page, name: string): Promise<Booked> {
+  await stubTurnstile(page)
+  await page.goto(`${seeded.path}?lang=en`)
+  await expect(page.locator('[data-page="booking"]')).toBeVisible({ timeout: 20_000 })
+  await page.getByLabel('Night').selectOption(seeded.open)
+  await page.getByLabel('Guests').fill('3')
+  await page.getByLabel('Name').fill(name)
+  await page
+    .getByLabel('Phone')
+    .fill(`+359 888 ${String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')}`)
+  await page.getByLabel('Email').fill('link-guest@example.com')
+  await page.getByRole('button', { name: 'Send the request' }).click()
+  await expect(page.getByRole('status')).toContainText('Your request is with the club', {
+    timeout: 20_000,
+  })
+  const booking = booked(seeded.open, name)
+  expect(booking.status).toBe('requested')
+  return booking
+}
+
 let seeded: Seeded
 
 test.beforeAll(() => {
@@ -111,22 +132,7 @@ test('a guest opens his own link, cancels, and the club’s list shows it cancel
   const name = `Link Guest ${Math.random().toString(36).slice(2, 8)}`
 
   // He books a night on the booking page.
-  await stubTurnstile(page)
-  await page.goto(`${seeded.path}?lang=en`)
-  await expect(page.locator('[data-page="booking"]')).toBeVisible({ timeout: 20_000 })
-  await page.getByLabel('Night').selectOption(seeded.open)
-  await page.getByLabel('Guests').fill('3')
-  await page.getByLabel('Name').fill(name)
-  await page
-    .getByLabel('Phone')
-    .fill(`+359 888 ${String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')}`)
-  await page.getByLabel('Email').fill('link-guest@example.com')
-  await page.getByRole('button', { name: 'Send the request' }).click()
-  await expect(page.getByRole('status')).toContainText('Your request is with the club', {
-    timeout: 20_000,
-  })
-  const booking = booked(seeded.open, name)
-  expect(booking.status).toBe('requested')
+  const booking = await bookNight(page, name)
 
   // His own link: that booking, no form, and a Cancel.
   if (booking.link === null) throw new Error('the booking stored no link for the test key')
@@ -184,4 +190,45 @@ test('a link that opens nothing gets one plain page', async ({ page }) => {
     ).toBeVisible()
     await expect(page.locator('[data-page="booking"] dl')).toHaveCount(0)
   }
+})
+
+test('a Cancel after the club answered shows the booking as it stands, with no dead button', async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(180_000)
+  const name = `Stale Guest ${Math.random().toString(36).slice(2, 8)}`
+  const booking = await bookNight(page, name)
+  if (booking.link === null) throw new Error('the booking stored no link for the test key')
+  await page.goto(`${booking.link}?lang=en`)
+  await expect(page.getByRole('button', { name: 'Cancel the booking' })).toBeVisible({
+    timeout: 20_000,
+  })
+
+  // While his page is open, the club declines the request.
+  const staff = await browser.newContext({ viewport: TABLET })
+  try {
+    const desk = await staff.newPage()
+    await signIn(desk, OWNER_EMAIL)
+    await staff.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: new URL(desk.url()).origin }])
+    await desk.goto(`/venues/${booking.venue_id}?tab=reservations&day=${seeded.open}`)
+    await expect(desk.getByTestId('reservations-night')).toBeVisible({ timeout: 20_000 })
+    await desk.getByTestId('rv-row').filter({ hasText: name }).click()
+    await desk.getByTestId('rv-sheet-decline').click()
+    await desk.getByTestId('rv-decline-dialog-do').click()
+    await expect(desk.getByTestId('rv-sheet')).toContainText('Declined', { timeout: 20_000 })
+  } finally {
+    await staff.close()
+  }
+  expect(booked(seeded.open, name).status).toBe('declined')
+
+  // His Cancel, from the page as he read it: the page reads the booking again and shows it.
+  await page.getByRole('button', { name: 'Cancel the booking' }).click()
+  await page.getByRole('button', { name: 'Yes, cancel it' }).click()
+  await expect
+    .poll(async () => (await facts(page)).Status, { timeout: 20_000 })
+    .toBe('The club could not take it')
+  await expect(page.getByRole('button', { name: 'Cancel the booking' })).toHaveCount(0)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(booked(seeded.open, name).status).toBe('declined')
 })

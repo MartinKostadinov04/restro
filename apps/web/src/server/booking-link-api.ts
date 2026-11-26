@@ -53,6 +53,8 @@ import { turnstileCheck } from './turnstile'
 export interface BookingLinkApiDeps {
   readonly pool: DbPool
   readonly humanCheck: HumanCheck
+  /** GUEST_LINK_KEY: a token must be this key's for its booking. Without it no link opens. */
+  readonly guestLinkKey: string | undefined
   readonly now?: () => Date
   readonly limiter?: BadCodeLimiter
   /** Queues the cancellation's email in the command's transaction; tests pass their own. */
@@ -136,6 +138,7 @@ export async function handleGuestLinkRead(
       tenantId: parsed.data.organization,
       venueId: parsed.data.venue,
       token: tokenOf(token),
+      guestLinkKey: deps.guestLinkKey,
       now: deps.now?.() ?? new Date(),
     })
     if (booking === null) return gone()
@@ -170,6 +173,7 @@ export async function handleGuestLinkCancel(
       tenantId: form.organization,
       venueId: form.venue,
       token: tokenOf(token),
+      guestLinkKey: deps.guestLinkKey,
       actionId: form.actionId,
       ...(form.humanToken === undefined ? {} : { humanToken: form.humanToken }),
       humanCheck: deps.humanCheck,
@@ -191,6 +195,7 @@ export async function handleGuestLinkCancel(
       tenantId: form.organization,
       venueId: form.venue,
       token: tokenOf(token),
+      guestLinkKey: deps.guestLinkKey,
       now,
     })
     if (booking === null) return gone()
@@ -219,5 +224,10 @@ function queueCancelEmail(scope: {
 
 /** The handlers' dependencies in the app: its pool and Turnstile. */
 export function bookingLinkApiDeps(pool: DbPool): BookingLinkApiDeps {
-  return { pool, humanCheck: turnstileCheck(serverEnv().TURNSTILE_SECRET_KEY) }
+  const env = serverEnv()
+  return {
+    pool,
+    humanCheck: turnstileCheck(env.TURNSTILE_SECRET_KEY),
+    guestLinkKey: env.GUEST_LINK_KEY,
+  }
 }

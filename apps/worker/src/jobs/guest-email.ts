@@ -222,7 +222,13 @@ export async function sendGuestEmailOf(
       venueName: news.venueName,
       words: guestEmailWords(job.kind, decision.language, {
         ...news,
-        link: guestLinkOf(job.reservationId, news, deps.guestLink ?? null),
+        link: guestLinkOf(job.reservationId, news, deps.guestLink ?? null, () =>
+          // The reservation's id only: never the token, never its hash.
+          deps.log.warn(
+            { reservationId: job.reservationId, kind: job.kind },
+            "guest link left out: GUEST_LINK_KEY does not give the booking's stored hash",
+          ),
+        ),
       }),
       idempotencyKey: `${job.reservationId}-${job.kind}-${job.entry}`,
     })

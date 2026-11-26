@@ -20,12 +20,18 @@ if (existsSync(rootEnvFile)) process.loadEnvFile(rootEnvFile)
 // plugin does for us, pointing `next-intl/config` at our request config, is done here.
 const requestConfig = './src/i18n/request.ts'
 
+/** The paths that carry a guest link's token (#579): the page and its endpoint. */
+export const GUEST_LINK_PATHS = [/^\/book\/[^/?]+\/[^/?]+\/[^/?]/, /^\/api\/booking\/link\//]
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   // No referrer from the guest's pages: the table code is in their address (src/guest/headers.ts).
   // No other site frames the admin (src/frame-headers.ts, DA-O8).
   headers: async () => [...guestHeaders(), ...frameHeaders()],
+  // The development server prints each request's path; a guest's own booking link carries its
+  // token in the path (#579), so those paths are never printed. (`next start` logs no requests.)
+  logging: { incomingRequests: { ignore: GUEST_LINK_PATHS } },
   // Workspace packages export TypeScript source (see README, "Workspace packages"),
   // so Next has to compile them. @restro/barsy is deliberately absent: the web app
   // never imports it (CLAUDE.md, import boundaries).

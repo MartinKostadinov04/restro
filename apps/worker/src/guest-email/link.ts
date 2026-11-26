@@ -29,12 +29,21 @@ export function guestLinkOf(
   reservationId: string,
   news: { readonly linkParts?: GuestLinkParts },
   config: GuestLinkConfig | null,
+  /**
+   * Told when the booking has a stored hash that this key does not give (GUEST_LINK_KEY changed,
+   * or differs from the web app's): the email then goes without its link. Never given the token
+   * or the hash.
+   */
+  onKeyMismatch?: () => void,
 ): string | undefined {
   const parts = news.linkParts
   if (config === null || parts === undefined || parts.tokenHash === null) return undefined
   if (parts.organization === null) return undefined
   const token = guestLinkToken(config.key, reservationId)
-  if (!guestLinkHashesEqual(parts.tokenHash, guestLinkTokenHash(token))) return undefined
+  if (!guestLinkHashesEqual(parts.tokenHash, guestLinkTokenHash(token))) {
+    onKeyMismatch?.()
+    return undefined
+  }
   try {
     const path = guestBookingLinkPath(
       { organization: parts.organization, venue: parts.venue },
