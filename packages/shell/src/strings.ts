@@ -482,6 +482,24 @@ export interface BookingStrings {
   /** A template that has no booking page. */
   readonly unavailableTitle: string
   readonly unavailableText: string
+  /** The Area choice (#580): its label, and the empty first option. */
+  readonly area: string
+  readonly areaPick: string
+  /** The spot choice (#580): the plan's heading, how to use it, and each spot's state in words. */
+  readonly spots: string
+  readonly spotsHint: string
+  readonly spotsChecking: string
+  readonly spotFree: string
+  readonly spotTaken: string
+  readonly spotPicked: string
+  /** A spot's seats, "4 seats". */
+  readonly spotSeats: (seats: number) => string
+  /** The spots picked so far, or that none is and the club will place the party. */
+  readonly spotsPicked: (names: string) => string
+  readonly noSpotPicked: string
+  /** The answer screen of a booking that confirmed itself (#580, D136). */
+  readonly confirmedTitle: string
+  readonly confirmedText: string
   readonly refusals: {
     readonly booking_off: string
     readonly closed_night: string
@@ -493,6 +511,8 @@ export interface BookingStrings {
     readonly rate_limited: string
     readonly invalid_request: string
     readonly unavailable: string
+    /** Somebody took a picked spot meanwhile (#580): the plan is shown again. */
+    readonly spot_taken: string
   }
 }
 
@@ -941,6 +961,19 @@ const EN: Strings = {
     offText: 'This club takes no online bookings. Call the club or ask at the door.',
     unavailableTitle: 'Online booking is not available',
     unavailableText: 'This page cannot take bookings. Call the club to ask for a table.',
+    area: 'Area',
+    areaPick: 'Choose an area',
+    spots: 'Your spot',
+    spotsHint: 'Tap a free spot to pick it. You can pick more than one.',
+    spotsChecking: 'Checking which spots are free…',
+    spotFree: 'free',
+    spotTaken: 'taken',
+    spotPicked: 'picked',
+    spotSeats: (seats) => (seats === 1 ? '1 seat' : `${seats} seats`),
+    spotsPicked: (names) => `Picked: ${names}`,
+    noSpotPicked: 'No spot picked: the club will seat you.',
+    confirmedTitle: 'Your booking is confirmed',
+    confirmedText: 'Your spot is kept for you. You will get an email.',
     refusals: {
       booking_off:
         'This club takes no online bookings right now. Call the club to ask for a table.',
@@ -953,6 +986,7 @@ const EN: Strings = {
       rate_limited: 'Slow down a moment.',
       invalid_request: 'Check the form and try again.',
       unavailable: 'The request did not go through. Try again in a moment.',
+      spot_taken: 'Someone just took that spot. Pick another one on the plan.',
     },
   },
 }
@@ -1386,6 +1420,19 @@ const BG: Strings = {
     offText: 'Този клуб не приема онлайн резервации. Обадете се на клуба или попитайте на входа.',
     unavailableTitle: 'Онлайн резервациите не са достъпни',
     unavailableText: 'Тази страница не приема резервации. Обадете се на клуба, за да заявите маса.',
+    area: 'Зона',
+    areaPick: 'Изберете зона',
+    spots: 'Вашето място',
+    spotsHint: 'Докоснете свободно място, за да го изберете. Може да изберете повече от едно.',
+    spotsChecking: 'Проверяваме кои места са свободни…',
+    spotFree: 'свободно',
+    spotTaken: 'заето',
+    spotPicked: 'избрано',
+    spotSeats: (seats) => (seats === 1 ? '1 място' : `${seats} места`),
+    spotsPicked: (names) => `Избрани: ${names}`,
+    noSpotPicked: 'Без избрано място: клубът ще ви настани.',
+    confirmedTitle: 'Резервацията ви е потвърдена',
+    confirmedText: 'Мястото е запазено за вас. Ще получите имейл.',
     refusals: {
       booking_off:
         'В момента клубът не приема онлайн резервации. Обадете се на клуба, за да заявите маса.',
@@ -1399,6 +1446,7 @@ const BG: Strings = {
       rate_limited: 'Малко по-бавно, моля.',
       invalid_request: 'Проверете формата и опитайте отново.',
       unavailable: 'Заявката не беше изпратена. Опитайте отново след малко.',
+      spot_taken: 'Някой току-що зае това място. Изберете друго от плана.',
     },
   },
 }

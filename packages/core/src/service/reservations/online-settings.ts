@@ -5,8 +5,8 @@
 //
 // What D136 names, and nothing more:
 // - whether the booking page takes requests at all (`bookingPage`, #577);
-// - what a guest may do on the booking page: ask for a night only, choose a zone, or pick the spot
-//   (`guestMay`);
+// - what a guest may do on the booking page: ask for a night only, choose an Area, or pick
+//   their own spot (`guestMay`; the spec's "zone" is an Area, Martin 11-25);
 // - whether a booking confirms itself (`autoConfirm`) — D136 applies it only where the guest picked
 //   his own spot, which is a rule of part 2's reader, not of this value;
 // - the prepayment: on or off, and its amount in integer minor units of the venue's own currency
@@ -18,7 +18,10 @@
 import { z } from 'zod'
 
 /** What a guest may do on the booking page (D136, 12.7, 2.32). */
-export const GUEST_MAY_VALUES = ['night', 'zone', 'spot'] as const
+export const GUEST_MAY_VALUES = ['night', 'area', 'spot'] as const
+
+/** One thing a guest may do on the booking page. */
+export type GuestMay = (typeof GUEST_MAY_VALUES)[number]
 
 /** The most a club's wording may hold, per language. */
 export const ONLINE_WORDING_MAX = 2000

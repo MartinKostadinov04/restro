@@ -15,16 +15,36 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { type DbPool, reservationSettings, venues, withTenant } from '@restro/db'
+import {
+  areas,
+  type DbPool,
+  reservationSettings,
+  venues,
+  venueTables,
+  withTenant,
+} from '@restro/db'
 import { and, eq, isNull } from 'drizzle-orm'
 
-import { type BookingNightVerdict, bookingNightVerdict } from '../booking-nights'
-import { BOOKING_FILE_CLOSED_DATES_MAX, type BookingFile } from '../guest-files'
+import { type BookingNightVerdict, bookingNightHours, bookingNightVerdict } from '../booking-nights'
+import {
+  BOOKING_FILE_AREAS_MAX,
+  BOOKING_FILE_CLOSED_DATES_MAX,
+  BOOKING_FILE_PLANS_MAX,
+  BOOKING_FILE_SPOTS_MAX,
+  type BookingFile,
+} from '../guest-files'
 import type { VenueId } from '../ids'
 import { serviceDate } from '../service-day'
 import { applyService } from './apply-service'
+import type { ServiceOptions } from './engine'
 import type { HumanCheck } from './guest'
+import {
+  type BookingSpotState,
+  bookingPlanOf,
+  bookingSpotStates,
+} from './reservations/booking-plan'
 import { bookingCalendarOf, bookingPageOn } from './reservations/online'
+import { readOnlineSettings } from './reservations/online-settings'
 import { refused, type ServiceResult } from './results'
 
 /** The venue and its reservation settings, as the two reads need them; null for no live venue. */
@@ -42,10 +62,19 @@ async function bookingVenue(pool: DbPool, tenantId: string, venueId: string) {
       .where(and(eq(venues.id, venueId), isNull(venues.archivedAt)))
     if (venue === undefined) return null
     const [settings] = await tx
-      .select({ online: reservationSettings.online, closedDates: reservationSettings.closedDates })
+      .select({
+        online: reservationSettings.online,
+        closedDates: reservationSettings.closedDates,
+        turnMinutes: reservationSettings.turnMinutes,
+      })
       .from(reservationSettings)
       .where(eq(reservationSettings.venueId, venueId))
-    return { venue, settings: settings ?? null }
+    // What the page offers beyond the night (#580), read only when the page is on and offers it.
+    const guestMay = bookingPageOn(settings ?? null)
+      ? readOnlineSettings(settings?.online).guestMay
+      : 'night'
+    const offer = guestMay === 'night' ? { areas: [], plans: [] } : await bookingPlanOf(tx, venueId)
+    return { venue, settings: settings ?? null, guestMay, offer }
   })
 }
 
@@ -70,7 +99,70 @@ export async function readBookingFile(
     closed_dates: calendar.closedDates
       .filter((day) => day >= today)
       .slice(0, BOOKING_FILE_CLOSED_DATES_MAX),
+    guest_may: found.guestMay,
+    // The Areas name the spots' own Areas too, so both choices carry them; the plans only "pick
+    // their own spot" draws. Nothing else of a plan: no Table, no kind's label (rule 3).
+    areas: found.offer.areas.slice(0, BOOKING_FILE_AREAS_MAX).map((area) => ({
+      id: area.id as BookingFile['areas'][number]['id'],
+      name: area.name,
+    })),
+    plans:
+      found.guestMay !== 'spot'
+        ? []
+        : found.offer.plans.slice(0, BOOKING_FILE_PLANS_MAX).map((plan) => ({
+            id: plan.id as BookingFile['plans'][number]['id'],
+            name: plan.name,
+            spots: plan.spots.slice(0, BOOKING_FILE_SPOTS_MAX).map((spot) => ({
+              id: spot.id as BookingFile['plans'][number]['spots'][number]['id'],
+              name: spot.name,
+              symbol: spot.symbol,
+              seats: spot.seats,
+              area: spot.area as BookingFile['plans'][number]['spots'][number]['area'],
+              ...spot.place,
+            })),
+          })),
   }
+}
+
+/**
+ * The backend values of a venue the booking file must never hold (rule 3; #580): the tenant id,
+ * every Table's id, code and code hash, and every Area's POS key. The Table is only how a spot
+ * reaches its Area; the file names the Area and never the Table. A POS key the file also shows as
+ * one of its own names (an Area keyed "1" beside a spot named "1") is dropped: it says nothing.
+ */
+export async function bookingBackendValues(
+  pool: DbPool,
+  file: BookingFile,
+  scope: { readonly tenantId: string; readonly venueId: string },
+): Promise<Set<string>> {
+  const backend = new Set<string>([scope.tenantId])
+  const tables = await withTenant(pool, scope.tenantId, (tx) =>
+    tx
+      .select({
+        id: venueTables.id,
+        qrToken: venueTables.qrToken,
+        qrCodeHash: venueTables.qrCodeHash,
+      })
+      .from(venueTables)
+      .where(eq(venueTables.venueId, scope.venueId)),
+  )
+  for (const table of tables) {
+    backend.add(table.id)
+    if (table.qrToken !== null) backend.add(table.qrToken)
+    if (table.qrCodeHash !== null) backend.add(table.qrCodeHash)
+  }
+  const keys = await withTenant(pool, scope.tenantId, (tx) =>
+    tx.select({ sourceKey: areas.sourceKey }).from(areas).where(eq(areas.venueId, scope.venueId)),
+  )
+  const shown = new Set<string>([
+    file.name,
+    ...file.areas.map((area) => area.name),
+    ...file.plans.flatMap((plan) => [plan.name, ...plan.spots.map((spot) => spot.name)]),
+  ])
+  for (const key of keys) {
+    if (key.sourceKey !== null && !shown.has(key.sourceKey)) backend.add(key.sourceKey)
+  }
+  return backend
 }
 
 /** Whether a night can be booked: `open`, or why not (`booking_off` when the page is off). */
@@ -95,6 +187,37 @@ export async function readBookingNight(
   return bookingNightVerdict(night, now, calendar)
 }
 
+/**
+ * Free or taken, per spot of the venue's plans, on `night` (#580; story 32): only where the page is
+ * on, offers "pick their own spot" and the night can be booked; null otherwise. Nothing else: no
+ * names, no hours, no party. A blocked spot, or one another request waits on, reads taken; the
+ * write still has the last word (`spot_taken`).
+ */
+export async function readBookingSpots(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+  night: string,
+  now: Date,
+): Promise<Record<string, BookingSpotState> | null> {
+  const found = await bookingVenue(pool, tenantId, venueId)
+  if (found === null || found.settings === null || found.guestMay !== 'spot') return null
+  const calendar = bookingCalendarOf(found.venue, found.settings.closedDates)
+  if (bookingNightVerdict(night, now, calendar) !== 'open') return null
+  const hours = bookingNightHours(night, calendar)
+  if (hours === null) return null
+  const spotIds = found.offer.plans.flatMap((plan) => plan.spots.map((spot) => spot.id))
+  const turnMinutes = found.settings.turnMinutes
+  return withTenant(pool, tenantId, (tx) =>
+    bookingSpotStates(
+      tx,
+      found.venue,
+      { serviceDate: night, opensAt: hours.opensAt, turnMinutes },
+      spotIds,
+    ),
+  )
+}
+
 /** What a guest's request carries, as the booking API parsed it. */
 export interface BookingRequestInput {
   readonly tenantId: string
@@ -106,6 +229,15 @@ export interface BookingRequestInput {
   readonly phone: string
   readonly email: string
   readonly note: string | null
+  /** The Area asked for, where the venue offers Areas (#580). */
+  readonly areaId?: string | null
+  /** The spots the guest picked himself, where the venue offers spots (#580). */
+  readonly spotIds?: readonly string[]
+  /**
+   * Queues what the request owes in its own transaction (#592): the confirmed email of a booking
+   * that confirmed itself (#580), owed through `stx.oweGuestEmail`.
+   */
+  readonly queueJobs?: ServiceOptions['queueJobs']
   /** Turnstile's token; without it the request is refused `human_check`. */
   readonly humanToken?: string
   /** Turnstile's siteverify; without it every request fails the check (fail closed). */
@@ -145,6 +277,10 @@ export async function requestBooking(
       phone: input.phone,
       email: input.email,
       note: input.note,
+      ...(input.areaId == null ? {} : { areaId: input.areaId }),
+      ...(input.spotIds === undefined || input.spotIds.length === 0
+        ? {}
+        : { spotIds: [...input.spotIds] }),
     },
     {
       tenantId: input.tenantId,
@@ -155,6 +291,7 @@ export async function requestBooking(
       via: 'guest_page',
       ...(input.now === undefined ? {} : { now: input.now }),
     },
+    input.queueJobs === undefined ? {} : { queueJobs: input.queueJobs },
   )
   return result
 }

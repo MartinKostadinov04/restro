@@ -8,6 +8,11 @@
 // Every control is at least 44 px high (the touch rule of the service screens), and the fields use
 // 16 px text so a phone does not zoom into them. The page is one column, as wide as the phone up to
 // 560 px, so the longest Bulgarian words wrap inside a 390 px screen.
+//
+// The spot picker (#580) draws the plan in a frame of its own that scrolls sideways when a plan of
+// many small spots would shrink them below a finger (booking-plan.tsx sets the box's least width),
+// so the page itself never scrolls sideways. A spot's state is never colour alone: a taken spot is
+// hatched and dimmed, a picked one filled and ticked, and the legend says each in words.
 
 export const BOOKING_CSS = `
 .bk-page {
@@ -127,6 +132,133 @@ export const BOOKING_CSS = `
 .bk-answer p {
   margin: 8px 0 0;
   color: var(--rm-muted);
+  overflow-wrap: anywhere;
+}
+.bk-plans {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.bk-hint {
+  margin: 0;
+  color: var(--rm-muted);
+  overflow-wrap: anywhere;
+}
+.bk-plan {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.bk-plan-name {
+  margin: 0;
+  font-size: calc(16px * var(--rm-type));
+  font-weight: var(--rm-subheading-weight);
+  overflow-wrap: anywhere;
+}
+.bk-plan-frame {
+  overflow-x: auto;
+  border: 1px solid var(--rm-border);
+  border-radius: var(--rm-radius);
+  background: var(--rm-surface);
+  overscroll-behavior-x: contain;
+}
+.bk-plan-box {
+  position: relative;
+  width: 100%;
+}
+.bk-spot {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 2px;
+  border: 2px solid var(--rm-muted);
+  border-radius: 6px;
+  background: var(--rm-surface);
+  color: var(--rm-text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.bk-spot[data-shape='circle'],
+.bk-spot[data-shape='pill'] {
+  border-radius: 999px;
+}
+.bk-spot[data-state='taken'] {
+  border-style: dashed;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--rm-surface) 0 6px,
+    color-mix(in srgb, var(--rm-muted) 35%, var(--rm-surface)) 6px 8px
+  );
+  color: var(--rm-muted);
+  cursor: default;
+}
+.bk-spot[data-state='picked'] {
+  border-color: var(--rm-button);
+  background: var(--rm-button);
+  color: var(--rm-on-button);
+  font-weight: var(--rm-subheading-weight);
+}
+.bk-spot:disabled {
+  cursor: default;
+}
+.bk-spot:focus-visible {
+  outline: 3px solid var(--rm-accent-text);
+  outline-offset: 2px;
+  z-index: 1;
+}
+.bk-spot-name {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bk-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--rm-muted);
+  font-size: calc(14px * var(--rm-type));
+}
+.bk-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.bk-key::before {
+  content: '';
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--rm-muted);
+  border-radius: 4px;
+  background: var(--rm-surface);
+}
+.bk-key[data-state='taken']::before {
+  border-style: dashed;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--rm-surface) 0 3px,
+    color-mix(in srgb, var(--rm-muted) 35%, var(--rm-surface)) 3px 5px
+  );
+}
+.bk-key[data-state='picked']::before {
+  border-color: var(--rm-button);
+  background: var(--rm-button);
+}
+.bk-picked {
+  margin: 0;
   overflow-wrap: anywhere;
 }
 `

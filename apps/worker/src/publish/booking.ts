@@ -6,10 +6,12 @@
 // deleted or not published leaves the organisation's index, so its page cannot find the file; the
 // file itself is left as it is.
 //
-// The forbidden-values walk (rule 3): the tenant id must not be anywhere in it.
+// The forbidden-values walk (rule 3): the tenant id must not be anywhere in it, nor any Table's id
+// or code, nor an Area's POS key (#580: the plans and Areas a guest picks from name the spot and the
+// Area, never the Table a spot sends its orders to).
 import { bookingFileBytes, bookingPath, type PublishStore, publishPutOptions } from '@restro/assets'
 import type { VenueId } from '@restro/core'
-import { forbiddenPaths, readBookingFile } from '@restro/core/service'
+import { bookingBackendValues, forbiddenPaths, readBookingFile } from '@restro/core/service'
 import type { DbPool } from '@restro/db'
 
 export interface BookingFileDeps {
@@ -35,7 +37,7 @@ export async function writeBookingFile(
 ): Promise<BookingFileResult> {
   const file = await readBookingFile(deps.pool, scope.tenantId, scope.venueId, deps.now())
   if (file === null) return { status: 'unknown_venue' }
-  const leaks = forbiddenPaths(file, new Set([scope.tenantId]))
+  const leaks = forbiddenPaths(file, await bookingBackendValues(deps.pool, file, scope))
   if (leaks.length > 0) {
     throw new Error(`the booking file holds a backend value at ${leaks.join(', ')}`)
   }

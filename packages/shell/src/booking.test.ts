@@ -4,10 +4,12 @@ import { describe, expect, it } from 'vitest'
 import {
   BOOKING_NIGHT_ANSWERS,
   BOOKING_REFUSALS,
+  BookingNightReplySchema,
   BookingReplySchema,
   BookingRequestSchema,
   bookingNightLabel,
   bookingNightText,
+  bookingPlanViewOf,
   bookingRefusalOf,
   bookingViewOf,
 } from './booking'
@@ -53,6 +55,9 @@ const FILE: BookingFile = {
     sun: null,
   },
   closed_dates: ['2026-11-27'],
+  guest_may: 'night',
+  areas: [],
+  plans: [],
 } as BookingFile
 
 // Wednesday 25 November 2026, 18:00 in Sofia.
@@ -117,6 +122,9 @@ describe('the booking view', () => {
       venueName: 'Club Night',
       on: false,
       nights: [],
+      guestMay: 'night',
+      areas: [],
+      plans: [],
     })
   })
 
@@ -161,5 +169,102 @@ describe('the booking wire', () => {
 
   it('names its own Turnstile action', () => {
     expect(TURNSTILE_BOOKING_ACTION).toBe('booking_request')
+  })
+
+  it('takes an Area or spots, defaulting to none for a page from before #580', () => {
+    expect(BookingRequestSchema.parse(request)).toMatchObject({ areaId: null, spotIds: [] })
+    const picked = {
+      ...request,
+      areaId: 'ar_0123456789ABCDEFGHIJKL',
+      spotIds: ['sp_0123456789ABCDEFGHIJKL'],
+    }
+    expect(BookingRequestSchema.safeParse(picked).success).toBe(true)
+    expect(BookingRequestSchema.safeParse({ ...request, spotIds: ['tb_x'] }).success).toBe(false)
+    expect(
+      BookingRequestSchema.safeParse({
+        ...request,
+        spotIds: Array.from({ length: 11 }, (_, i) => `sp_0123456789ABCDEFGHIJK${i}`),
+      }).success,
+    ).toBe(false)
+  })
+
+  it('answers free or taken per spot and nothing else; a gone spot reads as taken', () => {
+    const night = { night: '2026-11-28', answer: 'open' }
+    expect(
+      BookingNightReplySchema.safeParse({
+        ...night,
+        spots: { sp_0123456789ABCDEFGHIJKL: 'taken' },
+      }).success,
+    ).toBe(true)
+    expect(
+      BookingNightReplySchema.safeParse({ ...night, spots: { sp_0123456789ABCDEFGHIJKL: 'Maria' } })
+        .success,
+    ).toBe(false)
+    expect(BookingNightReplySchema.safeParse({ ...night, party: 4 }).success).toBe(false)
+    expect(bookingRefusalOf('spot_taken')).toBe('spot_taken')
+    expect(bookingRefusalOf('spot_missing')).toBe('spot_taken')
+    expect(BookingReplySchema.safeParse({ ok: true, confirmed: true }).success).toBe(true)
+  })
+})
+
+describe('the plans and Areas of the booking view (#580)', () => {
+  const spot = {
+    symbol: 'table' as const,
+    seats: 4,
+    shape: 'rect' as const,
+    rotation: 0,
+    width: 100,
+    height: 100,
+  }
+  const OFFERED = {
+    ...FILE,
+    areas: [{ id: 'ar_0123456789ABCDEFGHIJKL', name: 'Hall' }],
+    plans: [
+      {
+        id: 'fp_0123456789ABCDEFGHIJKL',
+        name: 'Ground floor',
+        spots: [
+          {
+            ...spot,
+            id: 'sp_A123456789ABCDEFGHIJKL',
+            name: 'T1',
+            area: 'ar_0123456789ABCDEFGHIJKL',
+            x: 20,
+            y: 20,
+          },
+          { ...spot, id: 'sp_B123456789ABCDEFGHIJKL', name: 'T2', area: null, x: 320, y: 20 },
+        ],
+      },
+    ],
+  } as BookingFile
+
+  it('offers the Areas only where Areas are offered, and the plans only where spots are', () => {
+    expect(bookingViewOf(OFFERED, 'en_US', NOW)).toMatchObject({
+      guestMay: 'night',
+      areas: [],
+      plans: [],
+    })
+    const areas = bookingViewOf({ ...OFFERED, guest_may: 'area' }, 'en_US', NOW)
+    expect(areas.areas).toEqual([{ id: 'ar_0123456789ABCDEFGHIJKL', name: 'Hall' }])
+    expect(areas.plans).toEqual([])
+    const spots = bookingViewOf({ ...OFFERED, guest_may: 'spot' }, 'en_US', NOW)
+    expect(spots.areas).toEqual([])
+    expect(spots.plans.map((plan) => plan.spots.map((one) => one.name))).toEqual([['T1', 'T2']])
+    // The page off offers nothing beyond it.
+    expect(bookingViewOf({ ...OFFERED, on: false, guest_may: 'spot' }, 'en_US', NOW).plans).toEqual(
+      [],
+    )
+  })
+
+  it("places each spot in per cent of the plan's own box, and names its Area", () => {
+    const plan = bookingPlanViewOf(OFFERED.plans[0] as BookingFile['plans'][number], OFFERED)
+    // The box is the spots' extent with a margin of 20: x 0–440, y 0–140.
+    expect(plan.aspect).toBeCloseTo(140 / 440)
+    expect(plan.spots[0]).toMatchObject({
+      name: 'T1',
+      area: 'Hall',
+      box: { left: 4.55, top: 14.29, width: 22.73, height: 71.43 },
+    })
+    expect(plan.spots[1]).toMatchObject({ area: null, box: { left: 72.73 } })
   })
 })

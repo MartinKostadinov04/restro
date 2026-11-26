@@ -9,6 +9,7 @@
 import {
   floorPlans,
   guests,
+  type ReadTx,
   reservationNights,
   reservationSettings,
   reservationSpots,
@@ -124,6 +125,16 @@ export const RESERVATION_REFUSALS = [
   'outside_hours',
   /** The night lies past how far ahead the booking page takes requests (#577). */
   'too_far',
+  /** The guest named an Area or a spot, and the venue's page does not offer that choice (#580). */
+  'choice_not_offered',
+  /** The Area asked for is not one the page offers: hidden, gone, or holding no spot (#580). */
+  'area_missing',
+  /** An Area or a spot is offered only once the venue has drawn a plan with spots (#580). */
+  'plan_missing',
+  /** No visible Area holds a spot yet (a spot reaches its Area through its Table, #580). */
+  'areas_missing',
+  /** A booking confirms itself only where the guest picks his own spot (D136, #580). */
+  'auto_confirm_needs_spot',
 ] as const
 
 /** One reservation refusal code. */
@@ -342,6 +353,19 @@ export async function heldSpotsOfNight(
   serviceDate: string,
   turnMinutes: number,
 ): Promise<SpotHold[]> {
+  return heldSpotsOn(stx.tx, stx.venue, serviceDate, turnMinutes)
+}
+
+/**
+ * The holds `heldSpotsOfNight` reads, on any transaction: the booking page's availability (#580)
+ * reads them without a lock, so it judges a spot by the very rows the write will judge it by.
+ */
+export async function heldSpotsOn(
+  tx: ReadTx,
+  venue: { readonly id: string; readonly timezone: string; readonly serviceDayEndsAt: string },
+  serviceDate: string,
+  turnMinutes: number,
+): Promise<SpotHold[]> {
   const columns = {
     reservationId: reservations.id,
     spotId: reservationSpots.spotId,
@@ -353,7 +377,7 @@ export async function heldSpotsOfNight(
     heldTo: reservationSpots.heldTo,
   } as const
   const joined = () =>
-    stx.tx
+    tx
       .select(columns)
       .from(reservationSpots)
       .innerJoin(
@@ -365,7 +389,7 @@ export async function heldSpotsOfNight(
       )
   const ofThisNight = await joined().where(
     and(
-      eq(reservations.venueId, stx.venueId),
+      eq(reservations.venueId, venue.id),
       eq(reservations.serviceDate, serviceDate),
       isNull(reservationSpots.releasedAt),
       isNull(reservations.deletedAt),
@@ -376,10 +400,10 @@ export async function heldSpotsOfNight(
   // blocks of the nights before this one that are still on when it begins are in the way of a
   // booking here as well; the overlap rule then reads each one's own stretch (C2 of the 11-18
   // screen round: a dated block was read on its first night only).
-  const starts = nightStartsAt(stx, serviceDate)
+  const starts = nightStartsAt(venue, serviceDate)
   const openBlocks = await joined().where(
     and(
-      eq(reservations.venueId, stx.venueId),
+      eq(reservations.venueId, venue.id),
       lt(reservations.serviceDate, serviceDate),
       eq(reservations.kind, 'block'),
       eq(reservations.status, 'reserved'),
@@ -403,9 +427,11 @@ export async function heldSpotsOfNight(
 }
 
 /** The instant a service day begins at this venue: the end of the day before (D45). */
-function nightStartsAt(stx: ServiceTx, serviceDate: string): Date {
-  return serviceDayBounds(serviceDate, stx.venue.timezone, stx.venue.serviceDayEndsAt.slice(0, 5))
-    .from
+function nightStartsAt(
+  venue: { readonly timezone: string; readonly serviceDayEndsAt: string },
+  serviceDate: string,
+): Date {
+  return serviceDayBounds(serviceDate, venue.timezone, venue.serviceDayEndsAt.slice(0, 5)).from
 }
 
 /**
