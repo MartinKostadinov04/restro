@@ -20,11 +20,19 @@ import {
   type GuestEmailJob,
   GuestEmailJobSchema,
   type GuestEmailKind,
+  guestBookingLinkPath,
   JOB_NAMES,
   prepareJob,
 } from '@restro/core'
-import { GUEST_EMAIL_LOG_KINDS, type ServiceOptions } from '@restro/core/service'
 import {
+  GUEST_EMAIL_LOG_KINDS,
+  guestLinkHashesEqual,
+  guestLinkToken,
+  guestLinkTokenHash,
+  type ServiceOptions,
+} from '@restro/core/service'
+import {
+  authOrganization,
   type DbPool,
   guests,
   logEntries,
@@ -36,7 +44,7 @@ import {
 } from '@restro/db'
 import { and, eq, isNull, max } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
-
+import type { GuestLinkConfig } from '../config'
 import { EmailSendError, type EmailSender } from '../email/sender'
 import {
   type GuestEmailLanguage,
@@ -54,6 +62,15 @@ export interface GuestEmailNews extends ReservationFacts {
   readonly latestEntry: number | null
   /** The guest record's email; null without a record, an email, or once he is erased. */
   readonly email: string | null
+  /**
+   * What the guest's own link is made of (#579): the stored hash of its token and the venue's
+   * address. Left out (or a null hash) for a booking staff took: no link.
+   */
+  readonly linkParts?: {
+    readonly tokenHash: string | null
+    readonly organization: string | null
+    readonly venue: string
+  }
 }
 
 /** Reads the news of one job, or null when the reservation is not this venue's (or is gone). */
@@ -67,6 +84,35 @@ const STILL_TRUE: Readonly<Record<GuestEmailKind, (news: GuestEmailNews) => bool
   reservation_cancelled: (news) => news.status === 'cancelled',
   reservation_confirmed: (news) => news.status === 'reserved',
   reservation_declined: (news) => news.status === 'declined',
+  reservation_requested: (news) => news.status === 'requested',
+}
+
+/**
+ * The guest's own link to the booking (#579), or undefined: no key here, a booking with no link
+ * (staff took it), or a stored hash the key does not give (the key was changed since), which would
+ * be a link that opens nothing. The token is worked out again from the reservation's id; it is
+ * never stored or logged. Pure.
+ */
+export function guestLinkOf(
+  reservationId: string,
+  news: Pick<GuestEmailNews, 'linkParts'>,
+  config: GuestLinkConfig | null,
+): string | undefined {
+  const parts = news.linkParts
+  if (config === null || parts === undefined || parts.tokenHash === null) return undefined
+  if (parts.organization === null) return undefined
+  const token = guestLinkToken(config.key, reservationId)
+  if (!guestLinkHashesEqual(parts.tokenHash, guestLinkTokenHash(token))) return undefined
+  try {
+    const path = guestBookingLinkPath(
+      { organization: parts.organization, venue: parts.venue },
+      token,
+    )
+    return `${config.baseUrl}${path}`
+  } catch {
+    // A slug that is not one cannot come from our writers; the email goes without the link.
+    return undefined
+  }
 }
 
 /**
@@ -110,8 +156,10 @@ export const readGuestEmailNews: GuestEmailReader = (pool, job) =>
         serviceDate: reservations.serviceDate,
         startsAt: reservations.startsAt,
         partySize: reservations.partySize,
+        tokenHash: reservations.guestTokenHash,
         email: guests.email,
         venueName: venues.name,
+        venueSlug: venues.slug,
         timeZone: venues.timezone,
       })
       .from(reservations)
@@ -120,6 +168,10 @@ export const readGuestEmailNews: GuestEmailReader = (pool, job) =>
       .where(and(eq(reservations.id, job.reservationId), eq(reservations.venueId, job.venueId)))
       .limit(1)
     if (row === undefined) return null
+    const [organization] = await tx
+      .select({ slug: authOrganization.slug })
+      .from(authOrganization)
+      .where(eq(authOrganization.id, job.tenantId))
     const [latest] = await tx
       .select({ seq: max(logEntries.seq) })
       .from(logEntries)
@@ -154,6 +206,11 @@ export const readGuestEmailNews: GuestEmailReader = (pool, job) =>
       email: row.email,
       venueName: row.venueName,
       timeZone: row.timeZone,
+      linkParts: {
+        tokenHash: row.tokenHash,
+        organization: organization?.slug ?? null,
+        venue: row.venueSlug,
+      },
       // "Bar 2" before "Bar 10": the names in the order a person counts them.
       spotNames: [...new Set(held.map((spot) => spot.name))].sort((a, b) =>
         a.localeCompare(b, 'bg', { numeric: true }),
@@ -169,6 +226,8 @@ export interface GuestEmailDeps {
   readonly sender: Pick<EmailSender, 'sendGuestEmail'> | null
   /** Tests pass their own. */
   readonly read?: GuestEmailReader
+  /** GUEST_LINK_KEY and PUBLIC_BASE_URL (#579); null or left out: the email carries no link. */
+  readonly guestLink?: GuestLinkConfig | null
 }
 
 /** How one job ended. */
@@ -197,7 +256,10 @@ export async function sendGuestEmailOf(
     await deps.sender.sendGuestEmail({
       to: decision.to,
       venueName: news.venueName,
-      words: guestEmailWords(job.kind, decision.language, news),
+      words: guestEmailWords(job.kind, decision.language, {
+        ...news,
+        link: guestLinkOf(job.reservationId, news, deps.guestLink ?? null),
+      }),
       idempotencyKey: `${job.reservationId}-${job.kind}-${job.entry}`,
     })
   } catch (error) {
@@ -218,6 +280,8 @@ export async function sendGuestEmailOf(
 /** The `guest-email` job. `sender` null: guest emails are off (the worker warned at start). */
 export function createGuestEmailJob(options: {
   readonly sender: Pick<EmailSender, 'sendGuestEmail'> | null
+  /** GUEST_LINK_KEY and PUBLIC_BASE_URL (#579); null: the emails carry no link. */
+  readonly guestLink?: GuestLinkConfig | null
 }): JobDefinition<GuestEmailJob> {
   return defineJob<GuestEmailJob>({
     name: JOB_NAMES.guestEmail,
@@ -246,6 +310,7 @@ export function createGuestEmailJob(options: {
           pool: context.pool,
           log: context.log,
           sender: options.sender,
+          guestLink: options.guestLink ?? null,
         })
       }
     },

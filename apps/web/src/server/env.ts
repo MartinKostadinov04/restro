@@ -115,6 +115,18 @@ export const ServerEnvSchema = z.object({
       const trimmed = value?.trim()
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
     }),
+  /**
+   * The key of a guest's own booking link (#579): the worker's `GUEST_LINK_KEY`, the same value.
+   * 32 to 256 characters (checked where it is used). Without it a booking request is still taken,
+   * with no link: the guest's emails then carry none. Empty counts as missing.
+   */
+  GUEST_LINK_KEY: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
   /** The bearer token the reveal endpoint expects (the worker's REVEAL_SERVICE_TOKEN). */
   REVEAL_SERVICE_TOKEN: z
     .string()

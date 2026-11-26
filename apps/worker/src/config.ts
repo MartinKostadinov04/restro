@@ -106,6 +106,20 @@ export interface WorkerConfig {
    * guest is emailed about his reservation (one warning at start). Never logged: a secret.
    */
   readonly guestEmail?: EmailServiceConfig | null
+  /**
+   * What a guest email's own link to his booking is made with (#579): GUEST_LINK_KEY (the web
+   * app's, the same value) and PUBLIC_BASE_URL (the guest pages' address). Null without both: the
+   * emails carry no link. The key is a secret, never logged.
+   */
+  readonly guestLink?: GuestLinkConfig | null
+}
+
+/** How the worker writes a guest's own booking link (#579). */
+export interface GuestLinkConfig {
+  /** GUEST_LINK_KEY. A secret. */
+  readonly key: string
+  /** The address the guest pages are served from, without a trailing slash. */
+  readonly baseUrl: string
 }
 
 /** How the database is backed up (ticket #320; D103). */
@@ -232,6 +246,10 @@ const BAD_REVEAL_TOKEN =
   'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).'
 const BAD_BILL_ID_KEY =
   'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).'
+const BAD_GUEST_LINK_KEY =
+  'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).'
+const BAD_PUBLIC_BASE_URL = 'must be an https:// address (http:// only for localhost).'
+const PUBLIC_BASE_URL_MISSING = 'is not set. The guest link (GUEST_LINK_KEY) needs it.'
 const BAD_POS_SYNC = 'must be on or off.'
 const BAD_TELEGRAM_TOKEN = 'must be the bot token BotFather gave (digits, a colon, then letters).'
 const BAD_TELEGRAM_CHAT = 'must be a Telegram chat id: digits, with a minus sign for a group.'
@@ -386,6 +404,24 @@ function environmentSchema(defaultWorkerId: () => string) {
           .regex(/^\S{32,256}$/, { error: BAD_BILL_ID_KEY })
           .optional(),
       ),
+      GUEST_LINK_KEY: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^\S{32,256}$/, { error: BAD_GUEST_LINK_KEY })
+          .optional(),
+      ),
+      PUBLIC_BASE_URL: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^(https:\/\/[^\s/]+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)\/?$/, {
+            error: BAD_PUBLIC_BASE_URL,
+          })
+          .optional(),
+      ),
       WORKER_POS_SYNC: z.preprocess(
         unsetWhenBlank,
         z
@@ -489,6 +525,9 @@ function environmentSchema(defaultWorkerId: () => string) {
         issue('RESEND_API_KEY', RESEND_KEY_MISSING)
       } else if (env.RESEND_API_KEY === undefined && env.GUEST_EMAIL_FROM_ADDRESS !== undefined) {
         issue('RESEND_API_KEY', RESEND_KEY_MISSING_FOR_GUESTS)
+      }
+      if (env.GUEST_LINK_KEY !== undefined && env.PUBLIC_BASE_URL === undefined) {
+        issue('PUBLIC_BASE_URL', PUBLIC_BASE_URL_MISSING)
       }
       if (env.BARSY_ALLOWED_HOST_SUFFIXES?.some((suffix) => !HOST_SUFFIX.test(suffix))) {
         issue('BARSY_ALLOWED_HOST_SUFFIXES', BAD_HOST_SUFFIXES)
@@ -605,6 +644,10 @@ function environmentSchema(defaultWorkerId: () => string) {
           env.RESEND_API_KEY !== undefined && env.GUEST_EMAIL_FROM_ADDRESS !== undefined
             ? { apiKey: env.RESEND_API_KEY, fromAddress: env.GUEST_EMAIL_FROM_ADDRESS }
             : null,
+        guestLink:
+          env.GUEST_LINK_KEY !== undefined && env.PUBLIC_BASE_URL !== undefined
+            ? { key: env.GUEST_LINK_KEY, baseUrl: env.PUBLIC_BASE_URL.replace(/\/$/, '') }
+            : null,
         alerts: {
           telegramToken: env.TELEGRAM_BOT_TOKEN ?? null,
           teamChatId: env.TELEGRAM_TEAM_CHAT_ID ?? null,
@@ -659,6 +702,7 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `HEALTHCHECKS_PING_URL` | the https address pinged every minute (the outside watchdog) | unset |
  * | `RESEND_API_KEY`, `RECEIPT_FROM_ADDRESS` | the email service for the venue's electronic receipt ; RECEIPT_FROM_ADDRESS switches receipt emails on and needs the key; without it no receipt file is emailed (#186) | unset |
  * | `GUEST_EMAIL_FROM_ADDRESS` | the address every other guest email is sent from (a reservation's news, #576), under the venue's name; switches them on and needs `RESEND_API_KEY`; without it no guest is emailed and the worker warns once | unset |
+ * | `GUEST_LINK_KEY`, `PUBLIC_BASE_URL` | the key of a guest's own booking link (#579, the web app's same value; 32+ characters) and the guest pages' https address; the key needs the address; without the key the guest emails carry no link | unset |
  * | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Web Push identity (all three, or none) | unset |
  */
 export function loadConfig(
