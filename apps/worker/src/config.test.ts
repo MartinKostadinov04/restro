@@ -38,6 +38,7 @@ describe('loadConfig', () => {
       seal: null,
       barsy: { env: 'development', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
       sim: { env: 'development', allowHosts: [] },
+      privateHosts: [],
       // Local files under the repository's .local/assets unless told otherwise.
       assets: { kind: 'local', dir: expect.stringMatching(/\.local[\\/]assets$/) },
       // And the publish store under .local/cdn.
@@ -71,6 +72,7 @@ describe('loadConfig', () => {
         BARSY_ALLOWED_HOST_SUFFIXES: '.barsyonline.com, .barsy.test',
         BARSY_PRODUCTION_HOSTS: 'club.barsyonline.com,https://Other.barsyonline.com/',
         SIM_POS_ALLOWED_HOSTS: 'Demo.Restro.test, sim.staging.example',
+        WORKER_PRIVATE_HOSTS: ' Worker , restro-worker ',
         REVEAL_SERVICE_TOKEN: ` ${REVEAL_TOKEN} `,
         BILL_ID_KEY: ` ${'k'.repeat(40)} `,
         WORKER_POS_SYNC: ' OFF ',
@@ -92,6 +94,7 @@ describe('loadConfig', () => {
       },
       // NODE_ENV is production here, so the simulated POS is refused whatever BARSY_ENV says.
       sim: { env: 'production', allowHosts: ['demo.restro.test', 'sim.staging.example'] },
+      privateHosts: ['worker', 'restro-worker'],
       assets: { kind: 'local', dir: expect.stringMatching(/assets$/) },
       publish: { kind: 'local', dir: expect.stringMatching(/cdn$/) },
       revealToken: REVEAL_TOKEN,
@@ -387,6 +390,37 @@ describe('loadConfig', () => {
         () => 'my-host',
       ),
     ).toMatchObject({ workerId: 'my-host', healthPort: DEFAULT_HEALTH_PORT, logLevel: 'info' })
+  })
+
+  it('reads WORKER_PRIVATE_HOSTS as exact single-label names, and refuses anything with a dot, scheme or port', () => {
+    expect(loadConfig({ DATABASE_URL: URL, WORKER_PRIVATE_HOSTS: 'worker' }).privateHosts).toEqual([
+      'worker',
+    ])
+    expect(loadConfig({ DATABASE_URL: URL, WORKER_PRIVATE_HOSTS: ' ' }).privateHosts).toEqual([])
+    for (const value of [
+      'worker.example.com',
+      'restro.synexcloud.com',
+      'worker:8081',
+      'http://worker',
+      'worker,-bad',
+      'wor ker',
+      'worker.',
+    ]) {
+      expect(problemsOf({ DATABASE_URL: URL, WORKER_PRIVATE_HOSTS: value })).toEqual([
+        'WORKER_PRIVATE_HOSTS must be a comma-separated list of single-label host names, such as a Docker Compose service name (no dot, scheme or port).',
+      ])
+    }
+  })
+
+  it('logs JSON on staging and production by the environment label, without NODE_ENV=production', () => {
+    // A staging worker runs without NODE_ENV=production (that would refuse the simulated POS), so
+    // its label switches the logs to JSON: pino-pretty is a dev dependency, not in the image.
+    const staging = loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'staging' })
+    expect(staging.prettyLogs).toBe(false)
+    expect(staging.sim.env).toBe('staging')
+    expect(loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'production' }).prettyLogs).toBe(false)
+    expect(loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'development' }).prettyLogs).toBe(true)
+    expect(loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'test' }).prettyLogs).toBe(true)
   })
 
   it('ignores variables it does not know, and any NODE_ENV but production means pretty logs', () => {

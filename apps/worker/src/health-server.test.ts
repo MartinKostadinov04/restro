@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import type { HealthReport } from './health'
 import {
+  type ConnectionHandler,
   type HealthServer,
   type RevealHandler,
   startHealthServer,
@@ -63,8 +64,8 @@ describe('startHealthServer', () => {
     report = OK
   })
 
-  async function start() {
-    server = await startHealthServer(0, () => report)
+  async function start(privateHosts?: readonly string[]) {
+    server = await startHealthServer(0, () => report, privateHosts ? { privateHosts } : {})
     return server.port
   }
 
@@ -167,7 +168,24 @@ describe('startHealthServer', () => {
       expect((await reveal(port, { host: 'worker.railway.internal:8081' })).status).toBe(200)
       expect((await reveal(port, { host: 'restro-worker.up.railway.app' })).status).toBe(404)
       expect((await reveal(port, { host: 'evil.railway.internal.example.com' })).status).toBe(404)
+      // No WORKER_PRIVATE_HOSTS: a single-label name is not private by itself.
+      expect((await reveal(port, { host: 'worker:8081' })).status).toBe(404)
       expect(asked).toHaveLength(1)
+    })
+
+    it('also answers a name listed in WORKER_PRIVATE_HOSTS, exactly, with or without a port', async () => {
+      const port = await start(['worker'])
+      server?.setRevealHandler(handler)
+      expect((await reveal(port, { host: 'worker:8081' })).status).toBe(200)
+      expect((await reveal(port, { host: 'Worker' })).status).toBe(200)
+      expect((await reveal(port, { host: `localhost:${port}` })).status).toBe(200)
+      expect((await reveal(port, { host: 'worker.railway.internal' })).status).toBe(200)
+      // Unlisted single-label names, a listed name inside a longer one, and public names stay 404.
+      expect((await reveal(port, { host: 'sim-pos:4010' })).status).toBe(404)
+      expect((await reveal(port, { host: 'web' })).status).toBe(404)
+      expect((await reveal(port, { host: 'worker.example.com' })).status).toBe(404)
+      expect((await reveal(port, { host: 'restro.synexcloud.com' })).status).toBe(404)
+      expect(asked).toHaveLength(4)
     })
 
     it('needs POST and the service token, compared exactly', async () => {
@@ -287,6 +305,13 @@ describe('startHealthServer', () => {
       expect((await link(port, { host: 'restro-worker.up.railway.app' })).status).toBe(404)
     })
 
+    it('answers a WORKER_PRIVATE_HOSTS name like the reveal endpoint does', async () => {
+      const port = await start(['worker'])
+      server?.setTelegramHandler(handler)
+      expect((await link(port, { host: 'worker:8081' })).status).toBe(200)
+      expect((await link(port, { host: 'web:3000' })).status).toBe(404)
+    })
+
     it('needs the service token, a known action and nothing else in the body', async () => {
       const port = await start()
       server?.setTelegramHandler(handler)
@@ -308,6 +333,37 @@ describe('startHealthServer', () => {
         body: { ...REQUEST, actor: { ...REQUEST.actor, userId: 'refused' } },
       })
       expect(refused.status).toBe(403)
+    })
+  })
+
+  describe('the payment connection endpoint', () => {
+    const handler: ConnectionHandler = {
+      token: 'a-service-token-of-at-least-32-characters',
+      handle: async () => {
+        throw new Error('not reached: every call below lacks the token')
+      },
+      failed: () => undefined,
+    }
+    const ask = (port: number, host: string) =>
+      call(port, '/internal/payments/connection', 'POST', {
+        headers: { host, 'content-type': 'application/json' },
+        body: '{}',
+      })
+
+    it('answers a WORKER_PRIVATE_HOSTS name like the reveal endpoint does', async () => {
+      const port = await start(['worker'])
+      server?.setConnectionHandler(handler)
+      // Past the host check, the missing token is the answer; a public name never gets that far.
+      expect((await ask(port, 'worker:8081')).status).toBe(401)
+      expect((await ask(port, `localhost:${port}`)).status).toBe(401)
+      expect((await ask(port, 'web:3000')).status).toBe(404)
+      expect((await ask(port, 'worker.example.com')).status).toBe(404)
+    })
+
+    it('answers only localhost and Railway names without the list', async () => {
+      const port = await start()
+      server?.setConnectionHandler(handler)
+      expect((await ask(port, 'worker:8081')).status).toBe(404)
     })
   })
 

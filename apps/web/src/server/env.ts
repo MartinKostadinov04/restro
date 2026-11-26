@@ -2,6 +2,8 @@
 // loads every route module) does not need them. Names only in messages, never values.
 import { z } from 'zod'
 
+import type { ClientAddressSource } from './guard/bad-codes'
+
 /**
  * The web app never declares the sealing private key: it may seal barsy credentials with the
  * worker's public key, never open them (D55; env.test.ts checks this).
@@ -39,9 +41,10 @@ export const ServerEnvSchema = z.object({
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
     }),
   /**
-   * The worker's reveal endpoint on the private network (#70), e.g.
-   * `http://worker.railway.internal:8081` (`http://localhost:8081` locally): the Tables screen asks
-   * it for the codes it draws. Without it (or the token) the screen shows no QR codes. Empty
+   * The worker's reveal endpoint on the private network (#70): Railway
+   * `http://worker.railway.internal:8081`, Docker Compose the service name listed in the worker's
+   * WORKER_PRIVATE_HOSTS (`http://worker:8081`), `http://localhost:8081` locally. The Tables screen
+   * asks it for the codes it draws. Without it (or the token) the screen shows no QR codes. Empty
    * counts as missing.
    */
   WORKER_REVEAL_URL: z
@@ -186,6 +189,27 @@ export function serverEnv(): ServerEnv {
   }
   cached = parsed.data
   return cached
+}
+
+/**
+ * Where the guest's address is read from for the wrong-code limiters (`CLIENT_ADDRESS_FROM`):
+ * `cloudflare`, or `proxy` (only the last `X-Forwarded-For` entry). Unset or empty means
+ * `cloudflare`, today's chain. Read on its own, not through `serverEnv`, so a caller needs no
+ * secret to ask; any other value throws, naming the variable and never the value.
+ */
+export function clientAddressFrom(
+  source: Readonly<Record<string, string | undefined>> = process.env,
+): ClientAddressSource {
+  const parsed = z
+    .enum(['cloudflare', 'proxy'])
+    .default('cloudflare')
+    .safeParse(source.CLIENT_ADDRESS_FROM?.trim() || undefined)
+  if (!parsed.success) {
+    throw new Error(
+      'Invalid setting: CLIENT_ADDRESS_FROM (use "cloudflare" or "proxy", or leave it unset).',
+    )
+  }
+  return parsed.data
 }
 
 /** The key Tonight subscribes a staff device with, or undefined: unset, or not in a key's shape. */

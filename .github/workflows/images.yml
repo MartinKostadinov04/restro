@@ -1,0 +1,202 @@
+# The container images (root Dockerfile) and the staging Compose file, proven on GitHub because no
+# one deploys from a pull request and the development PC has no Docker. Builds the three targets
+# with plain `docker build` (no push, no registry), checks the Compose file with made-up values,
+# and starts each image: web and the simulated POS on their own, the worker against this job's
+# throwaway Postgres. Nothing here reaches staging or any account.
+# Third-party actions are pinned to a full commit SHA (the comment names the release), as in ci.yml.
+name: Images
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker-compose.staging.yml
+      - docker/**
+      - pnpm-lock.yaml
+      - '**/package.json'
+      - .github/workflows/images.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+# Made-up values for this job only; none is a secret or a real key.
+env:
+  DATABASE_URL: postgres://restro_app:ci-only-not-a-secret@localhost:5432/restro
+  DATABASE_URL_OWNER: postgres://postgres:postgres@localhost:5432/restro
+  DATABASE_APP_PASSWORD: ci-only-not-a-secret
+  DATABASE_PURGE_PASSWORD: ci-only-purge-not-a-secret
+  DATABASE_BACKUP_PASSWORD: ci-only-backup-not-a-secret
+  # The build arguments of the web target: Cloudflare's published Turnstile test site key, a
+  # publishable key in the test shape, an address under the reserved .test domain.
+  CDN_BASE_URL: https://restro.example.test/cdn
+  TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+  PUBLISHABLE_KEY: pk_test_ci_only_not_a_key
+
+jobs:
+  images:
+    name: Build and start the images
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    services:
+      postgres:
+        image: postgres:17.10
+        env:
+          POSTGRES_DB: restro
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d restro"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the simulated POS
+        run: docker build --target sim-pos --tag restro-sim-pos:ci .
+
+      - name: Build the worker
+        run: docker build --target worker --tag restro-worker:ci .
+
+      - name: Build the web app
+        run: |
+          docker build --target web --tag restro-web:ci \
+            --build-arg NEXT_PUBLIC_CDN_BASE_URL="$CDN_BASE_URL" \
+            --build-arg NEXT_PUBLIC_TURNSTILE_SITE_KEY="$TURNSTILE_SITE_KEY" \
+            --build-arg NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY="$PUBLISHABLE_KEY" \
+            --build-arg PAYMENTS_ENV=staging \
+            .
+
+      # The check before `next build` must stop a build without its public values, and one whose
+      # publishable key is not a test key. Fails this job if either build passes.
+      - name: The web build refuses missing or live-mode public values
+        run: |
+          if docker build --target web-build . ; then
+            echo "A web build without its public values passed." >&2
+            exit 1
+          fi
+          if docker build --target web-build \
+            --build-arg NEXT_PUBLIC_CDN_BASE_URL="$CDN_BASE_URL" \
+            --build-arg NEXT_PUBLIC_TURNSTILE_SITE_KEY="$TURNSTILE_SITE_KEY" \
+            --build-arg NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_ci_only_not_a_key \
+            --build-arg PAYMENTS_ENV=staging \
+            . ; then
+            echo "A staging web build with a live publishable key passed." >&2
+            exit 1
+          fi
+
+      # Every `${NAME:?}` the file requires, with a made-up value, then the file is checked; and
+      # without one of them it must refuse.
+      - name: The staging Compose file
+        env:
+          NEXT_PUBLIC_CDN_BASE_URL: https://restro.example.test/cdn
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci_only_not_a_key
+          DATABASE_URL_PURGE: postgres://restro_purge:x@db.example.test:5432/restro
+          SUPABASE_CA_CERT: ci-only-not-a-certificate
+          BETTER_AUTH_URL: https://restro.example.test
+          BETTER_AUTH_SECRET: ci-only-not-a-secret
+          SEAL_PUBLIC_KEY: ci-only
+          SEAL_PRIVATE_KEY: ci-only
+          REVEAL_SERVICE_TOKEN: ci-only
+          STAFF_PIN_PEPPER: ci-only
+          GUEST_PASS_KEY: ci-only
+          TURNSTILE_SECRET_KEY: ci-only
+          STRIPE_NOTICE_SECRET: ci-only
+          BILL_ID_KEY: ci-only
+          STRIPE_SECRET_KEY: ci-only
+          SIM_POS_CONTROL_TOKEN: ci-only
+        run: |
+          docker compose -f docker-compose.staging.yml config --quiet
+          if SIM_POS_CONTROL_TOKEN= docker compose -f docker-compose.staging.yml config --quiet; then
+            echo "The Compose file accepted an empty required variable." >&2
+            exit 1
+          fi
+          # No service may publish a port: the proxy reaches web by its domain.
+          docker compose -f docker-compose.staging.yml config --format json > "$RUNNER_TEMP/compose.json"
+          jq -e '[.services[] | select(has("ports"))] | length == 0' "$RUNNER_TEMP/compose.json"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      # Only for the migrations the worker needs before it can start (the images never migrate).
+      - name: Database migrations and app role
+        run: pnpm install --frozen-lockfile && pnpm db:migrate && pnpm db:roles
+
+      # Web and the simulator on a network of their own, as on staging; the worker on the host
+      # network to reach this job's Postgres. Web and worker share one volume, as on staging.
+      - name: Start the images
+        run: |
+          docker network create restro-ci
+          docker volume create restro-ci-data
+          docker run -d --name sim-pos --network restro-ci \
+            -e SIM_POS_CONTROL_TOKEN=ci-only-not-a-secret restro-sim-pos:ci
+          docker run -d --name web --network restro-ci -v restro-ci-data:/data restro-web:ci
+          docker run -d --name worker --network host -v restro-ci-data:/data \
+            -e DATABASE_URL -e BARSY_ENV=staging -e PAYMENTS_ENV=staging \
+            -e ASSET_STORE=local -e PUBLISH_STORE=local \
+            -e LOCAL_ASSET_DIR=/data/assets -e LOCAL_PUBLISH_DIR=/data/cdn \
+            -e WORKER_HEALTH_PORT=8081 -e WORKER_PRIVATE_HOSTS=worker -e WORKER_POS_SYNC=off \
+            -e SUPABASE_CA_CERT="$(printf -- '-----BEGIN CERTIFICATE-----\nci-only\n-----END CERTIFICATE-----')" \
+            restro-worker:ci
+
+      # Each service's own health check, read from the Compose file, run inside its container.
+      - name: Every service answers its health check
+        run: |
+          check() {
+            # The script is the test's last item: ["CMD", "node", "-e", <script>].
+            command=$(jq -r ".services[\"$1\"].healthcheck.test[-1]" "$RUNNER_TEMP/compose.json")
+            for attempt in $(seq 1 "$2"); do
+              if docker exec "$1" node -e "$command"; then
+                echo "$1 is healthy"
+                return 0
+              fi
+              sleep 5
+            done
+            echo "$1 did not answer its health check" >&2
+            return 1
+          }
+          check sim-pos 12
+          check web 24
+          # The worker is healthy after its first heartbeat job, about a minute after start.
+          check worker 40
+
+      - name: The worker logs JSON on staging, has its native image library and its files
+        run: |
+          docker logs worker > "$RUNNER_TEMP/worker.log" 2>&1
+          head -n 1 "$RUNNER_TEMP/worker.log" | jq -e '.name == "restro-worker"'
+          docker exec worker node -e "import('sharp').then((m) => console.log('sharp', m.default.versions.vips))"
+          docker exec worker test -f /app/apps/worker/scenarios/quiet-night.json
+          docker exec worker grep -q 'BEGIN CERTIFICATE' /tmp/supabase-ca.crt
+          docker exec worker sh -c 'echo shared > /data/cdn/ci-check'
+          [ "$(docker exec web cat /data/cdn/ci-check)" = "shared" ]
+          [ "$(docker exec web id -un)" = "node" ]
+          [ "$(docker exec worker id -un)" = "node" ]
+
+      - name: Logs
+        if: ${{ always() }}
+        run: |
+          for name in sim-pos web worker; do
+            echo "::group::$name"
+            docker logs "$name" 2>&1 | tail -n 100 || true
+            echo "::endgroup::"
+          done

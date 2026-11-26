@@ -4,8 +4,9 @@
 // one code when a sticker is downloaded). A staff member's PIN is stored the same way (its HMAC and
 // a sealed copy, D122 §7); the people settings ask here to show PINs to the venue's owner or to
 // Restro's admin team. Only the web app's server calls it, over the private network:
-//   - the Host must be `localhost` or a `*.railway.internal` name, so the public domain never
-//     reaches it;
+//   - the Host must be a name on the private network, so the public domain never reaches it:
+//     `localhost`, a Railway private name (`*.railway.internal`), or on Docker Compose a service
+//     name listed in WORKER_PRIVATE_HOSTS (one label, no dot, so never a public domain);
 //   - it carries the service token from REVEAL_SERVICE_TOKEN as a bearer, compared in constant
 //     time; without the setting the endpoint does not exist (404);
 //   - the web app names the signed-in account and its session (or a member of Restro's admin
@@ -94,14 +95,22 @@ interface RevealDeps {
   readonly privateKey: KeyObject
 }
 
-/** True for a Host header the endpoint answers: `localhost` or a Railway private name. */
-export function isPrivateHost(host: string | undefined): boolean {
+/**
+ * True for a Host header the endpoint answers: `localhost`, a Railway private name, or one of
+ * `listed` (WORKER_PRIVATE_HOSTS: exact single-label names such as a Compose service's, already
+ * lower-cased by the configuration). A port suffix is ignored.
+ */
+export function isPrivateHost(host: string | undefined, listed: readonly string[]): boolean {
   if (host === undefined) return false
   const name = host
     .trim()
     .toLowerCase()
     .replace(/:\d{1,5}$/, '')
-  return name === 'localhost' || /^[a-z0-9-]+(\.[a-z0-9-]+)*\.railway\.internal$/.test(name)
+  return (
+    name === 'localhost' ||
+    /^[a-z0-9-]+(\.[a-z0-9-]+)*\.railway\.internal$/.test(name) ||
+    listed.includes(name)
+  )
 }
 
 /** True when the Authorization header carries `token` as a bearer, compared in constant time. */
