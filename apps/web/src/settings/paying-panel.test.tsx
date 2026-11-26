@@ -404,6 +404,9 @@ describe('Settings › Paying', () => {
         () => new Promise((resolve) => (answer = resolve)),
       )
       const applies = within(screen.getByTestId('paying-pay-first')).getByRole('switch')
+      // The switch is disabled while the first save is pending; on a slow machine the rollback
+      // shows before that save has settled, and a click on the disabled switch is lost.
+      await waitFor(() => expect(applies.hasAttribute('disabled')).toBe(false))
       await user.click(applies)
       expect(applies.getAttribute('aria-checked')).toBe('false')
       expect(screen.getByTestId('paying-pf-off-d')).toBeTruthy()

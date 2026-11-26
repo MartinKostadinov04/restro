@@ -70,7 +70,7 @@ import {
   TABLE_AUTH_SCHEME,
 } from '@restro/shell'
 
-import { serverEnv } from './env'
+import { clientAddressFrom, serverEnv } from './env'
 import { type BadCodeLimiter, clientNetwork, guestApiBadCodes } from './guard/bad-codes'
 import { enqueueJob } from './jobs'
 import { logError, logInfo, logWarn } from './log'
@@ -205,7 +205,9 @@ function pass(request: Request): { readonly pass?: string } {
  */
 function wrongCode(request: Request, deps: GuestApiDeps): Response {
   const limiter = deps.badCodes ?? guestApiBadCodes
-  const { verdict, turnstileNow, blockedNow } = limiter.recordWrong(clientNetwork(request.headers))
+  const { verdict, turnstileNow, blockedNow } = limiter.recordWrong(
+    clientNetwork(request.headers, clientAddressFrom()),
+  )
   if (turnstileNow) logWarn('guest_bad_code_turnstile_required')
   if (blockedNow) logWarn('guest_bad_code_block')
   return verdict.kind === 'blocked'

@@ -53,7 +53,11 @@ export interface WorkerConfig {
   /** TCP port of `GET /health`. `0` picks a free port (tests only; the environment cannot set it). */
   readonly healthPort: number
   readonly logLevel: LogLevel
-  /** True: human-readable log lines (development). False: one JSON object per line (production). */
+  /**
+   * True: human-readable log lines (development). False: one JSON object per line, whenever
+   * NODE_ENV is `production` or the deployment's environment label (BARSY_ENV) is `staging` or
+   * `production` (a staging worker runs without NODE_ENV=production, see `sim` below).
+   */
   readonly prettyLogs: boolean
   /**
    * The key pair that opens sealed barsy credentials (SEAL_PUBLIC_KEY + SEAL_PRIVATE_KEY), or
@@ -65,6 +69,12 @@ export interface WorkerConfig {
   readonly barsy: BarsyPolicy
   /** Which simulated POS hosts this process may talk to, and whether it may at all (#71). */
   readonly sim: SimPolicy
+  /**
+   * Host names the internal endpoints (reveal, Telegram link, payment connection) answer besides
+   * `localhost` and `*.railway.internal`: WORKER_PRIVATE_HOSTS, exact single-label names such as
+   * a Docker Compose service's (`worker`). Empty when unset.
+   */
+  readonly privateHosts: readonly string[]
   /** Where barsy photos are stored: the same store the web app reads (`@restro/assets`). */
   readonly assets: AssetStoreConfig
   /** Where published menus and photo variants go: the store the `/cdn` route (later the CDN) serves. */
@@ -239,6 +249,8 @@ const BAD_HOST_SUFFIXES =
   'must be a comma-separated list of host suffixes that start with a dot, e.g. .barsyonline.com.'
 const BAD_PRODUCTION_HOSTS =
   'must be a comma-separated list of bare host names (no scheme, port or path).'
+const BAD_PRIVATE_HOSTS =
+  'must be a comma-separated list of single-label host names, such as a Docker Compose service name (no dot, scheme or port).'
 const BAD_REVEAL_TOKEN =
   'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).'
 const BAD_BILL_ID_KEY =
@@ -275,6 +287,8 @@ const VAPID_PUBLIC_KEY_MISSING = 'is not set. It goes with VAPID_PRIVATE_KEY.'
 const BAD_VAPID_SUBJECT = 'must be a mailto: or https: address. It goes with the VAPID keys.'
 
 const HOST_SUFFIX = /^\.[a-z0-9-]+(?:\.[a-z0-9-]+)+$/
+/** One DNS label: never a public domain, which always has a dot. */
+const SINGLE_LABEL_HOST = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
 
 /** A comma-separated list; blank means unset (undefined). */
 function commaList(value: unknown): string[] | undefined {
@@ -372,6 +386,7 @@ function environmentSchema(defaultWorkerId: () => string) {
       BARSY_ALLOWED_HOST_SUFFIXES: z.preprocess(commaList, z.array(z.string()).optional()),
       BARSY_PRODUCTION_HOSTS: z.preprocess(commaList, z.array(z.string()).optional()),
       SIM_POS_ALLOWED_HOSTS: z.preprocess(commaList, z.array(z.string()).optional()),
+      WORKER_PRIVATE_HOSTS: z.preprocess(commaList, z.array(z.string()).optional()),
       // Passed on to @restro/assets (assetStoreConfig), which names the problems itself.
       ASSET_STORE: z.string().optional(),
       LOCAL_ASSET_DIR: z.string().optional(),
@@ -530,6 +545,9 @@ function environmentSchema(defaultWorkerId: () => string) {
       if (env.GUEST_LINK_KEY !== undefined && env.PUBLIC_BASE_URL === undefined) {
         issue('PUBLIC_BASE_URL', PUBLIC_BASE_URL_MISSING)
       }
+      if (env.WORKER_PRIVATE_HOSTS?.some((host) => !SINGLE_LABEL_HOST.test(host))) {
+        issue('WORKER_PRIVATE_HOSTS', BAD_PRIVATE_HOSTS)
+      }
       if (env.BARSY_ALLOWED_HOST_SUFFIXES?.some((suffix) => !HOST_SUFFIX.test(suffix))) {
         issue('BARSY_ALLOWED_HOST_SUFFIXES', BAD_HOST_SUFFIXES)
       }
@@ -610,6 +628,10 @@ function environmentSchema(defaultWorkerId: () => string) {
       }
       // The deployment's environment label: the host rules and the simulated POS's policy share it.
       const label = env.BARSY_ENV
+      // A deployed worker logs JSON. Staging runs without NODE_ENV=production (that would refuse the
+      // simulated POS below), so its label counts too; pino-pretty is a dev dependency only.
+      const deployed =
+        env.NODE_ENV === 'production' || label === 'staging' || label === 'production'
       return {
         databaseUrl: env.DATABASE_URL,
         purgeDatabaseUrl: env.DATABASE_URL_PURGE ?? null,
@@ -617,7 +639,7 @@ function environmentSchema(defaultWorkerId: () => string) {
         workerId: env.WORKER_ID,
         healthPort: env.WORKER_HEALTH_PORT,
         logLevel: env.LOG_LEVEL,
-        prettyLogs: env.NODE_ENV !== 'production',
+        prettyLogs: !deployed,
         seal:
           env.SEAL_PUBLIC_KEY !== null && env.SEAL_PRIVATE_KEY !== null
             ? { publicKey: env.SEAL_PUBLIC_KEY, privateKey: env.SEAL_PRIVATE_KEY }
@@ -631,6 +653,7 @@ function environmentSchema(defaultWorkerId: () => string) {
           env: env.NODE_ENV === 'production' ? 'production' : label,
           allowHosts: env.SIM_POS_ALLOWED_HOSTS ?? [],
         },
+        privateHosts: env.WORKER_PRIVATE_HOSTS ?? [],
         assets,
         publish,
         revealToken: env.REVEAL_SERVICE_TOKEN ?? null,
@@ -686,12 +709,13 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `WORKER_ID` | name of this process in `worker_heartbeats` | the host name |
  * | `WORKER_HEALTH_PORT` | port of `GET /health` | 8081 |
  * | `LOG_LEVEL` | fatal, error, warn, info, debug, trace or silent | info |
- * | `NODE_ENV` | `production` switches the logs to JSON | pretty logs |
+ * | `NODE_ENV` | `production` switches the logs to JSON, refuses the simulated POS and makes the stores explicit | pretty logs |
  * | `SEAL_PUBLIC_KEY` | base64url DER (SPKI) X25519 public key; set with the private key | unset |
  * | `SEAL_PRIVATE_KEY` | base64url DER (PKCS8) X25519 private key; worker only | unset |
- * | `BARSY_ENV` | development, test, staging or production (the host rules below) | development |
+ * | `BARSY_ENV` | development, test, staging or production (the host rules below); staging and production also switch the logs to JSON | development |
  * | `BARSY_ALLOWED_HOST_SUFFIXES` | comma-separated; an integration host must end with one | .barsyonline.com |
  * | `BARSY_PRODUCTION_HOSTS` | comma-separated hosts of live venues; every env but production refuses them | none |
+ * | `WORKER_PRIVATE_HOSTS` | comma-separated single-label names the internal endpoints also answer (Docker Compose: the worker's service name); `localhost` and `*.railway.internal` always | none |
  * | `SIM_POS_ALLOWED_HOSTS` | comma-separated hosts a staging demo's simulated POS runs on; local hosts are always allowed; production refuses a `sim` instance outright | none |
  * | `ASSET_STORE`, `LOCAL_ASSET_DIR`, `R2_*` | where barsy photos go (see @restro/assets) | local in development |
  * | `REVEAL_SERVICE_TOKEN` | bearer token of the reveal endpoint (32+ characters); without it the endpoint is off | unset |

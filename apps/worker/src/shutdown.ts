@@ -1,4 +1,5 @@
-// Clean shutdown on SIGTERM (Railway stopping or redeploying the service) and SIGINT (Ctrl+C).
+// Clean shutdown on SIGTERM (the hosting platform stopping or redeploying the service) and SIGINT
+// (Ctrl+C).
 //
 // What happens, in order:
 //   1. The first signal calls worker.stop(): /health answers 503, pg-boss stops fetching jobs and
