@@ -4,9 +4,11 @@ import { describe, expect, it } from 'vitest'
 
 import {
   currentPlan,
+  driftBetween,
   expectedSeconds,
   listSpecs,
   planShards,
+  specFilesInList,
   TIMINGS_FILE,
   timingsFromReports,
 } from './e2e-shards.mjs'
@@ -95,12 +97,50 @@ describe('timingsFromReports', () => {
   })
 })
 
+describe('the check against what Playwright collects', () => {
+  const list = {
+    suites: [
+      { file: 'a.spec.ts', specs: [{ tests: [] }] },
+      {
+        file: 'sub/b.spec.ts',
+        specs: [],
+        suites: [{ file: 'sub/b.spec.ts', specs: [{ tests: [] }] }],
+      },
+    ],
+  }
+
+  it('reads the files out of a --list json report, nested ones too', () => {
+    expect(specFilesInList(list)).toEqual(['a.spec.ts', 'sub/b.spec.ts'])
+  })
+
+  it('is quiet when the plan and Playwright agree', () => {
+    expect(driftBetween(['a.spec.ts', 'sub/b.spec.ts'], ['a.spec.ts', 'sub/b.spec.ts'])).toEqual([])
+  })
+
+  it('names a spec Playwright runs that no shard would', () => {
+    expect(driftBetween(['a.spec.ts'], ['a.spec.ts', 'sub/b.spec.ts'])).toEqual([
+      'sub/b.spec.ts: Playwright runs it, but no shard is planned to',
+    ])
+  })
+
+  it('names a planned file Playwright does not collect', () => {
+    expect(driftBetween(['a.spec.ts', 'typo.spec.ts'], ['a.spec.ts'])).toEqual([
+      'typo.spec.ts: planned, but Playwright does not collect it',
+    ])
+  })
+})
+
 describe('the end-to-end suite as committed', () => {
   const specs = listSpecs()
 
   it('has a time for every spec, so the plan is the one that was measured', () => {
     const { seconds: measured } = JSON.parse(readFileSync(TIMINGS_FILE, 'utf8'))
-    expect(specs.filter((spec) => measured[spec] === undefined)).toEqual([])
+    const missing = specs.filter((spec) => measured[spec] === undefined)
+    // The plan still runs such a spec (at the median time); this is the reminder to time it.
+    expect(
+      missing,
+      `No time yet for ${missing.join(', ')}: add each to scripts/e2e-shard-timings.json (a rough number of seconds will do until the next refresh, see scripts/e2e-shards.mjs).`,
+    ).toEqual([])
   })
 
   it('runs every spec file in exactly one of the four shards', () => {

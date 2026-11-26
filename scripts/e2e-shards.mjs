@@ -12,15 +12,22 @@
 //
 // The times are in scripts/e2e-shard-timings.json: seconds per spec file, the median of the same
 // spec's wall time in three green CI runs (first test start to the next file's first test start, so
-// a file's hooks count). A spec missing from that file is still run (it takes the median of the
-// others' time, and the list command says so), so a new spec can never fall out of CI; the plan is
-// only less even until the numbers are refreshed.
+// a file's hooks count). A spec missing from that file is still planned (it takes the median of the
+// others' time, and the list command says so), so the plan is only less even until the numbers are
+// refreshed.
+//
+// `--test-list` never fails on a name it does not know: a shard whose list matched nothing would run
+// zero tests and stay green. So the `check` command, run in CI's static job, compares the files the
+// shards are planned to run with the ones Playwright itself collects, and fails on any difference.
 //
 // Commands (no dependencies, no install step needed):
 //   node scripts/e2e-shards.mjs list <shard> <total>   the spec files of one shard, one per line
 //                                                      (a Playwright --test-list file); the shard's
 //                                                      expected time goes to stderr
 //   node scripts/e2e-shards.mjs plan <total>           every shard's files and expected time
+//   node scripts/e2e-shards.mjs check <list.json>      fails when the files Playwright collects (from
+//                                                      `playwright test --list --reporter json`) are
+//                                                      not exactly the files the shards are planned to run
 //   node scripts/e2e-shards.mjs timings <report.json>...
 //                                                      new timings from Playwright JSON reports of
 //                                                      green runs, one per shard (see below)
@@ -36,6 +43,7 @@
 // output: add it with 0.
 
 import { readdirSync, readFileSync } from 'node:fs'
+import { sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 export const SPEC_DIRECTORY = fileURLToPath(new URL('../apps/web/e2e/', import.meta.url))
@@ -45,12 +53,14 @@ export const TIMINGS_FILE = fileURLToPath(new URL('./e2e-shard-timings.json', im
 const FALLBACK_SECONDS = 20
 
 /**
- * The spec files of the end-to-end suite, in the order Playwright runs them (plain name order).
+ * The spec files under the end-to-end folder, as Playwright names them (the path from that folder,
+ * with forward slashes), in name order. Subfolders count, as they do for Playwright's testDir.
  * @param {string} [directory]
  * @returns {string[]}
  */
 export function listSpecs(directory = SPEC_DIRECTORY) {
-  return readdirSync(directory)
+  return readdirSync(directory, { recursive: true, encoding: 'utf8' })
+    .map((name) => name.split(sep).join('/'))
     .filter((name) => name.endsWith('.spec.ts'))
     .sort()
 }
@@ -206,6 +216,45 @@ export function timingsFromReports(reports) {
 }
 
 /**
+ * The spec files in the output of `playwright test --list --reporter json`: the files Playwright
+ * itself would run.
+ * @param {unknown} report
+ * @returns {string[]}
+ */
+export function specFilesInList(report) {
+  /** @type {Set<string>} */
+  const files = new Set()
+  const visit = (/** @type {any} */ suite) => {
+    if ((suite.specs ?? []).length > 0 && suite.file)
+      files.add(String(suite.file).split(sep).join('/'))
+    for (const child of suite.suites ?? []) visit(child)
+  }
+  for (const suite of /** @type {any} */ (report).suites ?? []) visit(suite)
+  return [...files].sort()
+}
+
+/**
+ * What is wrong between the specs this script plans and the ones Playwright collects (empty when
+ * they are the same). A spec in no shard never runs, and a planned name Playwright does not know
+ * leaves a shard running nothing while the run stays green (`--test-list` does not fail on it).
+ * @param {string[]} planned
+ * @param {string[]} collected
+ * @returns {string[]}
+ */
+export function driftBetween(planned, collected) {
+  const plannedSet = new Set(planned)
+  const collectedSet = new Set(collected)
+  return [
+    ...collected
+      .filter((file) => !plannedSet.has(file))
+      .map((file) => `${file}: Playwright runs it, but no shard is planned to`),
+    ...planned
+      .filter((file) => !collectedSet.has(file))
+      .map((file) => `${file}: planned, but Playwright does not collect it`),
+  ]
+}
+
+/**
  * The plan for the real specs, with the committed timings.
  * @param {number} total
  */
@@ -249,13 +298,30 @@ function main(args) {
     }
     return
   }
+  if (command === 'check' && rest[0]) {
+    const total = Number(rest[1] ?? 4)
+    const collected = specFilesInList(JSON.parse(readFileSync(rest[0], 'utf8')))
+    const drift = driftBetween(currentPlan(total).shards.flat(), collected)
+    if (drift.length > 0) {
+      throw new Error(
+        [
+          'The end-to-end shard plan (scripts/e2e-shards.mjs) and Playwright disagree:',
+          ...drift,
+        ].join('\n'),
+      )
+    }
+    console.log(
+      `The ${collected.length} spec files Playwright collects are the ones the shards run.`,
+    )
+    return
+  }
   if (command === 'timings' && rest.length > 0) {
     const reports = rest.map((path) => JSON.parse(readFileSync(path, 'utf8')))
     console.log(JSON.stringify({ seconds: timingsFromReports(reports) }, null, 2))
     return
   }
   throw new Error(
-    'Usage: e2e-shards.mjs list <shard> <total> | plan <total> | timings <report.json>...',
+    'Usage: e2e-shards.mjs list <shard> <total> | plan <total> | check <list.json> [total] | timings <report.json>...',
   )
 }
 

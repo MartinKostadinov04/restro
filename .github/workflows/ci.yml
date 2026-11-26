@@ -96,6 +96,14 @@ jobs:
       - name: Import rules
         run: pnpm deps:check
 
+      # The e2e shards run the files scripts/e2e-shards.mjs lists (`--test-list`, which stays green
+      # on a name it does not know): fail here if those are not the files Playwright collects.
+      # `--list` needs no build, browser or server.
+      - name: End-to-end shard plan covers every spec
+        run: |
+          pnpm --filter @restro/web exec playwright test --list --reporter json > "$RUNNER_TEMP/e2e-list.json"
+          node scripts/e2e-shards.mjs check "$RUNNER_TEMP/e2e-list.json" 4
+
       - name: Secret scan
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
