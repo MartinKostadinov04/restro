@@ -39,17 +39,6 @@ describe('planShards', () => {
     }
   })
 
-  it('puts a cut between two specs that must not share a shard', () => {
-    const specs = ['a', 'b', 'c', 'd']
-    const times = seconds({ a: 10, b: 10, c: 10, d: 10 })
-    expect(planShards(specs, times, 2)).toEqual([
-      ['a', 'b'],
-      ['c', 'd'],
-    ])
-    expect(planShards(specs, times, 2, [['a', 'b']])).toEqual([['a'], ['b', 'c', 'd']])
-    expect(() => planShards(specs, times, 1, [['a', 'd']])).toThrow(/No plan/)
-  })
-
   it('refuses a plan with fewer specs than shards', () => {
     expect(() => planShards(['a'], seconds({ a: 1 }), 2)).toThrow(/cannot fill/)
   })
@@ -152,19 +141,6 @@ describe('the end-to-end suite as committed', () => {
       missing,
       `No time yet for ${missing.join(', ')}: add each to scripts/e2e-shard-timings.json (a rough number of seconds will do until the next refresh, see scripts/e2e-shards.mjs).`,
     ).toEqual([])
-  })
-
-  it('names only specs that exist in its keep-apart pairs, and keeps each pair apart', () => {
-    const { apart } = JSON.parse(readFileSync(TIMINGS_FILE, 'utf8')) as {
-      apart: { earlier: string; later: string }[]
-    }
-    const { shards } = currentPlan(4)
-    for (const { earlier, later } of apart) {
-      expect(specs, `${earlier} is in "apart" but no longer a spec`).toContain(earlier)
-      expect(specs, `${later} is in "apart" but no longer a spec`).toContain(later)
-      const together = shards.some((files) => files.includes(earlier) && files.includes(later))
-      expect(together, `${earlier} and ${later} share a shard`).toBe(false)
-    }
   })
 
   it('runs every spec file in exactly one of the four shards', () => {

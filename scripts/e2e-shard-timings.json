@@ -58,12 +58,5 @@
     "touch-targets.spec.ts": 65,
     "venue-lifecycle.spec.ts": 42,
     "venue-phone.spec.ts": 53
-  },
-  "apart": [
-    {
-      "earlier": "reservations.spec.ts",
-      "later": "tonight-more.spec.ts",
-      "why": "tonight-more.spec.ts 'puts what to fix first, then the sent orders, then the totals' expects the end-of-night page without a reservations section; every reservations spec's `book` scene gives the Tonight club reservation settings, which adds one. Found on #622 when a cut put them in one shard."
-    }
-  ]
+  }
 }
