@@ -29,7 +29,10 @@ export interface ReadingTx {
  * the same reason: both hide whether the batch was one statement instead of showing it.
  *
  * `cmin` is only meaningful to the transaction that wrote the row, so call this before the
- * transaction ends.
+ * transaction ends: a later transaction reads whatever the row's field still holds, which is the
+ * insert's command only while nothing has updated the row (the guest events are append-only).
+ * Distinguishing two transactions rests on `xmin` alone; only the two-inserts-in-one-transaction
+ * case shows that `cmin` tells statements apart.
  */
 export async function statementsThatWrote(
   tx: ReadingTx,

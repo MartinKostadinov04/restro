@@ -215,7 +215,8 @@ describe.skipIf(!hasDatabase)('recordEvents (as the restro_app role)', () => {
 
   it('counts two transactions as two writers', async () => {
     const [first, second] = await Promise.all([record(menuOpened(3)), record(menuOpened(3))])
-    // Read back in a transaction of its own: two earlier transactions, so two writers.
+    // Read back in a transaction of its own: two earlier transactions, so two writers. This is
+    // `xmin` alone at work; it does not show that `cmin` discriminates (the control above does).
     const separate = await withTenantWrite(world.app, world.tenantId, (tx) =>
       statementsThatWrote(tx, GUEST_EVENTS_TABLE, 'seq', [...first, ...second]),
     )
