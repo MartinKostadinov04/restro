@@ -298,10 +298,17 @@ jobs:
         run: pnpm --filter @restro/web exec playwright install --with-deps chromium
 
       # The build step above already ran `next build`, so run Playwright directly instead of
-      # `pnpm test:e2e` (which builds again). Playwright starts `next start` itself. `--shard` gives
-      # each runner its own share of the spec files (the config runs one worker, files in order).
+      # `pnpm test:e2e` (which builds again). Playwright starts `next start` itself. Each runner gets
+      # its own run of the spec files (the config runs one worker, files in order). Not `--shard`:
+      # that cuts by the number of tests, and 130 tests that CI skips put one shard at 3 minutes
+      # while the others took 15 to 17 (#621). scripts/e2e-shards.mjs cuts by measured time instead
+      # and prints the shard's expected time, to read beside the real one.
       - name: End-to-end tests
-        run: pnpm --filter @restro/web exec playwright test --shard=${{ matrix.shard }}/4
+        env:
+          E2E_SHARD: ${{ matrix.shard }}
+        run: |
+          node scripts/e2e-shards.mjs list "$E2E_SHARD" 4 > "$RUNNER_TEMP/e2e-shard.txt"
+          pnpm --filter @restro/web exec playwright test --test-list "$RUNNER_TEMP/e2e-shard.txt"
 
       - name: Upload the shard's report
         if: ${{ !cancelled() }}

@@ -114,7 +114,14 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   // In CI each shard writes a blob report; the `e2e-report` job merges them into one html report.
-  reporter: process.env.CI ? [['github'], ['blob']] : 'list',
+  // A shard no longer runs with `--shard` (scripts/e2e-shards.mjs picks its files), which is what
+  // numbered the blob file: CI names it with E2E_SHARD, so the four shards' files do not collide.
+  reporter: process.env.CI
+    ? [
+        ['github'],
+        ['blob', process.env.E2E_SHARD ? { fileName: `report-${process.env.E2E_SHARD}.zip` } : {}],
+      ]
+    : 'list',
   use: {
     baseURL: ORIGIN,
     trace: 'on-first-retry',
