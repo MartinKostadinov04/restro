@@ -3896,6 +3896,17 @@ export const reservations = restro.table(
     prepayCurrency: text('prepay_currency'),
     prepayState: text('prepay_state').notNull().default('none'),
     prepayPaymentId: text('prepay_payment_id'),
+    /**
+     * SHA-256 of the guest's booking token, lower-case hex (#579): what the guest's own link is
+     * looked up by, never the token itself. Set on an online booking when it is made. No slow
+     * hash: the token has at least 128 random bits.
+     */
+    guestTokenHash: text('guest_token_hash'),
+    /**
+     * The Area an online request asks for (#580), when the guest chose one instead of a spot. The
+     * hostess places the party; this only says where they asked to sit. Same tenant (the key below).
+     */
+    requestedAreaId: text('requested_area_id'),
     ...serviceProvenance(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -3913,6 +3924,16 @@ export const reservations = restro.table(
       columns: [t.tenantId, t.madeBy],
       foreignColumns: [staffMembers.tenantId, staffMembers.id],
     }),
+    foreignKey({
+      name: 'reservations_requested_area_fk',
+      columns: [t.tenantId, t.requestedAreaId],
+      foreignColumns: [areas.tenantId, areas.id],
+    }),
+    unique('reservations_guest_token_hash_unique').on(t.guestTokenHash),
+    check(
+      'reservations_guest_token_hash_format',
+      sql`${t.guestTokenHash} is null or ${t.guestTokenHash} ~ ${SHA256_PATTERN}`,
+    ),
     // A night's screens read one venue's night by status.
     index('reservations_venue_service_date_idx').on(t.venueId, t.serviceDate, t.status),
     // The waiting list, in its own order.

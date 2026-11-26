@@ -421,6 +421,20 @@
       "when": 1795610613572,
       "tag": "0059_declined_status",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1795649787944,
+      "tag": "0060_guest_token_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1795649803314,
+      "tag": "0061_requested_area",
+      "breakpoints": true
     }
   ]
 }
