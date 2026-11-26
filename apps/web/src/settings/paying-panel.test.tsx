@@ -404,6 +404,10 @@ describe('Settings › Paying', () => {
         () => new Promise((resolve) => (answer = resolve)),
       )
       const applies = within(screen.getByTestId('paying-pay-first')).getByRole('switch')
+      // The refusal above rolls back the mode before its transition has settled, and every
+      // control is disabled while a save is pending, so a click sent in that gap does nothing
+      // and the switch stays on. Wait for the gap to close rather than for a fast machine.
+      await waitFor(() => expect(applies.hasAttribute('disabled')).toBe(false))
       await user.click(applies)
       expect(applies.getAttribute('aria-checked')).toBe('false')
       expect(screen.getByTestId('paying-pf-off-d')).toBeTruthy()
