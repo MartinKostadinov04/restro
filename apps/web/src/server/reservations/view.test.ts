@@ -50,6 +50,7 @@ const row = (over: Partial<ReservationRow> = {}): ReservationRow => ({
   note: 'Birthday',
   reason: null,
   spots: ['Table 7'],
+  askedFor: null,
   seatedAt: null,
   endedAt: null,
   late: false,

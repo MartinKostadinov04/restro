@@ -4,8 +4,10 @@
 // one reversible change each. Each is a person's settings change: `settings.reservations` and a
 // sign-in of the last 15 minutes, which the service write path checks (a PIN never reaches it) and
 // the screen words. Nothing here is saved as a whole form. A change the booking page shows (the
-// online booking switch, a closed date) queues the venue's booking file with it (#577).
+// online booking switch, a closed date, what guests may choose) queues the venue's booking file
+// with it (#577, #580).
 import { idSchema } from '@restro/core'
+import { GUEST_MAY_VALUES } from '@restro/core/service'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -29,6 +31,13 @@ const OnDate = z.strictObject({ venueId, date })
 
 /** The online booking switch (#577): whether the venue's booking page takes requests. */
 const OnlineBooking = z.strictObject({ venueId, bookingPage: z.boolean() })
+
+/** What guests may choose on the booking page, and whether a picked spot confirms itself (#580). */
+const OnlineGuests = z.strictObject({
+  venueId,
+  guestMay: z.enum(GUEST_MAY_VALUES).optional(),
+  autoConfirm: z.boolean().optional(),
+})
 
 /**
  * Runs one command at the venue and refreshes the page on success; `booking` queues the venue's
@@ -98,4 +107,18 @@ export async function saveOnlineBookingAction(input: unknown): Promise<SettingsR
     { type: 'reservation_online.set', bookingPage: parsed.data.bookingPage },
     true,
   )
+}
+
+/**
+ * Sets what guests may choose on the booking page (a night, an Area, their own spot) or whether a
+ * booking with a spot the guest picked confirms itself (#580). The booking file is queued with it:
+ * the page offers the new choice once it is published. Undo is the screen sending the previous
+ * value again.
+ */
+export async function saveOnlineGuestsAction(input: unknown): Promise<SettingsResult> {
+  const parsed = OnlineGuests.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { venueId: venue, ...change } = parsed.data
+  if (change.guestMay === undefined && change.autoConfirm === undefined) return INVALID
+  return runAt(venue, { type: 'reservation_online_guests.set', ...change }, true)
 }

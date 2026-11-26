@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import type { BookingBinding, BookingView } from '@restro/shell'
+import { BOOKING_SPOTS_PICKED_MAX, type BookingBinding, type BookingView } from '@restro/shell'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { EditorialMarketBooking } from './booking'
 import { BOOKING_CSS } from './booking-css'
+import { PLAN_MAX_PX, planMinWidth } from './booking-plan'
 import { EDITORIAL_CSS } from './css'
 import { richView } from './test-views'
 
@@ -23,6 +24,58 @@ const BOOKING: BookingView = {
     { date: '2026-11-26', label: 'Thu, 26 Nov', open: true },
     { date: '2026-11-27', label: 'Fri, 27 Nov', open: false },
     { date: '2026-11-28', label: 'Sat, 28 Nov', open: true },
+  ],
+  guestMay: 'night',
+  areas: [],
+  plans: [],
+}
+
+/** A plan of three spots (#580): T1 in the Hall, T2 with no Area, and a round Bar. */
+const PLAN: BookingView['plans'][number] = {
+  id: 'fp_0123456789ABCDEFGHIJKL',
+  name: 'Ground floor',
+  aspect: 0.5,
+  spots: [
+    {
+      id: 'sp_T1aaaaaaaaaaaaaaaaaaaa',
+      name: 'T1',
+      symbol: 'table',
+      seats: 4,
+      area: 'Hall',
+      shape: 'rect',
+      rotation: 0,
+      box: { left: 5, top: 10, width: 20, height: 40 },
+    },
+    {
+      id: 'sp_T2aaaaaaaaaaaaaaaaaaaa',
+      name: 'T2',
+      symbol: 'table',
+      seats: null,
+      area: null,
+      shape: 'rect',
+      rotation: 90,
+      box: { left: 40, top: 10, width: 20, height: 40 },
+    },
+    {
+      id: 'sp_BARaaaaaaaaaaaaaaaaaaa',
+      name: 'Bar',
+      symbol: 'stool',
+      seats: 2,
+      area: null,
+      shape: 'circle',
+      rotation: 0,
+      box: { left: 75, top: 10, width: 20, height: 40 },
+    },
+  ],
+}
+
+const SPOTS: BookingView = { ...BOOKING, guestMay: 'spot', plans: [PLAN] }
+const AREAS: BookingView = {
+  ...BOOKING,
+  guestMay: 'area',
+  areas: [
+    { id: 'ar_HALLaaaaaaaaaaaaaaaaaa', name: 'Hall' },
+    { id: 'ar_VIPaaaaaaaaaaaaaaaaaaa', name: 'VIP' },
   ],
 }
 
@@ -103,6 +156,8 @@ describe('the booking page of the Editorial Market (#577)', () => {
       phone: '+359 88 123 4567',
       email: 'ivan@example.com',
       note: null,
+      areaId: null,
+      spotIds: [],
     })
   })
 
@@ -178,6 +233,130 @@ describe('the booking page of the Editorial Market (#577)', () => {
   })
 })
 
+describe('an Area or a spot on the booking page (#580)', () => {
+  it('asks for one of the Areas, and sends the one chosen', () => {
+    const binding = bindingOf()
+    render(<EditorialMarketBooking view={view} booking={AREAS} binding={binding} />)
+    const area = screen.getByLabelText('Area') as HTMLSelectElement
+    expect(area.required).toBe(true)
+    expect([...area.options].map((option) => option.textContent)).toEqual([
+      'Choose an area',
+      'Hall',
+      'VIP',
+    ])
+    fireEvent.change(area, { target: { value: 'ar_VIPaaaaaaaaaaaaaaaaaaa' } })
+    fill()
+    fireEvent.submit(screen.getByRole('button', { name: 'Send the request' }))
+    expect(binding.send).toHaveBeenCalledWith(
+      expect.objectContaining({ areaId: 'ar_VIPaaaaaaaaaaaaaaaaaaa', spotIds: [] }),
+    )
+  })
+
+  it('draws the plan with each spot free or taken in words, and sends the spots picked', () => {
+    const binding = bindingOf({
+      night: {
+        night: '2026-11-26',
+        answer: 'open',
+        spots: {
+          sp_T1aaaaaaaaaaaaaaaaaaaa: 'free',
+          sp_T2aaaaaaaaaaaaaaaaaaaa: 'taken',
+          sp_BARaaaaaaaaaaaaaaaaaaa: 'free',
+        },
+      },
+    })
+    render(<EditorialMarketBooking view={view} booking={SPOTS} binding={binding} />)
+    expect(screen.getByRole('group', { name: 'Your spot' })).toBeTruthy()
+    const t1 = screen.getByRole('button', { name: 'T1, Hall, 4 seats, free' })
+    const t2 = screen.getByRole('button', { name: 'T2, taken' }) as HTMLButtonElement
+    expect(t2.disabled).toBe(true)
+    expect(t1.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(t1)
+    expect(t1.getAttribute('aria-pressed')).toBe('true')
+    expect(t1.getAttribute('aria-label')).toBe('T1, Hall, 4 seats, picked')
+    expect(screen.getByText('Picked: T1')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Bar, 2 seats, free' }))
+    fill()
+    fireEvent.submit(screen.getByRole('button', { name: 'Send the request' }))
+    expect(binding.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        areaId: null,
+        spotIds: ['sp_T1aaaaaaaaaaaaaaaaaaaa', 'sp_BARaaaaaaaaaaaaaaaaaaa'],
+      }),
+    )
+  })
+
+  it('says it is checking until the night answers, and nothing can be picked meanwhile', () => {
+    render(<EditorialMarketBooking view={view} booking={SPOTS} binding={bindingOf()} />)
+    expect(screen.getByText('Checking which spots are free…')).toBeTruthy()
+    for (const spot of screen.getAllByRole('button', { pressed: false })) {
+      expect((spot as HTMLButtonElement).disabled).toBe(true)
+    }
+    expect(screen.getByText('No spot picked: the club will seat you.')).toBeTruthy()
+  })
+
+  it('says the spot was just taken, and drops it once the night reads it taken', () => {
+    const free = {
+      night: '2026-11-26',
+      answer: 'open' as const,
+      spots: {
+        sp_T1aaaaaaaaaaaaaaaaaaaa: 'free' as const,
+        sp_T2aaaaaaaaaaaaaaaaaaaa: 'free' as const,
+        sp_BARaaaaaaaaaaaaaaaaaaa: 'free' as const,
+      },
+    }
+    const { rerender } = render(
+      <EditorialMarketBooking view={view} booking={SPOTS} binding={bindingOf({ night: free })} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'T2, free' }))
+    rerender(
+      <EditorialMarketBooking
+        view={view}
+        booking={SPOTS}
+        binding={bindingOf({
+          refusal: 'spot_taken',
+          night: { ...free, spots: { ...free.spots, sp_T2aaaaaaaaaaaaaaaaaaaa: 'taken' } },
+        })}
+      />,
+    )
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Someone just took that spot. Pick another one on the plan.',
+    )
+    expect(screen.getByRole('button', { name: 'T2, taken' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    )
+    expect(screen.getByText('No spot picked: the club will seat you.')).toBeTruthy()
+  })
+
+  it('shows its own answer when the booking confirmed itself', () => {
+    render(
+      <EditorialMarketBooking
+        view={view}
+        booking={SPOTS}
+        binding={bindingOf({ stage: 'confirmed' })}
+      />,
+    )
+    expect(screen.getByRole('status').textContent).toContain('Your booking is confirmed')
+    expect(document.activeElement?.textContent).toBe('Your booking is confirmed')
+  })
+
+  it('speaks Bulgarian on the plan too', () => {
+    render(
+      <EditorialMarketBooking
+        view={view}
+        booking={{ ...SPOTS, locale: 'bg_BG' }}
+        binding={bindingOf({
+          night: {
+            night: '2026-11-26',
+            answer: 'open',
+            spots: { sp_T1aaaaaaaaaaaaaaaaaaaa: 'free' },
+          },
+        })}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'T1, Hall, 4 места, свободно' })).toBeTruthy()
+  })
+})
+
 describe('the booking stylesheet', () => {
   it('holds no colour of its own (R13)', () => {
     expect(BOOKING_CSS).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
@@ -192,5 +371,62 @@ describe('the booking stylesheet', () => {
     for (const name of BOOKING_CSS.match(/\.bk-[\w-]+/g) ?? []) {
       expect(EDITORIAL_CSS, name).not.toContain(name)
     }
+  })
+})
+
+describe('the plan stays touchable (#580 review)', () => {
+  const counter = (height: number): BookingView['plans'][number] => ({
+    ...PLAN,
+    spots: [
+      ...PLAN.spots,
+      {
+        id: 'sp_CNTaaaaaaaaaaaaaaaaaaa',
+        name: 'Counter',
+        symbol: 'stool',
+        seats: null,
+        area: null,
+        shape: 'rect',
+        rotation: 0,
+        box: { left: 5, top: 80, width: 90, height },
+      },
+    ],
+  })
+
+  it('sizes the plan from its shortest spot as well as its narrowest, capped', () => {
+    // 20 % wide, and 40 % of a box half as tall as it is wide: both need a 220 px box.
+    expect(planMinWidth(PLAN)).toBe(220)
+    // A long thin counter 10 % tall is 5 % of the width tall: 44 px needs an 880 px box.
+    expect(planMinWidth(counter(10))).toBe(880)
+    expect(planMinWidth(counter(1))).toBe(PLAN_MAX_PX)
+  })
+
+  it('stops the picker once a request holds as many spots as it may', () => {
+    const many = Array.from({ length: BOOKING_SPOTS_PICKED_MAX + 1 }, (_, index) => ({
+      id: `sp_M${String(index).padStart(2, '0')}aaaaaaaaaaaaaaaaaa`,
+      name: `M${index}`,
+      symbol: 'stool' as const,
+      seats: null,
+      area: null,
+      shape: 'circle' as const,
+      rotation: 0,
+      box: { left: index * 8, top: 10, width: 6, height: 40 },
+    }))
+    const binding = bindingOf({
+      night: {
+        night: '2026-11-26',
+        answer: 'open',
+        spots: Object.fromEntries(many.map((spot) => [spot.id, 'free' as const])),
+      },
+    })
+    const booking: BookingView = { ...SPOTS, plans: [{ ...PLAN, spots: many }] }
+    render(<EditorialMarketBooking view={view} booking={booking} binding={binding} />)
+    const button = (name: string) =>
+      screen.getByRole('button', { name: new RegExp(`^${name},`) }) as HTMLButtonElement
+    for (const spot of many.slice(0, BOOKING_SPOTS_PICKED_MAX)) fireEvent.click(button(spot.name))
+    const last = many[BOOKING_SPOTS_PICKED_MAX]?.name ?? ''
+    expect(button(last).disabled).toBe(true)
+    expect(button('M0').disabled).toBe(false)
+    fireEvent.click(button('M0'))
+    expect(button(last).disabled).toBe(false)
   })
 })

@@ -8,6 +8,7 @@ import {
   addClosedDateAction,
   removeClosedDateAction,
   saveOnlineBookingAction,
+  saveOnlineGuestsAction,
   saveReservationRulesAction,
 } from '@/server/settings/reservations-actions'
 import type { ReservationsView } from '@/server/settings/reservations-view'
@@ -20,6 +21,7 @@ vi.mock('@/server/settings/reservations-actions', () => ({
   addClosedDateAction: vi.fn(),
   removeClosedDateAction: vi.fn(),
   saveOnlineBookingAction: vi.fn(),
+  saveOnlineGuestsAction: vi.fn(),
 }))
 vi.mock('@/server/settings/plan-actions', () => ({
   startPlanAction: vi.fn(),
@@ -51,6 +53,9 @@ function view(
       editPastNights: false,
       privateNotesOn: true,
       bookingPage: false,
+      guestMay: 'night',
+      autoConfirm: false,
+      bookingOffer: { spots: false, areas: false },
       closedDates: [],
       spots: [],
       ...settings,
@@ -69,6 +74,7 @@ beforeEach(() => {
     addClosedDateAction,
     removeClosedDateAction,
     saveOnlineBookingAction,
+    saveOnlineGuestsAction,
   ]) {
     vi.mocked(action).mockReset()
     vi.mocked(action).mockResolvedValue(OK)
@@ -205,6 +211,106 @@ describe('Settings › Reservations', () => {
     )
     // The first value has nothing to go back to, so its toast carries no Undo.
     expect(vi.mocked(toast.success).mock.calls[0]?.[1]).not.toHaveProperty('action')
+  })
+})
+
+describe('what guests may do, and bookings that confirm themselves (#580)', () => {
+  const DRAWN = { bookingOffer: { spots: true, areas: true } }
+
+  it('keeps the Area and spot choices off until a plan is drawn, linking to the editor', () => {
+    renderWithIntl(<ReservationsPanel view={view()} />)
+    expect(screen.getByRole('group', { name: 'What guests may do' })).toBeTruthy()
+    const night = screen.getByRole('radio', { name: 'Ask for a night' }) as HTMLInputElement
+    expect(night.checked).toBe(true)
+    for (const name of [/Choose an area/, /Pick their own spot/]) {
+      expect((screen.getByRole('radio', { name }) as HTMLInputElement).disabled).toBe(true)
+    }
+    const link = screen.getByTestId('rs-guests-spot-plan')
+    expect(link.textContent).toBe('Draw your plan first')
+    expect(link.getAttribute('href')).toBe('#rs-plan')
+    expect(document.getElementById('rs-plan')).not.toBeNull()
+  })
+
+  it('says why the Area choice is off when no visible Area holds a spot', () => {
+    renderWithIntl(
+      <ReservationsPanel view={view({ bookingOffer: { spots: true, areas: false } })} />,
+    )
+    expect(
+      (screen.getByRole('radio', { name: /Choose an area/ }) as HTMLInputElement).disabled,
+    ).toBe(true)
+    expect(screen.getByText('Link a spot to a table in an area first')).toBeTruthy()
+    expect(
+      (screen.getByRole('radio', { name: /Pick their own spot/ }) as HTMLInputElement).disabled,
+    ).toBe(false)
+  })
+
+  it('saves a choice at once, with Undo that sends the previous one', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<ReservationsPanel view={view(DRAWN)} />)
+    await user.click(screen.getByRole('radio', { name: 'Pick their own spot' }))
+    await waitFor(() =>
+      expect(saveOnlineGuestsAction).toHaveBeenCalledWith({ venueId: VENUE, guestMay: 'spot' }),
+    )
+    expect(vi.mocked(toast.success).mock.calls[0]?.[0]).toBe('Guests pick their own spot.')
+    const options = vi.mocked(toast.success).mock.calls[0]?.[1] as unknown as {
+      action: { onClick: () => void }
+    }
+    options.action.onClick()
+    await waitFor(() =>
+      expect(saveOnlineGuestsAction).toHaveBeenLastCalledWith({
+        venueId: VENUE,
+        guestMay: 'night',
+        autoConfirm: false,
+      }),
+    )
+  })
+
+  it('keeps the switch off, with its one line, unless guests pick their own spot', async () => {
+    const user = userEvent.setup()
+    const { unmount } = renderWithIntl(<ReservationsPanel view={view(DRAWN)} />)
+    const off = screen.getByRole('switch', { name: 'Confirm bookings by themselves' })
+    expect((off as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByTestId('rs-auto-why').textContent).toBe(
+      'Only where the guest picked their own spot, so a spot is never booked twice.',
+    )
+    unmount()
+    renderWithIntl(<ReservationsPanel view={view({ ...DRAWN, guestMay: 'spot' })} />)
+    expect(screen.queryByTestId('rs-auto-why')).toBeNull()
+    await user.click(screen.getByRole('switch', { name: 'Confirm bookings by themselves' }))
+    await waitFor(() =>
+      expect(saveOnlineGuestsAction).toHaveBeenCalledWith({ venueId: VENUE, autoConfirm: true }),
+    )
+  })
+
+  it('words a refusal of the command in the screen words', async () => {
+    const user = userEvent.setup()
+    vi.mocked(saveOnlineGuestsAction).mockResolvedValue({ ok: false, error: 'plan_missing' })
+    renderWithIntl(<ReservationsPanel view={view(DRAWN)} />)
+    await user.click(screen.getByRole('radio', { name: 'Choose an area' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toBe('Draw your plan first')
+    expect(
+      (screen.getByRole('radio', { name: 'Ask for a night' }) as HTMLInputElement).checked,
+    ).toBe(true)
+  })
+
+  it('shows both values as text to a role that may not change them', () => {
+    renderWithIntl(
+      <ReservationsPanel
+        view={view({ ...DRAWN, guestMay: 'spot', autoConfirm: true }, { canChange: false })}
+      />,
+    )
+    expect(screen.queryByRole('radio')).toBeNull()
+    expect(screen.getByTestId('rs-guests-value').textContent).toBe('Pick their own spot')
+    expect(screen.getByTestId('rs-auto-value').textContent).toBe('On')
+  })
+
+  it('fits the longest Bulgarian line in words that wrap', () => {
+    renderWithIntl(<ReservationsPanel view={view({ ...DRAWN, guestMay: 'spot' })} />, {
+      locale: 'bg',
+    })
+    const line = screen.getByText('Потвърждавай сама резервациите, в които гостът е избрал място')
+    expect(line.className).toContain('break-words')
   })
 })
 

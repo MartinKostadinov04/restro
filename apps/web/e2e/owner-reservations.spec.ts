@@ -114,8 +114,9 @@ test('asks for the hold time first, then opens the switches', async ({ browser }
   await page.reload()
   await expect(page.getByLabel('Мястото се пази')).toHaveValue('120')
   await expect(page.getByTestId('rs-hold-first')).toHaveCount(0)
-  // The three rules and Online booking (#577), which waits for the hold time as they do.
-  await expect(page.getByRole('switch')).toHaveCount(4)
+  // The three rules, Online booking (#577), which waits for the hold time as they do, and the
+  // self-confirm switch (#580), drawn off until guests pick their own spot.
+  await expect(page.getByRole('switch')).toHaveCount(5)
   await expect(page.getByRole('switch', { name: 'Онлайн резервации' })).toBeVisible()
   await snapshot(page, 'reservations-desktop.png')
   await context.close()

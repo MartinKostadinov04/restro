@@ -22,6 +22,7 @@ const detail = (over: Partial<RvDetailView> = {}): RvDetailView => ({
     name: 'Мария',
     partySize: 4,
     spots: ['T1', 'T2'],
+    askedFor: null,
     note: null,
     reason: 'birthday',
     late: false,

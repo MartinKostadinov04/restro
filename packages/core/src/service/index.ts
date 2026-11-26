@@ -96,11 +96,13 @@ export {
 export {
   type BookingNightAnswer,
   type BookingRequestInput,
+  bookingBackendValues,
   cancelGuestBooking,
   type GuestCancelInput,
   type GuestLinkBooking,
   readBookingFile,
   readBookingNight,
+  readBookingSpots,
   readGuestBooking,
   requestBooking,
 } from './booking'
@@ -466,6 +468,18 @@ export {
   type SeatsCheck,
   type TakenCheck,
 } from './reservations/booking-checks'
+export {
+  BOOKING_PLAN_SPOTS_MAX,
+  BOOKING_PLANS_MAX,
+  BOOKING_SPOTS_PICKED_MAX,
+  type BookingAreaRead,
+  type BookingPlanOffer,
+  type BookingPlanRead,
+  type BookingSpotRead,
+  type BookingSpotState,
+  bookingPlanOf,
+  bookingSpotStates,
+} from './reservations/booking-plan'
 export { CLOSED_DATES_MAX } from './reservations/closed-dates'
 export {
   GUEST_EMAIL_LOG_KINDS,
@@ -494,6 +508,8 @@ export {
 export { bookingCalendarOf, bookingPageOn } from './reservations/online'
 export {
   DEFAULT_ONLINE_SETTINGS,
+  GUEST_MAY_VALUES,
+  type GuestMay,
   type OnlineSettings,
   OnlineSettingsSchema,
   readOnlineSettings,

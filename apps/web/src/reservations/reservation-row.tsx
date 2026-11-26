@@ -92,6 +92,8 @@ export function ReservationRow({
     guests(row.partySize),
     // «място 9», never a bare "9" beside the party size, which reads as a second count (S1).
     spotsText(row.spots),
+    // The Area an online request asked for (#580): the hostess places the party in it.
+    row.askedFor === null ? null : t('asked_for', { area: row.askedFor }),
     // A waiting party is a walk-in in the data (D137), and so is a booking saved with no spot: the
     // state already says it is waiting, so the kind would only read as a contradiction.
     row.kind === 'walk_in' && row.status !== 'waiting' ? t('walk_in') : null,

@@ -28,6 +28,7 @@ import { z } from 'zod'
 import { idSchema } from './ids'
 import { WEEKDAYS, type Weekday } from './ordering-settings'
 import { PUBLIC_ID_PATTERN } from './public-id'
+import { PLAN_GRID, SPOT_SHAPES, SPOT_SYMBOLS } from './spot-shapes'
 
 /** Venue slugs: lower-case kebab-case, 1 to 63 characters (`demo-club`). */
 export const VENUE_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -188,12 +189,62 @@ const BookingDayHoursSchema = z.strictObject({
 export const BOOKING_FILE_CLOSED_DATES_MAX = 500
 
 /**
+ * What a guest may do on the booking page (#580; D136): ask for a night, choose an Area, or pick his
+ * own spot. The venue's stored choice (`GUEST_MAY_VALUES`, core/service) is these same values.
+ */
+export const BOOKING_GUEST_MAY = ['night', 'area', 'spot'] as const
+
+/** The most plans, and spots on one plan, a booking file carries (#580). */
+export const BOOKING_FILE_PLANS_MAX = 20
+export const BOOKING_FILE_SPOTS_MAX = 400
+/** The most Areas a booking file offers. */
+export const BOOKING_FILE_AREAS_MAX = 100
+/** The most spots one guest picks for one request (#580). */
+export const BOOKING_SPOTS_PICKED_MAX = 10
+
+/** A spot's place on its plan, in the plan's own grid (the shape folder's numbers, `spot-shapes`). */
+const GridNumber = z.int().min(0).max(PLAN_GRID)
+
+/**
+ * One spot as the booking page draws it (#580): its prefixed id, its name, its kind's symbol (a
+ * name our own components draw), its seats, the offered Area its Table belongs to, and its
+ * drawing. Never its Table, its kind's own label, or anything internal (rule 3).
+ */
+const BookingSpotSchema = z.strictObject({
+  id: idSchema('sp'),
+  name: z.string().min(1).max(120),
+  symbol: z.enum(SPOT_SYMBOLS),
+  seats: z.int().min(1).max(100).nullable(),
+  area: idSchema('ar').nullable(),
+  shape: z.enum(SPOT_SHAPES),
+  x: GridNumber,
+  y: GridNumber,
+  width: GridNumber,
+  height: GridNumber,
+  rotation: z.int().min(0).max(359),
+})
+
+/** One floor plan as the booking page draws it: its name and its spots. */
+const BookingPlanSchema = z.strictObject({
+  id: idSchema('fp'),
+  name: z.string().min(1).max(120),
+  spots: z.array(BookingSpotSchema).max(BOOKING_FILE_SPOTS_MAX),
+})
+
+/** An Area a guest may ask for: a visible one that holds at least one spot. */
+const BookingAreaSchema = z.strictObject({
+  id: idSchema('ar'),
+  name: z.string().min(1).max(120),
+})
+
+/**
  * `b/<venue id>.json`: what the venue's booking page shows (#577; spec #322 Implementation
  * Decisions 1, rule 4). The page draws everything from the published files: this one, and the
  * venue's menu files for its Style and languages. Public by design: the venue's own name, whether it
  * takes online bookings, its clock, the opening and closing of each weekday (never last orders or
- * anything else of the ordering settings) and its one-off closed dates from today on. No POS id, no
- * tenant id, no person (rule 3; the publisher runs the forbidden-values walk on it).
+ * anything else of the ordering settings) and its one-off closed dates from today on; and, where
+ * the venue offers them (#580), its Areas and its floor plans with their spots. No POS id, no
+ * tenant id, no table id, no person (rule 3; the publisher runs the forbidden-values walk on it).
  */
 export const BookingFileSchema = z.strictObject({
   venue_id: idSchema('vn'),
@@ -211,6 +262,17 @@ export const BookingFileSchema = z.strictObject({
   ),
   /** One-off closed service days from today on, oldest first. */
   closed_dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(BOOKING_FILE_CLOSED_DATES_MAX),
+  /**
+   * What a guest may do beyond the night (#580): ask for the night only, choose an Area, or pick
+   * his own spot. A file published before #580 has none, and reads as the night only.
+   */
+  guest_may: z.enum(BOOKING_GUEST_MAY).default('night'),
+  /** The Areas a guest may ask for, in the venue's order; empty unless Areas are offered. */
+  areas: z.array(BookingAreaSchema).max(BOOKING_FILE_AREAS_MAX).default([]),
+  /** The floor plans a guest picks his spot on, the current one first; empty unless offered. */
+  plans: z.array(BookingPlanSchema).max(BOOKING_FILE_PLANS_MAX).default([]),
 })
 /** The content of `b/<venue id>.json`. */
 export type BookingFile = z.output<typeof BookingFileSchema>
+/** What a guest may do on a venue's booking page beyond the night (#580). */
+export type BookingGuestMay = BookingFile['guest_may']

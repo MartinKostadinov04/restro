@@ -1263,6 +1263,91 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
     })
   })
 
+  describe('the booking file, queued with an Area or a Table change (#580 review)', () => {
+    /** The jobs queued inside a change's transaction, and what the queue answered there. */
+    const inTx: { name: string; data: Record<string, unknown>; said: unknown }[] = []
+    let failIn = false
+    const owing: TablesServices = {
+      ...services,
+      enqueueIn: async (queue, name, data) => {
+        if (failIn) throw new Error('queue is down')
+        // The queue is the change's own transaction: it runs SQL there.
+        const { rows } = await queue.executeSql('select $1::text as said', ['in the change'])
+        inTx.push({ name, data: data as Record<string, unknown>, said: rows[0] })
+        return 'job-in'
+      },
+    }
+    const booking = { tenantId: tenant, venueId: '' }
+    const queuedSince = () => {
+      const names = inTx.map((job) => job.name)
+      inTx.length = 0
+      return names
+    }
+
+    it('renaming, moving, hiding or removing an Area or a Table queues it in the same transaction', async () => {
+      booking.venueId = hand.id
+      expect(await addArea(handScope(), 'Booths')).toEqual({ ok: true, queued: true })
+      expect(await addArea(handScope(), 'Side')).toEqual({ ok: true, queued: true })
+      const [booths, side] = (await handView()).halls.map((h) => h.id) as [string, string]
+      expect(await addTable(handScope(), booths, { number: '7', name: null })).toEqual({
+        ok: true,
+        queued: true,
+      })
+      const seven = (await handView()).halls[0]?.tables[0]?.id as string
+      // Adding an Area or a Table changes nothing the page offers: no spot is on it yet.
+      expect(inTx).toEqual([])
+
+      for (const change of [
+        () => renameAreaOf(handScope(), booths, 'VIP', owing),
+        () => moveAreaOf(handScope(), side, 0, owing),
+        () => hideArea(handScope(), owing, booths, true),
+        () => hideArea(handScope(), owing, booths, false),
+        () => hideTable(handScope(), owing, seven, true),
+        () => hideTable(handScope(), owing, seven, false),
+        () => moveTableOf(handScope(), owing, seven, side, 0),
+      ]) {
+        expect((await change()).ok).toBe(true)
+        expect(queuedSince()).toEqual([JOB_NAMES.publishBooking])
+      }
+      expect(await renameAreaOf(handScope(), booths, 'VIP', owing)).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(inTx.at(-1)).toEqual({
+        name: JOB_NAMES.publishBooking,
+        data: booking,
+        said: { said: 'in the change' },
+      })
+      inTx.length = 0
+
+      // A queue that fails takes the change back with it: the job is saved with it or not at all.
+      failIn = true
+      await expect(hideArea(handScope(), owing, side, true)).rejects.toThrow('queue is down')
+      failIn = false
+      const stored = await owner.query<{ hidden: boolean }>(
+        'select hidden from restro.areas where id = $1',
+        [side],
+      )
+      expect(stored.rows[0]?.hidden).toBe(false)
+
+      // A refusal owes nothing.
+      expect(await renameAreaOf(handScope(), booths, '   ', owing)).toEqual({
+        ok: false,
+        error: 'invalid',
+      })
+      expect(inTx).toEqual([])
+
+      expect((await removeTable(handScope(), owing, seven)).ok).toBe(true)
+      expect(queuedSince()).toEqual([JOB_NAMES.publishBooking])
+      for (const areaId of [booths, side]) {
+        expect((await removeArea(handScope(), owing, areaId)).ok).toBe(true)
+        expect(queuedSince()).toEqual([JOB_NAMES.publishBooking])
+      }
+      expect((await handView()).halls).toEqual([])
+      sent.length = 0
+    })
+  })
+
   describe('the menu each area and table shows (D95, M2)', () => {
     let bar = ''
     let lounge = ''

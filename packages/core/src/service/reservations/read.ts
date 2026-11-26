@@ -16,6 +16,7 @@
 //   (`writable`), and every command checks it again through `nightWritable` (rule 1).
 
 import {
+  areas,
   type DbPool,
   guests,
   logEntries,
@@ -99,6 +100,8 @@ export interface ReservationRow {
   readonly reason: string | null
   /** The spots the party holds, by name, in the plan's own order. */
   readonly spots: readonly string[]
+  /** The Area an online request asked for, by name (#580): "Asked for: {area}"; null for none. */
+  readonly askedFor: string | null
   readonly seatedAt: Date | null
   readonly endedAt: Date | null
   /** Past its hour and nobody present yet (`LATE_AFTER_MINUTES`); nothing is freed by it. */
@@ -340,10 +343,17 @@ const nightColumns = {
   guestPhone: guests.phone,
   note: reservations.note,
   reason: reservations.reason,
+  askedFor: areas.name,
   seatedAt: reservations.seatedAt,
   endedAt: reservations.endedAt,
   updatedAt: reservations.updatedAt,
 } as const
+
+/** The Area an online request asked for (#580), joined by name for the list and the sheet. */
+const askedArea = and(
+  eq(areas.tenantId, reservations.tenantId),
+  eq(areas.id, reservations.requestedAreaId),
+)
 
 /** One night of a venue, with the nights around it that hold something. */
 export async function readReservationNight(
@@ -374,6 +384,7 @@ export async function readReservationNight(
       .select(nightColumns)
       .from(reservations)
       .leftJoin(guests, eq(guests.id, reservations.guestId))
+      .leftJoin(areas, askedArea)
       .where(nightOf)
       // Arrival order, not the order the bookings were taken in (D135, the lead's call).
       .orderBy(asc(reservations.startsAt), asc(reservations.id))
@@ -401,6 +412,7 @@ export async function readReservationNight(
         note: row.note,
         reason: row.reason,
         spots: spotsHeld.get(row.id) ?? [],
+        askedFor: row.askedFor,
         seatedAt: row.seatedAt,
         endedAt: row.endedAt,
         cancelledByVenue: status === 'cancelled' && row.reason === UNDONE_ARRIVAL_REASON,
@@ -419,6 +431,7 @@ export async function readReservationNight(
             .select(nightColumns)
             .from(reservations)
             .leftJoin(guests, eq(guests.id, reservations.guestId))
+            .leftJoin(areas, askedArea)
             .where(
               and(
                 eq(reservations.venueId, reader.venue.id),
@@ -566,9 +579,11 @@ export async function readReservationDetail(
         endedAt: reservations.endedAt,
         updatedAt: reservations.updatedAt,
         payRule: reservations.payRule,
+        askedFor: areas.name,
       })
       .from(reservations)
       .leftJoin(guests, eq(guests.id, reservations.guestId))
+      .leftJoin(areas, askedArea)
       .where(
         and(
           eq(reservations.id, input.reservationId),
@@ -602,6 +617,7 @@ export async function readReservationDetail(
       note: row.note,
       reason: row.reason,
       spots: held.get(row.id) ?? [],
+      askedFor: row.askedFor,
       seatedAt: row.seatedAt,
       endedAt: row.endedAt,
       cancelledByVenue: status === 'cancelled' && row.reason === UNDONE_ARRIVAL_REASON,

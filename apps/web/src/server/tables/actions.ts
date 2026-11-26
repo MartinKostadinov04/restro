@@ -15,7 +15,7 @@ import { z } from 'zod'
 import { getPool } from '../db'
 import { defaultQrBaseUrl, serverEnv } from '../env'
 import { signInTooOld } from '../fresh-sign-in'
-import { enqueueJob } from '../jobs'
+import { enqueueJob, enqueueJobIn } from '../jobs'
 import { logError } from '../log'
 import { revealConfig, revealFor } from '../reveal'
 import { canManageIntegration } from '../roles'
@@ -90,6 +90,7 @@ const FRESH = { fresh: true } as const
 // Read when an action runs (the settings are read lazily, so `next build` needs none of them).
 const services = (): TablesServices => ({
   enqueue: (name, data) => enqueueJob(name, data),
+  enqueueIn: (queue, name, data) => enqueueJobIn(queue, name, data),
   sealPublicKey: serverEnv().SEAL_PUBLIC_KEY,
 })
 
@@ -229,7 +230,7 @@ export async function renameAreaAction(input: unknown): Promise<TablesActionResu
   const parsed = RenameArea.safeParse(input)
   if (!parsed.success) return INVALID
   return perform({ venue: parsed.data.venueId }, (scope) =>
-    renameAreaOf(scope, parsed.data.areaId, parsed.data.name),
+    renameAreaOf(scope, parsed.data.areaId, parsed.data.name, services()),
   )
 }
 
@@ -247,7 +248,7 @@ export async function moveAreaAction(input: unknown): Promise<TablesActionResult
   const parsed = MoveArea.safeParse(input)
   if (!parsed.success) return INVALID
   return perform({ venue: parsed.data.venueId }, (scope) =>
-    moveAreaOf(scope, parsed.data.areaId, parsed.data.position),
+    moveAreaOf(scope, parsed.data.areaId, parsed.data.position, services()),
   )
 }
 

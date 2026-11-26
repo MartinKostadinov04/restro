@@ -4,6 +4,7 @@
 // to guests, and the page's address. It saves at once with Undo (the previous value sent again),
 // like the rules above it. A role without `settings.reservations` sees the value as text; the
 // switch waits for the hold time like the other rules (the command needs the settings row).
+// Under it, what guests may do and whether bookings confirm themselves (#580, `OnlineGuestsRows`).
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 
@@ -11,6 +12,7 @@ import { Switch } from '@/components/ui/switch'
 import { saveOnlineBookingAction } from '@/server/settings/reservations-actions'
 import type { ReservationsView } from '@/server/settings/reservations-view'
 
+import { OnlineGuestsRows } from './reservations-online-guests'
 import { SettingRow, SettingValue } from './settings-row'
 import type { useSettingsRun } from './use-settings-run'
 
@@ -59,6 +61,7 @@ export function OnlineBookingCard({
             </SettingValue>
           )}
         </SettingRow>
+        <OnlineGuestsRows view={view} runner={runner} enabled={enabled} />
         {view.bookingPath === null ? null : (
           <div className="grid grid-cols-1 gap-0.5 p-3">
             <span className="text-sm text-muted-foreground">{t('rs_booking_address')}</span>

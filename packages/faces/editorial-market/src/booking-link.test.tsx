@@ -21,6 +21,9 @@ const BOOKING: BookingView = {
   venueName: 'Club Night',
   on: true,
   nights: [{ date: '2026-11-28', label: 'Sat, 28 Nov', open: true }],
+  guestMay: 'night',
+  areas: [],
+  plans: [],
 }
 
 const CONFIRMED: GuestLinkBooking = {

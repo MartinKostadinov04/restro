@@ -43,6 +43,7 @@ import {
   lockGuestByPhone,
   lockNight,
   lockReservation,
+  lockSpotWrites,
   nextQueueKey,
   type OpenNight,
   openNight,
@@ -126,8 +127,14 @@ export async function claimSpots(
   if (!stretch.ok) return { ok: false, code: stretch.code, details: {} }
   if (wish.spotIds.length === 0) return { ok: true, stretch: stretch.stretch }
   const block = options.block === true
+  // A dated block's later nights are locked first, in date order; then the spots themselves, so a
+  // claim on another night (an open-ended block's, or a guest's) is lined up behind this one
+  // before either reads who holds them (`lockSpotWrites`).
+  const datedNights = block ? blockDatedNights(stx, wish) : []
+  for (const day of datedNights) await lockNight(stx, day)
+  await lockSpotWrites(stx.tx, stx.venueId, wish.spotIds)
   const held = block
-    ? await heldSpotsAcrossBlock(stx, wish, venueTurnMinutes)
+    ? await heldSpotsAcrossBlock(stx, wish, datedNights, venueTurnMinutes)
     : await heldSpotsOfNight(stx, wish.serviceDate, venueTurnMinutes)
   const clash =
     options.seatingAt === undefined
@@ -149,35 +156,45 @@ export async function claimSpots(
 }
 
 /**
+ * The nights after its first that a block with an end covers, up to the one its end falls in; none
+ * for a block with no end. `claimSpots` locks them (`lockNight`, the C1 lock) in date order before
+ * the spots, so a booking on a middle night cannot slip in beside it. A block dated weeks ahead
+ * takes that many night locks, for this one transaction.
+ */
+function blockDatedNights(stx: ServiceTx, wish: SpotWish): string[] {
+  if (wish.endsAt === null) return []
+  // The night its last moment belongs to: a block ending at 04:00 ends on that service day.
+  const last = serviceDateOf(
+    new Date(wish.endsAt.getTime() - 1),
+    stx.venue.timezone,
+    stx.venue.serviceDayEndsAt.slice(0, 5),
+  )
+  const nights: string[] = []
+  for (let day = addDaysToDay(wish.serviceDate, 1); day <= last; day = addDaysToDay(day, 1)) {
+    nights.push(day)
+  }
+  return nights
+}
+
+/**
  * What holds the spots on every night a block covers: its first night's holds (that night is
- * already locked by the command, `openNight`), then each later night's.
+ * already locked by the command, `openNight`), then each later night's. Read once the spots are
+ * locked (`lockSpotWrites`).
  *
- * - **With dates**, every later night up to the one its end falls in is locked as well, in date
- *   order (`lockNight`, the C1 lock), so a booking on a middle night cannot slip in beside it. A
- *   block dated weeks ahead takes that many night locks, for this one transaction.
- * - **With no end**, every later night on which one of these spots is held is read, without a lock
- *   on those nights: the lock stays on the block's first night (review of #479). A booking taken on
- *   a later night at the very moment the block is saved can still pass it.
+ * - **With dates**, the later nights are the ones `blockDatedNights` named, already locked.
+ * - **With no end**, every later night on which one of these spots is held is read. Those nights
+ *   are not locked, the spots are: a claim on a later night takes the same spot locks, so it was
+ *   either committed before this read or waits until this block is (review of #479; #580).
  */
 async function heldSpotsAcrossBlock(
   stx: ServiceTx,
   wish: SpotWish,
+  datedNights: readonly string[],
   venueTurnMinutes: number,
 ): Promise<SpotHold[]> {
   const held = await heldSpotsOfNight(stx, wish.serviceDate, venueTurnMinutes)
-  const nights: string[] = []
-  if (wish.endsAt !== null) {
-    // The night its last moment belongs to: a block ending at 04:00 ends on that service day.
-    const last = serviceDateOf(
-      new Date(wish.endsAt.getTime() - 1),
-      stx.venue.timezone,
-      stx.venue.serviceDayEndsAt.slice(0, 5),
-    )
-    for (let day = addDaysToDay(wish.serviceDate, 1); day <= last; day = addDaysToDay(day, 1)) {
-      nights.push(day)
-    }
-    for (const day of nights) await lockNight(stx, day)
-  } else {
+  const nights: string[] = [...datedNights]
+  if (wish.endsAt === null) {
     const later = await stx.tx
       .selectDistinct({ serviceDate: reservations.serviceDate })
       .from(reservationSpots)

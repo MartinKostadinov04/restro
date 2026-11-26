@@ -156,17 +156,20 @@ function useBookingBinding(loaded: LoadedBooking | null): BookingBinding | undef
           const parsed = BookingReplySchema.safeParse(await response.json())
           if (!parsed.success) throw new Error('unreadable answer')
           if (parsed.data.ok) {
-            setStage('sent')
+            // A booking that confirmed itself (#580) has its own answer screen.
+            setStage(parsed.data.confirmed === true ? 'confirmed' : 'sent')
             return
           }
           setRefusal(parsed.data.refusal)
+          // Somebody took the spot meanwhile: read the night again, so the plan shows it taken.
+          if (parsed.data.refusal === 'spot_taken') checkNight(form.night)
         } catch {
           setRefusal('unavailable')
         }
         setStage('form')
       })()
     },
-    [organizationId, venueId],
+    [organizationId, venueId, checkNight],
   )
 
   if (loaded === null) return undefined
@@ -389,7 +392,15 @@ export function BookingPage({
     if (loaded === null || view === null) return null
     if (loaded.file === null) {
       // No file yet (never written since the page existed): the page takes no requests.
-      return { locale: view.locale, venueName: view.menu.title?.text ?? '', on: false, nights: [] }
+      return {
+        locale: view.locale,
+        venueName: view.menu.title?.text ?? '',
+        on: false,
+        nights: [],
+        guestMay: 'night' as const,
+        areas: [],
+        plans: [],
+      }
     }
     return bookingViewOf(loaded.file, view.locale, now)
   }, [loaded, view, now])

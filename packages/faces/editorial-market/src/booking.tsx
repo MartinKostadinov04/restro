@@ -7,12 +7,18 @@
 // A closed night stays in the list, marked, and is refused in words that name another way; nights
 // outside the hours or in the past are not in the list at all. With the page off it says the club
 // takes no online bookings, and links nowhere.
+//
+// Where the venue offers it (#580), the guest also chooses one of its Areas, or picks his own spots
+// on the plan (`booking-plan.tsx`), free or taken for the chosen night. A spot somebody took
+// meanwhile is refused at the write; the host reads the night again, and the plan shows it taken.
+// A booking that confirmed itself (his own spot, the venue's switch on) gets its own answer screen.
 
 import {
   BOOKING_LIMITS,
   type BookingForm,
   BookingFormSchema,
   type BookingHostProps,
+  type BookingSpotState,
   bookingNightText,
   stringsFor,
 } from '@restro/shell'
@@ -29,6 +35,7 @@ import {
 import { BOOKING_CSS } from './booking-css'
 import { GuestLinkBody } from './booking-link'
 import { BOOKING_LINK_CSS } from './booking-link-css'
+import { BookingPlanPicker } from './booking-plan'
 import { EDITORIAL_CSS } from './css'
 import { bcp47, designAttributes, designVariables, themeVariables } from './model'
 
@@ -50,6 +57,8 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [note, setNote] = useState('')
+  const [areaId, setAreaId] = useState('')
+  const [picked, setPicked] = useState<readonly string[]>([])
   // The form did not pass the shell's own check (the browser's already passed): said, not sent.
   const [invalid, setInvalid] = useState(false)
   const answer = useRef<HTMLHeadingElement>(null)
@@ -64,7 +73,7 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
 
   // The form gives way to the answer: the focus moves to its heading, so it is read and not lost.
   useEffect(() => {
-    if (stage === 'sent') answer.current?.focus()
+    if (stage === 'sent' || stage === 'confirmed') answer.current?.focus()
   }, [stage])
 
   const chosen = booking.nights.find((entry) => entry.date === night) ?? null
@@ -82,9 +91,22 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
         : words.refusals[binding.refusal])
   const sending = binding?.stage === 'sending'
   const canSend = binding !== undefined && !sending && nightRefusal === null && chosen !== null
+  // What the guest may choose beyond the night (#580): an Area, or his own spots.
+  const offersAreas = booking.guestMay === 'area' && booking.areas.length > 0
+  const offersSpots = booking.guestMay === 'spot' && booking.plans.length > 0
+  const spotStates: Readonly<Record<string, BookingSpotState>> | undefined =
+    binding?.night?.night === night ? binding.night.spots : undefined
+  // A spot the night's answer now says is taken is no longer picked.
+  const pickedNow = picked.filter((spotId) => spotStates?.[spotId] !== 'taken')
+  const toggleSpot = (spotId: string) =>
+    setPicked((now) =>
+      now.includes(spotId) ? now.filter((one) => one !== spotId) : [...now, spotId],
+    )
 
   const chooseNight = (date: string) => {
     setNight(date)
+    // Spots are free or taken per night: a pick never carries over to another one.
+    setPicked([])
     binding?.checkNight(date)
   }
 
@@ -98,6 +120,8 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
       phone,
       email: email.trim(),
       note: note.trim() === '' ? null : note,
+      areaId: offersAreas && areaId !== '' ? areaId : null,
+      spotIds: offersSpots ? pickedNow : [],
     } satisfies Record<keyof BookingForm, unknown>)
     setInvalid(!parsed.success)
     if (parsed.success) binding.send(parsed.data)
@@ -112,6 +136,15 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
       <section className="bk-answer" aria-labelledby={`${id}-off`}>
         <h2 id={`${id}-off`}>{words.offTitle}</h2>
         <p>{words.offText}</p>
+      </section>
+    )
+  } else if (binding?.stage === 'confirmed') {
+    body = (
+      <section className="bk-answer" role="status" aria-labelledby={`${id}-confirmed`}>
+        <h2 id={`${id}-confirmed`} ref={answer} tabIndex={-1}>
+          {words.confirmedTitle}
+        </h2>
+        <p>{words.confirmedText}</p>
       </section>
     )
   } else if (binding?.stage === 'sent') {
@@ -152,6 +185,38 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
               ))}
             </select>
           </div>
+          {offersAreas ? (
+            <div className="bk-field">
+              <label className="bk-label" htmlFor={`${id}-area`}>
+                {words.area}
+              </label>
+              <select
+                id={`${id}-area`}
+                className="bk-input"
+                value={areaId}
+                onChange={(event) => setAreaId(event.target.value)}
+                required
+              >
+                <option value="">{words.areaPick}</option>
+                {booking.areas.map((area) => (
+                  <option key={area.id} value={area.id}>
+                    {area.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {offersSpots && nightRefusal === null ? (
+            <BookingPlanPicker
+              id={`${id}-plan`}
+              plans={booking.plans}
+              states={spotStates}
+              picked={pickedNow}
+              onToggle={toggleSpot}
+              words={words}
+              enabled={binding !== undefined && !sending}
+            />
+          ) : null}
           <div className="bk-field">
             <label className="bk-label" htmlFor={`${id}-size`}>
               {words.partySize}

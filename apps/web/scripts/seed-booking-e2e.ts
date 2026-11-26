@@ -1,11 +1,18 @@
-// Fixtures for the booking page's end-to-end test (#577). Run by the test itself
-// (`seed <sim host> <on|off>`):
+// Fixtures for the booking page's end-to-end tests (#577, #580). Run by the tests themselves
+// (`seed <sim host> <on|off> [night|area|spot]`):
 //
 //   seed   an organisation "Booking Club" of its own with Demo Bar (scripts/lib/seed-demo-bar-table.ts:
 //          the menu published in the Editorial Style, which draws the booking page), open every
 //          night 22:00–05:00, its reservation rules with online booking on or off, and one closed
 //          date three nights from today; then the venue's booking file, written as the worker's
 //          `publish-booking` job writes it.
+//          With `area` or `spot` (#580) it also draws the plan "Ground floor": "Table 1" on Demo
+//          Bar's Table 1 (in the Area "Main hall"), and the bar stools "Bar 1" and "Bar 2" and the
+//          long thin "Bar counter" with no Table (scripts/e2e/booking-plan.ts). Guests then choose an Area, or pick their own spot with bookings that confirm
+//          themselves. Every run starts with every spot free: the spots earlier runs held are let go.
+//
+//   booked <night>      prints the venue's online bookings on that night, Requested or Reserved, with
+//                       the Area each asked for and the spots it holds (`seed_booking_e2e_booked`).
 //
 //   requested <night>   prints how many Requested reservations the venue has on that night, with
 //                       their party sizes and spots (`seed_booking_e2e_requested`): what the request
@@ -34,6 +41,7 @@ import { writeBookingFile } from '../../worker/src/publish/booking'
 import { createAuth } from '../src/server/auth'
 import { getAuthDb, getPool } from '../src/server/db'
 import { authModelId } from '../src/server/ids'
+import { drawBookingPlan } from './e2e/booking-plan'
 import { seedBookingSettings } from './e2e/booking-settings'
 import { DEMO_BAR_VENUE } from './lib/demo-bar'
 import { readAdminCredentials } from './lib/guard'
@@ -43,7 +51,10 @@ const TENANT_ID = `tn_${'E2eBookingClub'.padEnd(22, '0')}` as TenantId
 const ORGANIZATION_SLUG = 'booking-club'
 const NIGHTLY = { opens: '22:00', lastOrders: '04:30', closes: '05:00' }
 
-async function seed(simHost: string, on: boolean): Promise<void> {
+/** What guests may choose on the page. */
+type GuestMay = 'night' | 'area' | 'spot'
+
+async function seed(simHost: string, on: boolean, guestMay: GuestMay): Promise<void> {
   await seedDemoBarTable({
     tenantId: TENANT_ID,
     organizationName: 'Booking Club',
@@ -73,10 +84,11 @@ async function seed(simHost: string, on: boolean): Promise<void> {
 
   const owner = new pg.Pool({ connectionString: process.env.DATABASE_URL_OWNER, max: 1 })
   try {
+    if (guestMay !== 'night') await drawBookingPlan(owner, TENANT_ID, venue.id)
     await seedBookingSettings(
       owner,
       { tenantId: TENANT_ID, venueId: venue.id },
-      { bookingPage: on, closedDates: [closed] },
+      { bookingPage: on, closedDates: [closed], guestMay, autoConfirm: guestMay === 'spot' },
     )
   } finally {
     await owner.end()
@@ -105,6 +117,30 @@ async function requested(night: string): Promise<void> {
       [TENANT_ID, DEMO_BAR_VENUE.slug, night],
     )
     console.log(JSON.stringify({ level: 'info', event: 'seed_booking_e2e_requested', rows }))
+  } finally {
+    await owner.end()
+  }
+}
+
+/** The online bookings of a night, Requested or Reserved, with the Area asked for and the spots (#580). */
+async function asked(night: string): Promise<void> {
+  const owner = new pg.Pool({ connectionString: process.env.DATABASE_URL_OWNER, max: 1 })
+  try {
+    const { rows } = await owner.query<{ status: string; area: string | null; spots: string[] }>(
+      `select r.status,
+              a.name as area,
+              coalesce((select array_agg(s.name order by s.name)
+                          from restro.reservation_spots rs
+                          join restro.spots s on s.tenant_id = rs.tenant_id and s.id = rs.spot_id
+                         where rs.reservation_id = r.id), '{}') as spots
+         from restro.reservations r
+         join restro.venues v on v.id = r.venue_id
+         left join restro.areas a on a.tenant_id = r.tenant_id and a.id = r.requested_area_id
+        where r.tenant_id = $1 and v.slug = $2 and r.service_date = $3
+          and r.status in ('requested', 'reserved')`,
+      [TENANT_ID, DEMO_BAR_VENUE.slug, night],
+    )
+    console.log(JSON.stringify({ level: 'info', event: 'seed_booking_e2e_asked', rows }))
   } finally {
     await owner.end()
   }
@@ -202,21 +238,32 @@ async function makeOwner(email: string): Promise<void> {
   console.log(JSON.stringify({ level: 'info', event: 'seed_booking_e2e_owner' }))
 }
 
-const [step, first, second] = process.argv.slice(2)
+const [step, first, second, third] = process.argv.slice(2)
+const guestMay: GuestMay | null =
+  third === undefined
+    ? 'night'
+    : third === 'night' || third === 'area' || third === 'spot'
+      ? third
+      : null
 const run =
-  step === 'seed' && first !== undefined && (second === 'on' || second === 'off')
-    ? seed(first, second === 'on')
+  step === 'seed' &&
+  first !== undefined &&
+  (second === 'on' || second === 'off') &&
+  guestMay !== null
+    ? seed(first, second === 'on', guestMay)
     : step === 'requested' && first !== undefined
       ? requested(first)
-      : step === 'booked' && first !== undefined && second !== undefined
-        ? booked(first, second)
-        : step === 'owner' && first !== undefined
-          ? makeOwner(first)
-          : Promise.reject(
-              new Error(
-                'seed <sim host> <on|off> | requested <night> | booked <night> <name> | owner <email>',
-              ),
-            )
+      : step === 'asked' && first !== undefined
+        ? asked(first)
+        : step === 'booked' && first !== undefined && second !== undefined
+          ? booked(first, second)
+          : step === 'owner' && first !== undefined
+            ? makeOwner(first)
+            : Promise.reject(
+                new Error(
+                  'seed <sim host> <on|off> [night|area|spot] | requested <night> | asked <night> | booked <night> <name> | owner <email>',
+                ),
+              )
 run
   .then(async () => {
     await getPool().end()

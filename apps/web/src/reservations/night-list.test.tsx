@@ -69,6 +69,7 @@ const row = (over: Partial<RvRowView> = {}): RvRowView => ({
   name: 'Ivanova',
   partySize: 4,
   spots: ['Table 7'],
+  askedFor: null,
   note: null,
   reason: null,
   late: false,
@@ -191,6 +192,11 @@ describe('the night as it opens', () => {
     const rows = screen.getAllByTestId('rv-row')
     expect(rows[0]?.textContent).toContain('4 guests · spot 9')
     expect(rows[1]?.textContent).toContain('spots 9, 10')
+  })
+
+  it('says which Area an online request asked for (#580)', () => {
+    draw(night({ rows: [row({ status: 'requested', spots: [], askedFor: 'Hall' })] }))
+    expect(screen.getByTestId('rv-row').textContent).toContain('4 guests · Asked for: Hall')
   })
 
   it('leaves a spot whose name carries words as the owner wrote it', () => {

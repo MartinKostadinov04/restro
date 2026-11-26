@@ -142,6 +142,8 @@ export interface RvRowView {
   readonly partySize: number | null
   /** The spots held, by name, in the plan's order. */
   readonly spots: readonly string[]
+  /** The Area an online request asked for (#580), by name; null when it named none. */
+  readonly askedFor: string | null
   readonly note: string | null
   readonly reason: string | null
   /** Past its hour with nobody there yet (nothing is freed by itself). */
@@ -259,6 +261,7 @@ export function rvRowView(row: ReservationRow, timezone: string): RvRowView {
     name: row.name,
     partySize: row.partySize,
     spots: row.spots,
+    askedFor: row.askedFor,
     note: row.note,
     reason: row.reason,
     late: row.late,

@@ -22,7 +22,15 @@
 // its number (`guests_key_present`).
 //
 // Asking twice is answered once (`by_nature`): the same guest asking again for a night he already
-// has a request or a booking on gets that reservation back, and nothing new is written.
+// has a request or a booking on gets that reservation back, and nothing new is written. Asking
+// again with another choice (another Area, other spots, or one where the first had none) is
+// refused `already_requested`: the page says he already asked and the club will write to him, so
+// the new pick is never dropped without a word (#580 review).
+//
+// **An Area or a spot** (#580): where the venue offers it, the guest also names the Area he asks
+// for (stored, and the hostess places the party) or picks his own spots (claimed by the booking
+// rule, refused `spot_taken` when somebody holds one). With a spot picked and the venue's
+// automatic confirmation on, the booking confirms itself in the same command (`online-choice.ts`).
 
 import { guests, reservationSettings, reservations } from '@restro/db'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
@@ -37,10 +45,12 @@ import { newId } from '../../ids'
 import { readOrderingSettings, WEEKDAYS, type Weekday } from '../../ordering-settings'
 import { guestLinkToken, guestLinkTokenHash } from '../booking-link'
 import type { ServiceTx } from '../definition'
-import { accepted, type ServiceResult } from '../results'
+import { accepted, refused, type ServiceResult } from '../results'
+import { claimSpots, writeHeldSpots } from './book'
 import { closedDatesOf } from './closed-dates'
 import { guestEmailOwed } from './guest-email'
 import { venuePhoneKey } from './guests'
+import { confirmOwnPick, confirmsItself, guestPickOf } from './online-choice'
 import { readOnlineSettings } from './online-settings'
 import {
   lockGuestByPhone,
@@ -49,6 +59,7 @@ import {
   type ReservationSettings,
   readSettings,
   refuse,
+  spotsOfReservation,
 } from './rows'
 
 /** The venue's booking calendar: its clock, its weekly hours and its closed dates. */
@@ -119,7 +130,7 @@ export async function setOnlineBooking(
   return accepted(null, { details })
 }
 
-/** What a guest's request names: never a status, a spot, a time or an id (the command decides). */
+/** What a guest's request names: never a status or a time (the command decides). */
 export interface ReservationRequestCommand {
   readonly serviceDate: string
   readonly partySize: number
@@ -127,6 +138,10 @@ export interface ReservationRequestCommand {
   readonly phone: string
   readonly email: string
   readonly note?: string | null
+  /** The Area the guest asks for, when the venue offers Areas (#580). */
+  readonly areaId?: string | null
+  /** The spots the guest picked himself, when the venue offers spots (#580). */
+  readonly spotIds?: readonly string[]
 }
 
 /** The statuses that mean the guest already has this night: asking again changes nothing. */
@@ -151,13 +166,21 @@ export async function requestReservation(
   if (hours === null) return refuse('outside_hours')
   const night = await openNight(stx, command.serviceDate)
   if (!night.ok) return refuse(night.code)
+  // What the guest picked beyond the night (#580): checked against what the venue offers today.
+  const online = readOnlineSettings(settings.online)
+  const pick = await guestPickOf(stx, online, command)
+  if (!pick.ok) return refuse(pick.code)
 
   const phoneKey = venuePhoneKey(stx, command.phone)
   if (phoneKey === null) return refuse('invalid_phone')
   const guestId = await guestOfRequest(stx, phoneKey, command)
 
   const [already] = await stx.tx
-    .select({ id: reservations.id })
+    .select({
+      id: reservations.id,
+      status: reservations.status,
+      requestedAreaId: reservations.requestedAreaId,
+    })
     .from(reservations)
     .where(
       and(
@@ -171,10 +194,33 @@ export async function requestReservation(
     )
     .limit(1)
   if (already !== undefined) {
-    return accepted(null, { details: { reservationId: already.id, repeated: true } })
+    const held = (await spotsOfReservation(stx, already.id)).map((row) => row.spotId)
+    const samePick =
+      already.requestedAreaId === pick.areaId &&
+      held.length === pick.spotIds.length &&
+      pick.spotIds.every((spotId) => held.includes(spotId))
+    if (!samePick) return refuse('already_requested')
+    return accepted(null, {
+      details: { reservationId: already.id, repeated: true, status: already.status },
+    })
   }
 
   const reservationId = newId('rv')
+  // The spots the guest picked are claimed by the booking rule staff go through, under the night's
+  // lock (`openNight`): of two guests racing for one spot, one is written and one is refused.
+  const grant = await claimSpots(
+    stx,
+    {
+      reservationId,
+      spotIds: pick.spotIds,
+      serviceDate: command.serviceDate,
+      startsAt: hours.opensAt,
+      endsAt: null,
+      turnMinutes: null,
+    },
+    night.settings.turnMinutes,
+  )
+  if (!grant.ok) return refused(null, grant.code, grant.details)
   await stx.tx.insert(reservations).values({
     id: reservationId,
     tenantId: stx.tenantId,
@@ -193,6 +239,7 @@ export async function requestReservation(
     reason: null,
     madeBy: null,
     seatedAt: null,
+    requestedAreaId: pick.areaId,
     // The guest's own link (#579): only its token's hash is kept, never the token.
     guestTokenHash:
       stx.guestLinkKey === null
@@ -200,6 +247,7 @@ export async function requestReservation(
         : guestLinkTokenHash(guestLinkToken(stx.guestLinkKey, reservationId)),
     ...stx.provenance,
   })
+  await writeHeldSpots(stx, reservationId, pick.spotIds, grant.stretch, false)
   stx.touchNight(command.serviceDate)
   await stx.log({
     kind: 'reservation.created',
@@ -210,14 +258,28 @@ export async function requestReservation(
     details: {
       reservationKind: 'booking',
       partySize: command.partySize,
-      spots: '',
+      spots: pick.spotIds.join(','),
       startsAt: hours.opensAt.toISOString(),
       opened: '',
     },
   })
+  // With the switch on and his own spot picked, the booking confirms itself (D136, #580): it owes
+  // the confirmed email in place of "We got your request" (#579). Either email carries the guest's
+  // link (the worker makes it from the hash stored above).
+  if (confirmsItself(online, pick.spotIds)) {
+    await confirmOwnPick(stx, {
+      reservationId,
+      serviceDate: command.serviceDate,
+      guestId,
+      spotIds: pick.spotIds,
+    })
+    return accepted(null, { details: { reservationId, repeated: false, status: 'reserved' } })
+  }
   // "We got your request" (#579), with the guest's link, to the address on his record.
   const email = await guestEmailOwed(stx, { kind: 'booking', guestId }, 'reservation_requested')
-  return accepted(null, { details: { reservationId, repeated: false, ...email } })
+  return accepted(null, {
+    details: { reservationId, repeated: false, status: 'requested', ...email },
+  })
 }
 
 /**

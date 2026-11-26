@@ -33,9 +33,10 @@ import {
   tableOrders,
   venueTables,
 } from '@restro/db'
-import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { and, eq, isNull, ne, type SQLChunk, sql } from 'drizzle-orm'
+import { withTenantWrite } from '@restro/db/write'
+import { and, eq, isNull, ne, sql } from 'drizzle-orm'
 
+import { type QueueExecutor, queueExecutorOf } from '../apply/queue-executor'
 import { lockLiveVenue } from '../apply/venue-lock'
 import { recordEvents as recordGuestEvents } from '../events'
 import { type GuestEmailJob, GuestEmailJobSchema } from '../jobs'
@@ -134,30 +135,9 @@ export interface OwedJobs {
   readonly guestEmails: readonly GuestEmailJob[]
 }
 
-/** Runs one parameterised statement (`$1`, `$2`…) on the command's transaction: pg-boss's `db`. */
-export interface QueueExecutor {
-  executeSql(text: string, values?: unknown[]): Promise<{ rows: unknown[] }>
-}
-
-/**
- * The transaction as a `QueueExecutor`. Each `$n` becomes a bound parameter, the way pg-boss's own
- * adapters read its statements; no value is ever written into the SQL text.
- */
-function queueExecutorOf(tx: WriteTx): QueueExecutor {
-  return {
-    async executeSql(text, values = []) {
-      const chunks: SQLChunk[] = []
-      let last = 0
-      for (const match of text.matchAll(/\$(\d+)/g)) {
-        chunks.push(sql.raw(text.slice(last, match.index)), sql.param(values[Number(match[1]) - 1]))
-        last = match.index + match[0].length
-      }
-      chunks.push(sql.raw(text.slice(last)))
-      const { rows } = await tx.execute(sql.join(chunks))
-      return { rows }
-    },
-  }
-}
+// The transaction as a job queue's `db` is core/apply's (`queue-executor.ts`): the Tables & QR
+// writes queue the booking file through it too.
+export type { QueueExecutor }
 
 /** What the command carries that the engine reads: its type, table and action id, when it has them. */
 interface Envelope {

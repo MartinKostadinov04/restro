@@ -62,6 +62,7 @@ const detail = (history: readonly RvHistoryView[]): RvDetailView => ({
     name: 'Ivanova',
     partySize: 4,
     spots: ['Маса 7'],
+    askedFor: null,
     note: null,
     reason: null,
     late: false,

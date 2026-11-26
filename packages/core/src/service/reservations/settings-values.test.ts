@@ -108,6 +108,8 @@ describe("ticket #325's commands", () => {
     'spot.set_seats',
     // #577: the booking page's switch.
     'reservation_online.set',
+    // #580: what guests may choose, and bookings that confirm themselves.
+    'reservation_online_guests.set',
   ] as const
 
   it('need the reservation settings and the password again, from a person only', () => {

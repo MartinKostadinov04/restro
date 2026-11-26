@@ -270,6 +270,7 @@ function Body({
         label={t('sh_spots')}
         value={row.spots.length === 0 ? t('sh_no_spots') : row.spots.join(', ')}
       />
+      <Line label={t('sh_asked')} value={row.askedFor} />
       <Line label={t('sh_until')} value={row.until} />
       <Line label={t('sh_arrived')} value={row.seatedAt} />
       <Line label={t('sh_left')} value={row.endedAt} />

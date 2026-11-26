@@ -62,12 +62,15 @@ import {
   editReservation,
   restoreReservation,
 } from './book'
+import { BOOKING_SPOTS_PICKED_MAX } from './booking-plan'
 import { changeTables } from './change-tables'
 import { addClosedDate, ClosedDateSchema, removeClosedDate } from './closed-dates'
 import { cancelReservationByGuest } from './guest-link'
 import { eraseGuest, saveGuest, setGuestPrivateNote } from './guests'
 import { sweepPassedNight } from './night'
 import { requestReservation, setOnlineBooking } from './online'
+import { setOnlineGuests } from './online-choice'
+import { GUEST_MAY_VALUES } from './online-settings'
 import { TurnMinutesSchema } from './overlap'
 import { SetPayRuleSchema, setReservationPayRule } from './pay-rule'
 import { PinActionsSchema } from './pin-fall'
@@ -302,6 +305,23 @@ export const RESERVATION_COMMANDS = {
     idempotency: 'by_nature',
     handle: setOnlineBooking,
   }),
+  // What guests may do on the booking page, and whether a booking confirms itself (#580; spec #322
+  // stories 26, 27). Settings-class like the switch above, and locked the same way.
+  'reservation_online_guests.set': defineCommand({
+    schema: z
+      .strictObject({
+        type: z.literal('reservation_online_guests.set'),
+        guestMay: z.enum(GUEST_MAY_VALUES).optional(),
+        autoConfirm: z.boolean().optional(),
+      })
+      .refine((value) => value.guestMay !== undefined || value.autoConfirm !== undefined),
+    origins: ['staff'],
+    permission: 'settings.reservations',
+    freshSignIn: true,
+    venueLock: 'update',
+    idempotency: 'by_nature',
+    handle: setOnlineGuests,
+  }),
   // --- The guest records (D140) ----------------------------------------------------------------
   'guest.save': defineCommand({
     schema: z.strictObject({
@@ -443,8 +463,9 @@ export const RESERVATION_COMMANDS = {
     handle: declineReservation,
   }),
   // A guest's request from the booking page (#577; D136): the one reservation command a guest
-  // sends. It names the night, the party and how to reach him, never a status, a spot, a time or
-  // an id: it arrives as Requested and a hostess answers it. No permission (a guest holds none);
+  // sends. It names the night, the party and how to reach him, and where the venue offers them an
+  // Area or his own spots (#580); never a status or a time: it arrives as Requested and a hostess
+  // answers it, unless his own spot confirms it (`online-choice.ts`). No permission (a guest holds none);
   // what guards it is Turnstile, checked by its caller before it reaches here (`requestBooking`),
   // and the venue's own switch, checked inside.
   'reservation.request': defineCommand({
@@ -458,6 +479,10 @@ export const RESERVATION_COMMANDS = {
       phone: z.string().trim().min(6).max(40),
       email: z.email().max(200),
       note: z.string().trim().max(500).nullable().optional(),
+      /** The Area asked for, where the venue offers Areas (#580). */
+      areaId: idSchema('ar').nullable().optional(),
+      /** The spots the guest picked himself, where the venue offers spots (#580). */
+      spotIds: z.array(spotId).max(BOOKING_SPOTS_PICKED_MAX).optional(),
     }),
     origins: ['guest'],
     permission: null,

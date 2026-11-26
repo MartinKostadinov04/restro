@@ -1,13 +1,15 @@
 // What Settings › Reservations draws (ticket #325): the venue's reservation rules and its spots with
 // their seats, read as plain data. Read-only, on `withTenant`; every write is a command through
-// `applyService`. Of part 2's values (`online`) only the booking page switch is here (#577), the
-// one a screen shows; the rest stay unread (spec #321, Implementation Decisions 9).
+// `applyService`. Of part 2's values (`online`) the booking page switch (#577), what guests may do
+// and whether a booking confirms itself (#580) are here, the ones a screen shows; the rest stay
+// unread (spec #321, Implementation Decisions 9).
 
 import { type DbPool, reservationSettings, spots, venueSpotKinds, withTenant } from '@restro/db'
 import { and, eq, isNull } from 'drizzle-orm'
-
+import { bookingPlanOf } from './booking-plan'
 import { closedDatesOf } from './closed-dates'
 import { bookingPageOn } from './online'
+import { type GuestMay, readOnlineSettings } from './online-settings'
 
 /** One spot as the settings list shows it. */
 export interface SettingsSpot {
@@ -32,6 +34,15 @@ export interface ReservationSettingsView {
   readonly privateNotesOn: boolean
   /** The booking page takes requests (#577): the online booking switch. */
   readonly bookingPage: boolean
+  /** What guests may do on the booking page (#580): a night, an Area, or their own spot. */
+  readonly guestMay: GuestMay
+  /** Whether a booking where the guest picked his own spot confirms itself (#580, D136). */
+  readonly autoConfirm: boolean
+  /**
+   * What the venue could offer (#580): whether a plan with spots is drawn, and whether a visible
+   * Area holds one of them. The screen keeps a choice off, with its reason, until it can be offered.
+   */
+  readonly bookingOffer: { readonly spots: boolean; readonly areas: boolean }
   /** One-off closed service days, newest first. */
   readonly closedDates: readonly string[]
   /** The venue's spots still on a plan, by name. */
@@ -46,6 +57,8 @@ const NOT_SAVED = {
   editPastNights: false,
   privateNotesOn: true,
   bookingPage: false,
+  guestMay: 'night',
+  autoConfirm: false,
   closedDates: [],
 } as const
 
@@ -93,7 +106,13 @@ export async function readReservationSettings(
         }),
       )
       .sort((a, b) => BY_NAME.compare(a.name, b.name) || a.id.localeCompare(b.id))
-    if (row === undefined) return { ...NOT_SAVED, spots: list }
+    const offer = await bookingPlanOf(tx, venueId)
+    const bookingOffer = {
+      spots: offer.plans.some((plan) => plan.spots.length > 0),
+      areas: offer.areas.length > 0,
+    }
+    if (row === undefined) return { ...NOT_SAVED, bookingOffer, spots: list }
+    const online = readOnlineSettings(row.online)
     return {
       saved: true,
       turnMinutes: row.turnMinutes,
@@ -101,6 +120,9 @@ export async function readReservationSettings(
       editPastNights: row.editPastNights,
       privateNotesOn: row.privateNotesOn,
       bookingPage: bookingPageOn(row),
+      guestMay: online.guestMay,
+      autoConfirm: online.autoConfirm,
+      bookingOffer,
       closedDates: closedDatesOf(row.closedDates).reverse(),
       spots: list,
     }
