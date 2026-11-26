@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { authClient } from '@/lib/auth-client'
 import { returnToOrganization } from '@/server/actions'
 import { renameVenueAction } from '@/server/venues-actions'
-import { renderWithIntl } from '@/test-utils'
+import { renderWithIntl, waitUntilClickable } from '@/test-utils'
 
 import { VenueName } from './venue-name'
 
@@ -148,7 +148,10 @@ describe('the venue name', () => {
     await user.type(input(), 'Demo Club Three')
     refuse({ ok: false, error: 'sign_in_again' })
     expect(await screen.findByText('Enter your password to change settings')).toBeTruthy()
-    await user.type(screen.getByLabelText('Password'), 'secret-pass')
+    // The dialog's text lands a render before Radix gives the layer its pointer events back.
+    const password = screen.getByLabelText('Password')
+    await waitUntilClickable(password)
+    await user.type(password, 'secret-pass')
     await user.click(screen.getByRole('button', { name: 'Confirm' }))
     await waitFor(() => expect(renameVenueAction).toHaveBeenCalledTimes(2))
     expect(vi.mocked(renameVenueAction).mock.calls.map(([raw]) => raw)).toEqual([
