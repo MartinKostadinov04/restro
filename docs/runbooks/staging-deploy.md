@@ -152,6 +152,7 @@ What goes where, so you can check the lead's work:
 | `STRIPE_NOTICE_SECRET` | the signing secret of a **test-mode** endpoint in Stripe, created in step 7 |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | the `pk_test_…` key |
 | `GUEST_LINK_KEY` | a fresh random value (the guest's own booking link, #579); the worker gets the same one |
+| `BOOKING_FRAME_ANCESTORS` | optional, blank by default: the sites besides staging itself that may show the booking page in a frame (#581, D178), up to three `https://` origins with no path, separated by commas (for example the test page a web designer frames it from). Read at start, so a change needs a restart, not a rebuild; a bad value stops the web app, naming the variable |
 
 **Worker service**
 

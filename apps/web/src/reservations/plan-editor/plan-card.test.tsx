@@ -97,7 +97,7 @@ function view(plan: Plan, canChange = true): ReservationsView {
       closedDates: [],
       spots: [],
     },
-    bookingPath: null,
+    bookingAddress: null,
     plan,
   }
 }

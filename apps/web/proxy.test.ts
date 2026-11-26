@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { config, proxy } from './proxy'
 
@@ -60,5 +60,45 @@ describe('proxy (the optimistic sign-in gate)', () => {
     ]) {
       expect(matcher.test(path), path).toBe(false)
     }
+  })
+})
+
+describe("proxy (the booking page's framing policy, #581, D178)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('runs on the booking page and its guest links, as a second matcher entry', () => {
+    expect(config.matcher).toEqual([config.matcher[0], '/book/:path+'])
+  })
+
+  it.each(['/book/night-group/club-night', `/book/night-group/club-night/${'Ab0_'.repeat(10)}Ab0`])(
+    'lets %s through with no sign-in, and names only its own origin by default',
+    (path) => {
+      vi.stubEnv('BOOKING_FRAME_ANCESTORS', '')
+      const response = proxy(request(path))
+      expect(response.headers.get('x-middleware-next')).toBe('1')
+      expect(response.headers.get('location')).toBeNull()
+      expect(response.headers.get('content-security-policy')).toBe("frame-ancestors 'self'")
+      expect(response.headers.get('x-frame-options')).toBeNull()
+    },
+  )
+
+  it('names the configured sites, read from the environment it runs in', () => {
+    vi.stubEnv('BOOKING_FRAME_ANCESTORS', 'https://club.example, http://localhost:3104')
+    const response = proxy(request('/book/night-group/club-night', 'restro.session_token=abc.def'))
+    expect(response.headers.get('content-security-policy')).toBe(
+      "frame-ancestors 'self' https://club.example http://localhost:3104",
+    )
+    vi.stubEnv('BOOKING_FRAME_ANCESTORS', 'https://other.example')
+    expect(
+      proxy(request('/book/night-group/club-night')).headers.get('content-security-policy'),
+    ).toBe("frame-ancestors 'self' https://other.example")
+  })
+
+  it('sends no framing header elsewhere: the admin keeps its config rule', () => {
+    vi.stubEnv('BOOKING_FRAME_ANCESTORS', 'https://club.example')
+    const response = proxy(request('/venues', 'restro.session_token=abc.def'))
+    expect(response.headers.get('content-security-policy')).toBeNull()
   })
 })

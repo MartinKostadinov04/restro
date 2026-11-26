@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { defaultQrBaseUrl, ServerEnvSchema, webPushPublicKey } from './env'
+import { bookingFrameAncestors, defaultQrBaseUrl, ServerEnvSchema, webPushPublicKey } from './env'
 
 // Built from two halves so that this file does not match its own search.
 const PRIVATE_KEY_VARIABLE = ['SEAL', 'PRIVATE', 'KEY'].join('_')
@@ -140,5 +140,59 @@ describe('the web app and the sealing private key', () => {
     expect(files.length).toBeGreaterThan(20)
     const naming = files.filter((file) => readFileSync(file, 'utf8').includes(PRIVATE_KEY_VARIABLE))
     expect(naming).toEqual([])
+  })
+})
+
+describe('the sites that may frame the booking page (#581, D178)', () => {
+  const read = (value: string | undefined) =>
+    bookingFrameAncestors({ BOOKING_FRAME_ANCESTORS: value })
+
+  it('is none when unset or empty', () => {
+    expect(bookingFrameAncestors({})).toEqual([])
+    expect(read('')).toEqual([])
+    expect(read(' , ')).toEqual([])
+  })
+
+  it('takes one to three https origins, separated by commas, as the browser writes them', () => {
+    expect(read('https://club.example')).toEqual(['https://club.example'])
+    expect(
+      read(' https://Club.Example/ , https://www.club.example:8443,https://a.b.example '),
+    ).toEqual(['https://club.example', 'https://www.club.example:8443', 'https://a.b.example'])
+    // The same site twice is named once.
+    expect(read('https://club.example,https://club.example/')).toEqual(['https://club.example'])
+  })
+
+  it('takes plain http only for this PC and the local network', () => {
+    expect(read('http://localhost:3104,http://127.0.0.1:3104,http://192.168.1.20:8080')).toEqual([
+      'http://localhost:3104',
+      'http://127.0.0.1:3104',
+      'http://192.168.1.20:8080',
+    ])
+  })
+
+  it.each([
+    ['a path', 'https://club.example/booking'],
+    ['a query', 'https://club.example?x=1'],
+    ['a #part', 'https://club.example#top'],
+    ['a public http address', 'http://club.example'],
+    ['a public http address beside a good one', 'https://ok.example,http://club.example'],
+    ['more than three', 'https://a.example,https://b.example,https://c.example,https://d.example'],
+    ['a wildcard', 'https://*.club.example'],
+    ['policy syntax', "https://club.example;script-src 'unsafe-inline'"],
+    ['a keyword', "'self'"],
+    ['a name and password', 'https://user:hunter2@club.example'],
+    ['no scheme', 'club.example'],
+    ['another scheme', 'ftp://club.example'],
+  ])('refuses %s, naming the variable and never the value', (_case, value) => {
+    let message = ''
+    try {
+      read(value)
+    } catch (error) {
+      message = (error as Error).message
+    }
+    expect(message).toContain('BOOKING_FRAME_ANCESTORS')
+    expect(message).not.toContain(value)
+    expect(message).not.toContain('club.example')
+    expect(message).not.toContain('hunter2')
   })
 })

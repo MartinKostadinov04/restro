@@ -12,7 +12,11 @@
 // form, so it says where scripts may come from, which frames it may open and where it may talk to.
 // It allows the card forms' hosts (each provider's `connectors/<kind>/card-form-hosts.json`) and what the page already
 // used (Cloudflare's Turnstile at Send and Pay, the CDN of the published files), and nothing more.
-// It sets only these three directives: images, fonts and styles are not restricted by it.
+// It sets only these three directives: images, fonts and styles are not restricted by it. It is
+// sent on the menu and the table address only: the booking page's policy is its framing rule
+// (src/frame-headers.ts, #581, D178), which the proxy sends from the environment at run time, and
+// one response carries one such policy (the later one replaces the earlier), so the card form's
+// directives never reached `/book` (the admin's framing rule replaced them until #581).
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -114,7 +118,13 @@ export function guestContentSecurityPolicy(
   ].join('; ')
 }
 
-/** The header rules of the guest's pages. */
+/** The guest's pages that carry the card form's policy: the menu and the table address. */
+const CARD_FORM_PAGE_SOURCES: readonly string[] = ['/m/:path*', '/t/:path*']
+
+/**
+ * The header rules of the guest's pages: no referrer on all three, the card form's policy on the
+ * menu and the table address.
+ */
 export function guestHeaders(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): HeaderRule[] {
@@ -122,7 +132,9 @@ export function guestHeaders(
     source,
     headers: [
       { key: 'Referrer-Policy', value: 'no-referrer' },
-      { key: 'Content-Security-Policy', value: guestContentSecurityPolicy(env) },
+      ...(CARD_FORM_PAGE_SOURCES.includes(source)
+        ? [{ key: 'Content-Security-Policy', value: guestContentSecurityPolicy(env) }]
+        : []),
     ],
   }))
 }

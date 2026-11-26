@@ -1,6 +1,6 @@
 // What Settings › Reservations draws (#325, #397): the venue's reservation rules, one-off closed dates
 // and its floor plan as the editor changes it (plans, spots with their numbers, spot kinds, the
-// Tables a spot may name) and the online booking switch with its page's address (#577), as plain
+// Tables a spot may name) and the online booking switch with its page's address (#577) and embed code (#581), as plain
 // data safe for the browser. Reads only; the writes are the server
 // actions in `reservations-actions.ts`, which the service write path checks again. Part 2's values
 // are not read here: no screen shows them (spec #321, decision 9).
@@ -15,16 +15,18 @@ import {
 import type { Venue } from '@restro/db'
 
 import { getPool } from '../db'
+import { defaultQrBaseUrl } from '../env'
 
 /** Everything the section draws. */
 export interface ReservationsView {
   readonly venueId: string
   readonly settings: ReservationSettingsView
   /**
-   * The venue's booking page (#577), `/book/<organisation>/<venue>`; null when the organisation has
-   * no address yet.
+   * The venue's booking page (#577): `<guest pages' origin>/book/<organisation>/<venue>`, the
+   * address a web designer links or frames (#581); the path alone when no origin is configured;
+   * null when the organisation has no address yet.
    */
-  readonly bookingPath: string | null
+  readonly bookingAddress: string | null
   /** The floor plan as the editor draws it (#397). */
   readonly plan: PlanEditorRead
   /** True when the person holds `settings.reservations`: otherwise the section is read-only. */
@@ -33,11 +35,29 @@ export interface ReservationsView {
   readonly email: string
 }
 
-/** The booking page's path, or null when the names cannot make one. */
-function bookingPathOf(organization: string | null, venue: string): string | null {
+/** The origin of an address, or '' when there is none or it is not one. */
+function originOf(base: string | null): string {
+  if (base === null) return ''
+  try {
+    const url = new URL(base)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.origin : ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * The booking page's address, or null when the names cannot make one. Its origin is the guest
+ * pages' (`PUBLIC_BASE_URL`, else `BETTER_AUTH_URL`: the guest link in an email uses the same).
+ */
+export function bookingAddressOf(
+  organization: string | null,
+  venue: string,
+  base: string | null,
+): string | null {
   if (organization === null) return null
   try {
-    return guestBookingPath({ organization, venue })
+    return `${originOf(base)}${guestBookingPath({ organization, venue })}`
   } catch {
     return null
   }
@@ -59,7 +79,11 @@ export async function loadReservationsView(input: {
   return {
     venueId: input.venue.id,
     settings,
-    bookingPath: bookingPathOf(organization?.slug ?? null, input.venue.slug),
+    bookingAddress: bookingAddressOf(
+      organization?.slug ?? null,
+      input.venue.slug,
+      defaultQrBaseUrl(),
+    ),
     plan,
     canChange: input.canChange,
     email: input.email,
