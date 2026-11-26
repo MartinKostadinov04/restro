@@ -100,7 +100,6 @@ import {
 } from './payment-todos'
 import type { Permission } from './permissions'
 import { type ReceiptToBring, receiptsToBring } from './receipt-rows'
-import { type GatheringShare, gatheringShares } from './share-rows'
 import {
   byCodeUnits,
   groupHasUnreadTable,
@@ -114,6 +113,7 @@ import { payRuleAtTable, payRulesAtTables } from './reservations/pay-rule'
 import { compareSpotNames } from './reservations/plan-state'
 import { type SeatedParty, seatedPartiesAtTables } from './reservations/seated-parties'
 import { sentOrderLinesOf } from './send'
+import { type GatheringShare, gatheringShares } from './share-rows'
 import { withoutTipMinor } from './staff-amount'
 import { readTableCapabilities } from './table-capabilities'
 import { orderedKinds } from './waiter-call'

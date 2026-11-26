@@ -20,11 +20,15 @@ export interface PayNightWorld {
 
 export async function seedPayNight(
   world: PayNightWorld,
-  scene: 'pay' | 'pay-stuck' | 'receipts' | 'refunds' = 'pay',
+  scene: 'pay' | 'pay-stuck' | 'receipts' | 'refunds' | 'group-paid' | 'sharing' = 'pay',
 ): Promise<void> {
   const { owner, tenantId, venueId, day, tables, sitting } = world
   if (scene === 'refunds') {
     await seedRefundsNight(world)
+    return
+  }
+  if (scene === 'group-paid' || scene === 'sharing') {
+    await seedGroupNight(world, scene)
     return
   }
   if (scene === 'receipts') {
@@ -271,6 +275,83 @@ async function seedRefundsNight(world: PayNightWorld): Promise<void> {
        values ($1, $2, $3, now() - make_interval(mins => $7), 'payment.state', $4, $5, $6,
                '{}'::jsonb, 'record', 'worker', 'system', 'e2e-seed')`,
       [tenantId, venueId, day, disputed.id, disputed.tableId, state, minutes],
+    )
+  }
+}
+
+/**
+ * A group payment over Tables 1 and 2 (#545), paid at Table 1, written the way the route leaves it.
+ * - `group-paid`: captured, a paper receipt to bring. Its lines are on both tables (€18 and €18,
+ *   the payment's €38 being the two and a €2 tip), so Tonight raises a card for each.
+ * - `sharing`: a share of €100 gathering its holds, €60 held on one card, the guests' ten minutes
+ *   running. Table 1's and Table 2's tiles and sheets read it; nothing of who paid is stored here
+ *   beyond the hold's own row.
+ */
+async function seedGroupNight(
+  world: PayNightWorld,
+  scene: 'group-paid' | 'sharing',
+): Promise<void> {
+  const { owner, tenantId, venueId, day, tables, sitting } = world
+  const sittingId = await sitting('1')
+  await sitting('2')
+  const id = newId('py')
+  const sharing = scene === 'sharing'
+  const now = new Date().toISOString()
+  await owner.query(
+    `insert into restro.payments
+       (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+        amount_minor, tip_minor, captured_minor, shared_minor, gathering_ends_at, currency,
+        provider_kind, receipt_number, settled_at, receipt_to_bring_at, source, actor, job_id)
+     values ($1, $2, $3, $4, $5, $6, 'on_bill', $7, $8, $9, $10, $11, $12, $13, 'EUR', 'sim-pay',
+             $14, $15, $16, 'worker', 'system', 'e2e-seed')`,
+    [
+      id,
+      tenantId,
+      venueId,
+      tables['1'],
+      sittingId,
+      day,
+      sharing ? 'awaiting_guest' : 'captured',
+      createHash('sha256').update(id).digest('hex'),
+      sharing ? null : 3800,
+      sharing ? 0 : 200,
+      sharing ? null : 3800,
+      sharing ? 10000 : null,
+      sharing ? new Date(Date.now() + 8.5 * 60_000).toISOString() : null,
+      sharing ? null : 'R-000321',
+      sharing ? null : now,
+      sharing ? null : now,
+    ],
+  )
+  for (const [position, number] of [
+    [1, '1'],
+    [2, '2'],
+  ] as const) {
+    await owner.query(
+      `insert into restro.payment_lines
+         (tenant_id, venue_id, payment_id, table_id, position, pos_line_ref, quantity,
+          pos_amount_minor, display_name, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, $6, 2, $7, 'Gin tonic', 'worker', 'system', 'e2e-seed')`,
+      [
+        tenantId,
+        venueId,
+        id,
+        tables[number],
+        position,
+        `e2e-line-${position}`,
+        sharing ? 5000 : 1800,
+      ],
+    )
+  }
+  if (sharing) {
+    const hold = newId('ph')
+    await owner.query(
+      `insert into restro.payment_holds
+         (id, tenant_id, venue_id, payment_id, state, handle_hash, amount_minor, tip_minor, currency,
+          provider_kind, source, actor, job_id)
+       values ($1, $2, $3, $4, 'held', $5, 6000, 0, 'EUR', 'sim-pay', 'worker', 'system',
+               'e2e-seed')`,
+      [hold, tenantId, venueId, id, createHash('sha256').update(hold).digest('hex')],
     )
   }
 }

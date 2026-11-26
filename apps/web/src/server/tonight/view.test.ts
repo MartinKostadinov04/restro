@@ -266,9 +266,9 @@ describe('Needs you, in the order of what costs most to leave', () => {
     expect(tiles.find((tile) => tile.share === undefined)).toBeDefined()
     // No card held yet: the time has not started.
     const none = view(tonight({ shares: [{ ...share, heldMinor: 0, endsAt: null }] }))
-    expect(none.groups.flatMap((g) => g.tables).find((tile) => tile.id === t1)?.share).toMatchObject(
-      { heldMinor: 0, minutesLeft: null },
-    )
+    expect(
+      none.groups.flatMap((g) => g.tables).find((tile) => tile.id === t1)?.share,
+    ).toMatchObject({ heldMinor: 0, minutesLeft: null })
     // The share names nobody: nothing of a hold's owner is on the tile.
     expect(JSON.stringify(of(t1)?.share)).not.toMatch(/handle|hold_|ph_/)
   })

@@ -409,7 +409,6 @@ export {
   receiptsToBring,
 } from './receipt-rows'
 export { readReceiptsNotBrought, readReceiptsToBring } from './receipts'
-export { type GatheringShare, gatheringShares } from './share-rows'
 export {
   type PendingRefund,
   pendingRefunds,
@@ -656,6 +655,7 @@ export {
   type SentOrderAnswer,
 } from './sent-order-answer'
 export { CLEARED_AT_DAY_CLOSE } from './service-day-close'
+export { type GatheringShare, gatheringShares } from './share-rows'
 export {
   type DevicePerson,
   devicePersonOf,

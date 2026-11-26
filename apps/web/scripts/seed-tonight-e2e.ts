@@ -312,6 +312,7 @@ const NIGHT_TABLES = [
   'service_days',
   'payment_refunds',
   'payment_steps',
+  'payment_holds',
   'payment_lines',
   'payments',
   'sent_orders',
@@ -332,6 +333,8 @@ const NIGHTS = [
   'pay-stuck',
   'receipts',
   'refunds',
+  'group-paid',
+  'sharing',
 ] as const
 
 async function night(name: string): Promise<void> {
@@ -841,7 +844,14 @@ async function night(name: string): Promise<void> {
         await sentOrder(number, id, 'awaiting_approval', `MN${number}0`)
       }
     }
-    if (name === 'pay' || name === 'pay-stuck' || name === 'receipts' || name === 'refunds') {
+    if (
+      name === 'pay' ||
+      name === 'pay-stuck' ||
+      name === 'receipts' ||
+      name === 'refunds' ||
+      name === 'group-paid' ||
+      name === 'sharing'
+    ) {
       await seedPayNight({ owner, tenantId, venueId, day, tables, sitting }, name)
     }
     if (name === 'flow' || name === 'crowd') await flow(name)

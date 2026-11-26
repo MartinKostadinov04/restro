@@ -654,7 +654,9 @@ export function projectGuestState(
     ordering: {
       state: read.sitting === null ? 'closed' : read.pauses.length > 0 ? 'paused' : 'on',
       ...(read.sitting === null && read.movedAway === true ? { movedAway: true as const } : {}),
-      ...(read.sitting === null && read.paidTogether === true ? { paidTogether: true as const } : {}),
+      ...(read.sitting === null && read.paidTogether === true
+        ? { paidTogether: true as const }
+        : {}),
       notesAndOptions: read.notesAndOptions,
       tips: read.tips,
       sharing: read.sharing,
